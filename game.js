@@ -204,7 +204,8 @@ function startCreation() {
 function renderCreation() {
   DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
-            fightingStyle:null, archetype:null };
+            fightingStyle:null, archetype:null,
+            profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
   $('#playerName').value = '';
@@ -257,8 +258,41 @@ function renderCreation() {
   $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
+
+  // perfil narrativo (opcional) + ajuda da IA
+  ['appearance','context','motivation','flaw','quality'].forEach(k => {
+    const el = $('#pf_'+k);
+    if (el) { el.value = ''; el.oninput = () => DRAFT.profile[k] = el.value; }
+  });
+  $('#aiHelpStatus').textContent = '';
+  $('#aiHelpBtn').onclick = askMestreForProfile;
+
   $('#charNextBtn').onclick = commitCharacter;
 }
+
+// Pede ao Mestre (IA) para sugerir o perfil do personagem com base nas escolhas.
+async function askMestreForProfile() {
+  if (!DRAFT.race || !DRAFT.cls) { aiStatus('Escolha raça e classe primeiro.', false); return; }
+  const name = $('#charName').value.trim() || 'um aventureiro sem nome';
+  aiStatus('O Mestre está imaginando…', true);
+  $('#aiHelpBtn').disabled = true;
+  const sys = `Você é o Mestre de uma campanha de D&D 5e (Dragons of Stormwreck Isle). Crie um perfil curto e evocativo para um personagem jogador. Responda APENAS com um objeto JSON válido, sem texto fora dele, com as chaves: appearance, context, motivation, flaw, quality. Cada valor tem 1 ou 2 frases, em português do Brasil.`;
+  const user = `Personagem: ${name}, ${DRAFT.race}${DRAFT.subrace?` (${DRAFT.subrace})`:''} ${DRAFT.cls}${DRAFT.archetype?` [${DRAFT.archetype}]`:''}. Ele chega à ilha Stormwreck para ajudar o claustro de Dragon's Rest. Gere: appearance (descrição física), context (por que está aqui), motivation (motivações), flaw (defeitos) e quality (qualidades).`;
+  try {
+    const reply = await callClaude([{ role:'user', content:user }], sys, 600, null, STATE.model);
+    const m = reply.match(/\{[\s\S]*\}/);
+    const data = JSON.parse(m ? m[0] : reply);
+    ['appearance','context','motivation','flaw','quality'].forEach(k => {
+      if (data[k]) { DRAFT.profile[k] = String(data[k]); const el = $('#pf_'+k); if (el) el.value = DRAFT.profile[k]; }
+    });
+    aiStatus('Pronto! Pode editar à vontade.', true);
+  } catch (e) {
+    aiStatus('Não consegui agora: ' + e.message, false);
+  } finally {
+    $('#aiHelpBtn').disabled = false;
+  }
+}
+function aiStatus(msg, ok) { const el = $('#aiHelpStatus'); if (el) { el.textContent = msg; el.style.color = ok ? 'var(--myco)' : 'var(--blood)'; } }
 
 // ---- Sub-raça ----
 function renderSubraces() {
@@ -516,7 +550,8 @@ function commitCharacter() {
     skills: [...DRAFT.skills, ...DRAFT.skillsExtra],
     armor: DRAFT.armor, shield: DRAFT.shield,
     weapons: DRAFT.weapon ? [DRAFT.weapon] : [],
-    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype
+    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype,
+    profile: { ...DRAFT.profile }
   });
   STATE.characters.push(char);
 
@@ -930,7 +965,10 @@ function buildSystemPrompt() {
     (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
     (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
     (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'') +
-    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'')
+    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'') +
+    ((c.profile&&(c.profile.appearance||c.profile.context||c.profile.motivation||c.profile.flaw||c.profile.quality))
+      ? ` Perfil — aparência: ${c.profile.appearance||'—'}; por que está aqui: ${c.profile.context||'—'}; motivações: ${c.profile.motivation||'—'}; defeitos: ${c.profile.flaw||'—'}; qualidades: ${c.profile.quality||'—'}.`
+      : '')
   ).join('\n');
 
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';

@@ -219,8 +219,15 @@
   .player-tag.p2 { background:rgba(111,168,212,0.15); color:var(--azure); }
 
   /* ====== TELA DE JOGO ====== */
-  .game-layout { display:grid; grid-template-columns: 300px 1fr; gap:0; min-height:100vh; }
-  @media (max-width: 820px) { .game-layout { grid-template-columns: 1fr; } .sidebar { display:none; } .sidebar.mobile-open { display:block; position:fixed; inset:0; z-index:50; overflow-y:auto;} }
+  .game-layout { display:grid; grid-template-columns: 300px 1fr 300px; gap:0; min-height:100vh; }
+  .game-layout.rolls-hidden { grid-template-columns: 300px 1fr; }
+  .game-layout.rolls-hidden .rollpanel { display:none; }
+  .rollpanel { background:var(--basalt-800); border-left:1px solid var(--basalt-600); padding:16px 14px; overflow-y:auto; max-height:100vh; }
+  .rollpanel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .rp-close { background:none; border:none; color:var(--stone-400); cursor:pointer; font-size:0.85rem; padding:2px 6px; border-radius:6px; }
+  .rp-close:hover { color:var(--ember); }
+  @media (max-width: 1100px) { .game-layout, .game-layout.rolls-hidden { grid-template-columns: 300px 1fr; } .rollpanel { position:fixed; top:0; right:0; bottom:0; width:300px; z-index:40; box-shadow:-10px 0 30px -12px rgba(0,0,0,0.7); } .game-layout.rolls-hidden .rollpanel { display:none; } }
+  @media (max-width: 820px) { .game-layout, .game-layout.rolls-hidden { grid-template-columns: 1fr; } .sidebar { display:none; } .sidebar.mobile-open { display:block; position:fixed; inset:0; z-index:50; overflow-y:auto;} }
 
   .sidebar {
     background: var(--basalt-800);
@@ -350,6 +357,10 @@
   .rl-out { font-size:0.66rem; font-weight:700; color:var(--stone-300); text-align:right; }
   .rl-entry.ok .rl-out, .rl-entry.crit .rl-out { color:var(--myco); }
   .rl-entry.fail .rl-out, .rl-entry.fumble .rl-out { color:var(--blood); }
+  .rl-break { font-size:0.66rem; color:var(--stone-400); font-family:var(--font-mono); margin-top:3px; }
+  .rl-dmg { font-size:0.72rem; color:var(--blood); margin-top:4px; }
+  .rl-dmg b { color:var(--parch); font-family:var(--font-display); }
+  .rl-sub { color:var(--stone-400); font-size:0.64rem; font-family:var(--font-mono); }
 
   /* ====== Recursos de classe (botões na ficha) ====== */
   .rest-bar { display:flex; gap:8px; margin-bottom:14px; }
@@ -392,6 +403,46 @@
   .cb-btn { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:7px; padding:6px 12px; font-size:0.78rem; cursor:pointer; white-space:nowrap; }
   .cb-btn:hover { border-color:var(--ember); }
   .cb-btn.end { border-color:var(--blood); color:var(--blood); }
+
+  /* ====== Ficha completa (modal) ====== */
+  .sheet-modal { position:fixed; inset:0; z-index:80; background:rgba(5,4,8,0.78); display:flex; align-items:flex-start; justify-content:center; padding:30px 16px; overflow-y:auto; }
+  .sheet-card { width:100%; max-width:860px; background:linear-gradient(180deg,var(--basalt-700),var(--basalt-800)); border:1px solid var(--basalt-600); border-radius:16px; padding:24px 26px; box-shadow:0 30px 70px -25px rgba(0,0,0,0.9); }
+  .sh-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; }
+  .sh-name { font-family:var(--font-display); font-size:1.8rem; color:var(--parch); }
+  .sh-sub { color:var(--stone-300); font-size:0.86rem; margin-top:2px; }
+  .sh-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:18px; }
+  @media (max-width:640px){ .sh-stats{ grid-template-columns:repeat(3,1fr);} }
+  .sh-stat { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:8px; text-align:center; }
+  .sh-stat span { display:block; font-family:var(--font-mono); font-size:0.56rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--stone-400); }
+  .sh-stat b { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); }
+  .sh-cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:640px){ .sh-cols{ grid-template-columns:1fr;} }
+  .sheet-card h4 { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--ember); margin:16px 0 8px; }
+  .sh-abgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .sh-ab { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:7px 4px; text-align:center; }
+  .sh-ab .l { font-family:var(--font-mono); font-size:0.58rem; color:var(--stone-400); }
+  .sh-ab .v { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); line-height:1; }
+  .sh-ab .m { font-size:0.72rem; color:var(--ember); }
+  .sh-ab .sv { font-size:0.56rem; color:var(--stone-400); margin-top:2px; }
+  .sh-ab .sv.prof { color:var(--myco); }
+  .sh-skills { display:grid; grid-template-columns:1fr; gap:3px; }
+  .sh-skill { display:flex; justify-content:space-between; font-size:0.8rem; color:var(--stone-300); padding:2px 4px; border-radius:5px; }
+  .sh-skill small { color:var(--stone-400); }
+  .sh-skill.prof { color:var(--parch); background:rgba(127,212,163,0.06); }
+  .sh-skill.prof b { color:var(--myco); }
+  .sh-tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .sh-tag { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:6px; padding:3px 9px; font-size:0.74rem; color:var(--stone-300); }
+  .sh-line { font-size:0.8rem; color:var(--azure); margin-top:8px; }
+  .sh-gold { font-family:var(--font-display); color:var(--gold-bone); float:right; font-size:0.95rem; }
+  .sh-inv { margin:0; padding-left:18px; color:var(--stone-300); font-size:0.84rem; }
+  .sh-inv li { margin:2px 0; }
+  .sh-profile { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px){ .sh-profile{ grid-template-columns:1fr;} }
+  .sh-pf span { display:block; font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--stone-300); margin-bottom:5px; }
+  .sh-pf textarea { width:100%; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; color:var(--parch); padding:8px 10px; font-family:var(--font-body); font-size:0.86rem; resize:vertical; }
+  .sh-pf textarea:focus { outline:none; border-color:var(--ember); }
+  .cc-name { cursor:pointer; }
+  .cc-name:hover { color:var(--ember); }
 
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
@@ -549,6 +600,21 @@
           <div class="choice-grid" id="archetypeGrid"></div>
         </div>
       </div>
+
+      <div class="subsection" id="profileSection">
+        <label class="field"><span>Perfil do personagem (opcional)</span></label>
+        <div class="row" style="margin-bottom:12px; align-items:center">
+          <button class="btn myco" id="aiHelpBtn" type="button">✨ Pedir ajuda ao Mestre</button>
+          <span id="aiHelpStatus" class="hint" style="margin:0"></span>
+        </div>
+        <div class="sh-profile">
+          <label class="sh-pf"><span>Descrição física</span><textarea id="pf_appearance" rows="2" placeholder="Aparência, marcas, jeito..."></textarea></label>
+          <label class="sh-pf"><span>Por que está aqui</span><textarea id="pf_context" rows="2" placeholder="O que o trouxe a Stormwreck..."></textarea></label>
+          <label class="sh-pf"><span>Motivações</span><textarea id="pf_motivation" rows="2"></textarea></label>
+          <label class="sh-pf"><span>Defeitos</span><textarea id="pf_flaw" rows="2"></textarea></label>
+          <label class="sh-pf"><span>Qualidades</span><textarea id="pf_quality" rows="2"></textarea></label>
+        </div>
+      </div>
     </div>
 
     <div class="row end" style="margin-top:24px">
@@ -562,10 +628,6 @@
   <div class="game-layout">
     <aside class="sidebar" id="sidebar">
       <div id="charPanel"></div>
-      <div class="rolllog" id="rollLog">
-        <div class="rolllog-title">⚄ Rolagens</div>
-        <div id="rollLogList"><div class="rolllog-empty">Nenhuma rolagem ainda.</div></div>
-      </div>
     </aside>
     <div class="main-col">
       <div class="topbar">
@@ -574,6 +636,7 @@
           <span id="locationLabel">Dragon's Rest</span>
         </div>
         <div class="row">
+          <button class="btn ghost" id="rollsToggleBtn" style="padding:8px 12px;font-size:0.82rem" title="Mostrar/esconder rolagens">⚄</button>
           <button class="btn ghost" id="saveBtn" style="padding:8px 14px;font-size:0.82rem">Salvar</button>
           <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
         </div>
@@ -589,7 +652,19 @@
         </div>
       </div>
     </div>
+    <aside class="rollpanel" id="rollPanel">
+      <div class="rollpanel-head">
+        <span class="rolllog-title">⚄ Rolagens</span>
+        <button class="rp-close" id="hideRollsBtn" title="Esconder">✕</button>
+      </div>
+      <div id="rollLogList"><div class="rolllog-empty">Nenhuma rolagem ainda.</div></div>
+    </aside>
   </div>
+</div>
+
+<!-- ============ FICHA COMPLETA (modal) ============ -->
+<div class="sheet-modal hide" id="sheetModal">
+  <div class="sheet-card" id="sheetCard"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1386,6 +1461,17 @@ function buildCharacter(opts) {
     .concat(subrace && r.subraces[subrace] ? (r.subraces[subrace].traits || []).map(t => t.name) : []);
   const features = (c.features && c.features[1]) ? c.features[1].slice() : [];
 
+  // inventário inicial montado a partir do equipamento escolhido
+  const inventory = [];
+  if (armorName !== 'Nenhuma') inventory.push(armorName);
+  if (hasShield) inventory.push('Escudo');
+  weapons.forEach(w => inventory.push(w));
+  inventory.push('Pacote de Aventureiro');
+  if (c.spell) inventory.push(c.spell.ability === 'INT' ? 'Foco arcano' : 'Foco de conjuração');
+  if (cls === 'Mago') inventory.push('Grimório');
+  if (cls === 'Ladino') inventory.push('Ferramentas de Ladrão');
+  if (cls === 'Clérigo' || cls === 'Paladino') inventory.push('Símbolo Sagrado');
+
   return {
     name, player, slot, race, subrace, cls,
     level, xp: 0, prof,
@@ -1415,7 +1501,9 @@ function buildCharacter(opts) {
     raging: false,
     resUsed: {},                       // contagem de usos por recurso (Fase 4)
     conditions: [],
-    inventory: ['Equipamento inicial de ' + cls]
+    gold: opts.gold != null ? opts.gold : 15,
+    inventory,
+    profile: opts.profile || { appearance:'', context:'', motivation:'', flaw:'', quality:'' }
   };
 }
 
@@ -1848,7 +1936,8 @@ function startCreation() {
 function renderCreation() {
   DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
-            fightingStyle:null, archetype:null };
+            fightingStyle:null, archetype:null,
+            profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
   $('#playerName').value = '';
@@ -1901,8 +1990,41 @@ function renderCreation() {
   $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
+
+  // perfil narrativo (opcional) + ajuda da IA
+  ['appearance','context','motivation','flaw','quality'].forEach(k => {
+    const el = $('#pf_'+k);
+    if (el) { el.value = ''; el.oninput = () => DRAFT.profile[k] = el.value; }
+  });
+  $('#aiHelpStatus').textContent = '';
+  $('#aiHelpBtn').onclick = askMestreForProfile;
+
   $('#charNextBtn').onclick = commitCharacter;
 }
+
+// Pede ao Mestre (IA) para sugerir o perfil do personagem com base nas escolhas.
+async function askMestreForProfile() {
+  if (!DRAFT.race || !DRAFT.cls) { aiStatus('Escolha raça e classe primeiro.', false); return; }
+  const name = $('#charName').value.trim() || 'um aventureiro sem nome';
+  aiStatus('O Mestre está imaginando…', true);
+  $('#aiHelpBtn').disabled = true;
+  const sys = `Você é o Mestre de uma campanha de D&D 5e (Dragons of Stormwreck Isle). Crie um perfil curto e evocativo para um personagem jogador. Responda APENAS com um objeto JSON válido, sem texto fora dele, com as chaves: appearance, context, motivation, flaw, quality. Cada valor tem 1 ou 2 frases, em português do Brasil.`;
+  const user = `Personagem: ${name}, ${DRAFT.race}${DRAFT.subrace?` (${DRAFT.subrace})`:''} ${DRAFT.cls}${DRAFT.archetype?` [${DRAFT.archetype}]`:''}. Ele chega à ilha Stormwreck para ajudar o claustro de Dragon's Rest. Gere: appearance (descrição física), context (por que está aqui), motivation (motivações), flaw (defeitos) e quality (qualidades).`;
+  try {
+    const reply = await callClaude([{ role:'user', content:user }], sys, 600, null, STATE.model);
+    const m = reply.match(/\{[\s\S]*\}/);
+    const data = JSON.parse(m ? m[0] : reply);
+    ['appearance','context','motivation','flaw','quality'].forEach(k => {
+      if (data[k]) { DRAFT.profile[k] = String(data[k]); const el = $('#pf_'+k); if (el) el.value = DRAFT.profile[k]; }
+    });
+    aiStatus('Pronto! Pode editar à vontade.', true);
+  } catch (e) {
+    aiStatus('Não consegui agora: ' + e.message, false);
+  } finally {
+    $('#aiHelpBtn').disabled = false;
+  }
+}
+function aiStatus(msg, ok) { const el = $('#aiHelpStatus'); if (el) { el.textContent = msg; el.style.color = ok ? 'var(--myco)' : 'var(--blood)'; } }
 
 // ---- Sub-raça ----
 function renderSubraces() {
@@ -2160,7 +2282,8 @@ function commitCharacter() {
     skills: [...DRAFT.skills, ...DRAFT.skillsExtra],
     armor: DRAFT.armor, shield: DRAFT.shield,
     weapons: DRAFT.weapon ? [DRAFT.weapon] : [],
-    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype
+    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype,
+    profile: { ...DRAFT.profile }
   });
   STATE.characters.push(char);
 
@@ -2185,6 +2308,8 @@ function startGame() {
   $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
+  $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
@@ -2200,7 +2325,7 @@ function renderSidebar() {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
     const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
-      <div class="cc-name">${c.name}</div>
+      <div class="cc-name" data-sheet="${i}" title="Ver ficha completa">${c.name}</div>
       <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${sub}</div>
       <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
       <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
@@ -2284,6 +2409,8 @@ function attachResourceHandlers() {
     c.conditions = (c.conditions||[]).filter(n => n !== el.dataset.cn);
     renderSidebar();
   });
+  // clicar no nome abre a ficha completa
+  $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
 }
 
 // Chips de condição (Apêndice A) na ficha — clicáveis para adicionar/remover.
@@ -2293,6 +2420,71 @@ function conditionsHtml(c, i) {
   return `<div class="cond-block">
     <select class="cond-add" data-ci="${i}"><option value="">+ condição</option>${opts}</select>
     <div class="cond-chips">${chips}</div>
+  </div>`;
+}
+
+// ---- Ficha completa (modal) ----
+function openSheet(i) {
+  const c = STATE.characters[i]; if (!c) return;
+  $('#sheetCard').innerHTML = sheetHtml(c, i);
+  $('#sheetModal').classList.remove('hide');
+  $('#sheetModal').onclick = e => { if (e.target.id === 'sheetModal') closeSheet(); };
+  $('#sheetCloseBtn').onclick = closeSheet;
+  $$('#sheetCard [data-gold]').forEach(b => b.onclick = () => { c.gold = Math.max(0, c.gold + (b.dataset.gold==='+'?1:-1)); openSheet(i); });
+  $$('#sheetCard [data-prof]').forEach(t => t.oninput = () => { c.profile = c.profile || {}; c.profile[t.dataset.prof] = t.value; });
+}
+function closeSheet() { $('#sheetModal').classList.add('hide'); }
+
+function sheetHtml(c, i) {
+  const abil = RULES.abilities.map(a => {
+    const save = c.saves.includes(a), sm = abilityMod(c.abilities[a]) + (save?c.prof:0);
+    return `<div class="sh-ab"><div class="l">${a}</div><div class="v">${c.abilities[a]}</div><div class="m">${fmtMod(abilityMod(c.abilities[a]))}</div><div class="sv ${save?'prof':''}">save ${fmtMod(sm)}</div></div>`;
+  }).join('');
+  const skills = Object.entries(RULES.skills).map(([name,ab]) => {
+    const prof = (c.skills||[]).includes(name), m = abilityMod(c.abilities[ab]) + (prof?c.prof:0);
+    return `<div class="sh-skill ${prof?'prof':''}"><span>${prof?'●':'○'} ${name} <small>(${ab})</small></span><b>${fmtMod(m)}</b></div>`;
+  }).join('');
+  const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
+  const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
+  const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag">${t}</span>`).join('')}</div>` : '';
+  const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv1 ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
+  const inv    = (c.inventory||[]).map(it=>`<li>${it}</li>`).join('') || '<li>—</li>';
+  const p = c.profile || {};
+  const pf = (k,label) => `<label class="sh-pf"><span>${label}</span><textarea data-prof="${k}" data-ci="${i}" rows="2">${p[k]||''}</textarea></label>`;
+  return `
+  <div class="sh-top">
+    <div><div class="sh-name">${c.name}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${c.player}</div></div>
+    <button class="rp-close" id="sheetCloseBtn">✕</button>
+  </div>
+  <div class="sh-stats">
+    <div class="sh-stat"><span>CA</span><b>${c.ca}</b></div>
+    <div class="sh-stat"><span>HP</span><b>${c.hp}/${c.maxHp}</b></div>
+    <div class="sh-stat"><span>Deslocamento</span><b>${c.speed}m</b></div>
+    <div class="sh-stat"><span>Iniciativa</span><b>${fmtMod(abilityMod(c.abilities.DES))}</b></div>
+    <div class="sh-stat"><span>Proficiência</span><b>+${c.prof}</b></div>
+    <div class="sh-stat"><span>Visão escuro</span><b>${c.darkvision?c.darkvisionRange+'m':'—'}</b></div>
+  </div>
+  <div class="sh-cols">
+    <div class="sh-col">
+      <h4>Atributos &amp; Saves</h4><div class="sh-abgrid">${abil}</div>
+      <h4>Perícias</h4><div class="sh-skills">${skills}</div>
+    </div>
+    <div class="sh-col">
+      <h4>Traços raciais</h4><div class="sh-tags">${traits}</div>
+      <h4>Características de classe</h4><div class="sh-tags">${feats}</div>
+      ${spell}${conds}
+      <h4>Idiomas</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
+      <h4>Bolsa <span class="sh-gold">${c.gold} <button class="res-mini" data-gold="-" data-ci="${i}">−</button> <button class="res-mini" data-gold="+" data-ci="${i}">+</button> po</span></h4>
+      <ul class="sh-inv">${inv}</ul>
+    </div>
+  </div>
+  <h4>Perfil do personagem</h4>
+  <div class="sh-profile">
+    ${pf('appearance','Descrição física')}
+    ${pf('context','Por que está aqui')}
+    ${pf('motivation','Motivações')}
+    ${pf('flaw','Defeitos')}
+    ${pf('quality','Qualidades')}
   </div>`;
 }
 
@@ -2384,13 +2576,14 @@ function showRollCard(label, result, dc) {
     <div class="rbreak">d20 [${diceStr}] ${result.mod>=0?'+':''}${result.mod}${result.crit?' · CRÍTICO!':''}${result.fumble?' · FALHA CRÍTICA':''}</div>
     ${outcome}`;
   n.appendChild(div); n.scrollTop = n.scrollHeight;
-  logRoll(label, result, dc);   // registra no painel lateral persistente
 }
 
-// Acrescenta a rolagem ao painel lateral (mais recente no topo).
-function logRoll(label, result, dc) {
+// Acrescenta a rolagem ao painel direito (mais recente no topo), com a quebra
+// dos dados e o dano. dmg = { total, detail, type } (opcional).
+function logRoll(label, result, dc, dmg) {
   const list = $('#rollLogList'); if (!list) return;
   const empty = list.querySelector('.rolllog-empty'); if (empty) empty.remove();
+  const auto = (!result.dice || !result.dice.length);   // falha automática por condição
   let cls = result.crit ? 'crit' : result.fumble ? 'fumble' : '';
   let out = '';
   if (dc != null) {
@@ -2399,11 +2592,13 @@ function logRoll(label, result, dc) {
     out = `${ok ? '✓' : '✗'} CD ${dc}`;
   }
   if (result.crit) out = 'CRÍTICO! ' + out;
-  if (result.fumble) out = 'FALHA CRÍTICA ' + out;
+  const breakLine = auto ? 'falha automática (condição)' : `d20 [${result.dice.join(', ')}] ${fmtMod(result.mod)} = ${result.total}`;
+  const dmgLine = dmg ? `<div class="rl-dmg">⚔ Dano <b>${dmg.total}</b> <span class="rl-sub">${dmg.detail} [${dmg.type}]</span></div>` : '';
   const e = document.createElement('div');
   e.className = 'rl-entry ' + cls;
   e.innerHTML = `<div class="rl-head">${label}</div>
-    <div class="rl-line"><span class="rl-num">${result.total}</span><span class="rl-out">${out.trim()}</span></div>`;
+    <div class="rl-line"><span class="rl-num">${auto?'✗':result.total}</span><span class="rl-out">${out.trim()}</span></div>
+    <div class="rl-break">${breakLine}</div>${dmgLine}`;
   list.insertBefore(e, list.firstChild);
 }
 
@@ -2502,7 +2697,10 @@ function buildSystemPrompt() {
     (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
     (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
     (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'') +
-    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'')
+    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'') +
+    ((c.profile&&(c.profile.appearance||c.profile.context||c.profile.motivation||c.profile.flaw||c.profile.quality))
+      ? ` Perfil — aparência: ${c.profile.appearance||'—'}; por que está aqui: ${c.profile.context||'—'}; motivações: ${c.profile.motivation||'—'}; defeitos: ${c.profile.flaw||'—'}; qualidades: ${c.profile.quality||'—'}.`
+      : '')
   ).join('\n');
 
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';
@@ -2615,15 +2813,18 @@ async function processDMReply(reply) {
 
     const advNote = adv && !dis ? ' · vantagem' : dis && !adv ? ' · desvantagem' : '';
     const condNote = rm.autoFail ? ' · falha automática' : '';
-    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}${condNote}`, result, cdNum);
+    const label = `${c.name} · ${tipo} (${abr})${advNote}${condNote}`;
+    showRollCard(label, result, cdNum);
 
     // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
-    let dmgNote = '';
+    let dmgNote = '', dmgInfo = null;
     if (tipo.toLowerCase() === 'ataque' && !rm.autoFail) {
       const ap = attackProfile(c, abr, adv && !dis);
       const dmg = rollAttackDamage(ap, result.crit);
+      dmgInfo = { total: dmg.total, detail: dmg.detail, type: ap.type };
       dmgNote = ` Dano se acertar: ${dmg.total} [${ap.type}] (${ap.name}: ${dmg.detail}${result.crit?' — CRÍTICO':''}${ap.sneak?' · Ataque Furtivo!':''}${c.raging?' · Fúria':''}).`;
     }
+    logRoll(label, result, cdNum, dmgInfo);   // registra no painel direito
 
     const outcome = rm.autoFail ? 'FALHA AUTOMÁTICA (condição)' : (cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado');
     await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: ${rm.autoFail?'FALHA AUTOMÁTICA por condição':`d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}`}${result.crit?' (CRÍTICO!)':''}${result.fumble&&!rm.autoFail?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
@@ -2781,6 +2982,8 @@ async function loadGame() {
   updateTopbar(); updateQuickActions(); updateTurnIndicator();
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
+  $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
