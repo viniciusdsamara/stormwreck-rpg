@@ -138,6 +138,7 @@ function subscribeRoom(){
   roomChannel = supa.channel('room-'+ROOM.id)
     .on('postgres_changes', { event:'*', schema:'public', table:'room_members', filter:`room_id=eq.${ROOM.id}` }, refreshRoom)
     .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`id=eq.${ROOM.id}` }, refreshRoom)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'room_actions', filter:`room_id=eq.${ROOM.id}` }, p => onPlayerAction(p.new))
     .subscribe();
 }
 function renderRoom(){
@@ -285,17 +286,106 @@ function renderGame(){
     return `<div class="gmsg dm">${fmtNarr(escapeHtml(m.text))}</div>`;
   }).join('') || '<div class="note">A aventura vai começar…</div>';
   $('#gNarrative').scrollTop = $('#gNarrative').scrollHeight;
-  $('#gParty').innerHTML = (st.characters||[]).map(c=>{
+  const turnIdx = st.turnIndex||0;
+  $('#gParty').innerHTML = (st.characters||[]).map((c,idx)=>{
     const pct = Math.max(0, Math.round((c.hp/c.maxHp)*100));
-    return `<div class="gpc"><div class="pcn">${escapeHtml(c.name)}</div>
+    return `<div class="gpc ${idx===turnIdx?'turn':''}"><div class="pcn">${escapeHtml(c.name)}</div>
       <div class="pcs">${c.ownerName?`(${escapeHtml(c.ownerName)}) · `:''}${c.race} ${c.cls} Nv${c.level}</div>
       <div class="pchp"><i style="width:${pct}%"></i><span>${c.hp}/${c.maxHp} HP</span></div>
       <div class="pcrow"><span>CA ${c.ca}</span><span>Prof +${c.prof}</span></div></div>`;
   }).join('');
-  const turnChar = (st.characters||[])[st.turnIndex||0];
+  const turnChar = (st.characters||[])[turnIdx];
   $('#gTurn').innerHTML = turnChar ? `Vez de <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>` : '';
-  $('#gFoot').textContent = 'As ações dos jogadores e a narração da IA entram na próxima fase (M4).';
+
+  // compositor: aparece só na vez deste jogador
+  const myTurn = turnChar && turnChar.owner === ME.id && !ROOM._engineBusy;
+  $('#gComposer').style.display = myTurn ? 'flex' : 'none';
+  if (myTurn){ $('#gSend').onclick = submitAction; $('#gInput').onkeydown = e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); submitAction(); } }; }
+  $('#gWait').textContent = myTurn ? '' : (turnChar ? `Aguardando a ação de ${turnChar.name}…` : (amIAdmin() ? 'Mestre observando.' : 'Aguardando o Mestre…'));
+  $('#gFoot').textContent = amIAdmin() ? 'Você é o Mestre: a narração da IA roda no seu dispositivo.' : '';
   $('#gLeave').onclick = leaveRoom;
+}
+
+// ---------------- ENGINE (roda no cliente do ADMIN) ----------------
+async function saveState(st){
+  ROOM.state = st;
+  await supa.from('rooms').update({ state: st, scene_id: st.sceneId, turn_owner: (st.characters[st.turnIndex]||{}).owner || null }).eq('id', ROOM.id);
+}
+function advanceTurn(st){
+  if (!st.characters || !st.characters.length) return;
+  st.turnIndex = ((st.turnIndex||0) + 1) % st.characters.length;
+}
+// jogador envia ação → vai para a fila room_actions
+async function submitAction(){
+  const txt = $('#gInput').value.trim(); if (!txt) return;
+  $('#gInput').value = ''; $('#gSend').disabled = true;
+  const me = myMember();
+  const { error } = await supa.from('room_actions').insert({
+    room_id: ROOM.id, user_id: ME.id, display_name: (me&&me.display_name)||nameFromEmail(ME.email), text: txt
+  });
+  $('#gSend').disabled = false;
+  if (error) toast('Erro ao enviar: '+error.message);
+}
+// admin processa a ação: registra, chama a IA, narra e passa a vez
+let engineBusy = false;
+async function onPlayerAction(action){
+  if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
+  if (action.processed) return;
+  if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
+  engineBusy = true; ROOM._engineBusy = true; renderGame();
+  try {
+    const st = ROOM.state || {};
+    st.history = st.history || [];
+    st.history.push({ role:'player', who: action.display_name, text: action.text });
+    await saveState(st);                                  // mostra a ação a todos já
+    let reply;
+    try { reply = await callClaudeMp(buildMpHistory(st), buildMpSystemPrompt(st), 700); }
+    catch (e) { reply = `*(O Mestre tropeçou: ${e.message})*`; }
+    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();  // marcadores mecânicos chegam depois
+    st.history.push({ role:'dm', text: clean || '…' });
+    advanceTurn(st);
+    await saveState(st);
+  } finally {
+    engineBusy = false; ROOM._engineBusy = false;
+    try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
+    renderGame();
+  }
+}
+function buildMpHistory(st){
+  const msgs = [];
+  (st.history||[]).slice(-16).forEach(m => {
+    if (m.role==='dm') msgs.push({ role:'assistant', content: m.text });
+    else if (m.role==='player') msgs.push({ role:'user', content:`[${m.who}]: ${m.text}` });
+  });
+  if (!msgs.length || msgs[0].role !== 'user') msgs.unshift({ role:'user', content:'(Apresente a cena e abra para a ação dos jogadores.)' });
+  return msgs;
+}
+function buildMpSystemPrompt(st){
+  const sc = CAMPAIGN.scenes[st.sceneId] || {};
+  const sheets = (st.characters||[]).map(c =>
+    `- ${c.name} (jogador ${c.ownerName||'?'}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
+    `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}.` +
+    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
+    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'')
+  ).join('\n');
+  const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
+  return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
+${CAMPAIGN.premise||''}
+
+Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês. NÃO use marcadores de sistema nem decida sucessos mecânicos por conta própria — por enquanto, narre de forma aberta e plausível.
+
+## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
+${sc.summary||''}
+Objetivos: ${(sc.objectives||[]).join('; ')}
+${sc.npcs?'':''}
+
+## NPCs DESTA CENA
+${npcs}
+
+## PERSONAGENS DO GRUPO
+${sheets}
+
+Responda à ação do jogador, faça a história avançar e termine abrindo para a próxima ação do grupo.`;
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });

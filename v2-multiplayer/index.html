@@ -126,6 +126,9 @@
   .gpc .pchp i{ display:block; height:100%; background:linear-gradient(90deg,var(--blood),#e06b7a); }
   .gpc .pchp span{ position:absolute; inset:0; text-align:center; font-size:0.64rem; line-height:14px; color:var(--parch); text-shadow:0 1px 1px #000; }
   .gpc .pcrow{ display:flex; justify-content:space-between; font-size:0.72rem; color:var(--stone-300); margin-top:5px; }
+  .gpc.turn{ border-color:var(--ember); box-shadow:0 0 0 1px var(--ember); }
+  .gcomposer{ display:flex; gap:8px; margin-top:12px; }
+  .gcomposer textarea{ flex:1; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch); border-radius:9px; padding:9px 11px; font-family:inherit; font-size:0.9rem; resize:vertical; }
 </style>
 </head>
 <body>
@@ -382,7 +385,14 @@
       <button class="btn ghost" id="gLeave" style="padding:7px 14px;font-size:0.8rem">Sair</button>
     </div>
     <div class="game-grid">
-      <div class="panel gnarr" id="gNarrative"></div>
+      <div>
+        <div class="panel gnarr" id="gNarrative"></div>
+        <div class="gcomposer" id="gComposer" style="display:none">
+          <textarea id="gInput" rows="2" placeholder="O que você faz?"></textarea>
+          <button class="btn" id="gSend">Agir</button>
+        </div>
+        <p class="note" id="gWait"></p>
+      </div>
       <aside class="panel gparty">
         <h4 style="margin-top:0">Grupo</h4>
         <div id="gParty"></div>
