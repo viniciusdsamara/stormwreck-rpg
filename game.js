@@ -22,7 +22,8 @@ const STATE = {
   combat: null,         // estado de combate ativo
   creationSlot: 0,      // 0 ou 1 durante criação
   visited: [],          // ids de locais do mapa já visitados (alcançados)
-  revealed: []          // ids de locais revelados pelo Mestre (mas ainda não alcançados)
+  revealed: [],         // ids de locais revelados pelo Mestre (mas ainda não alcançados)
+  gmMode: false         // "Modo Mestre": reativa edição manual de recursos/condições p/ correção
 };
 
 // ---------- MAPA INTERATIVO DA ILHA ----------
@@ -891,7 +892,8 @@ function renderSidebar() {
   const sb = $('#charPanel');
   // Descanso não é mais manual — é automático em momentos seguros do roteiro
   // (refúgios) ou disparado pelo Mestre via [DESCANSO:...]. Evita recuperação livre.
-  sb.innerHTML = STATE.characters.map((c, i) => {
+  const gmBanner = STATE.gmMode ? `<div class="gm-banner">🛠️ Modo Mestre ativo — edição manual</div>` : '';
+  sb.innerHTML = gmBanner + STATE.characters.map((c, i) => {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
     const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
@@ -910,28 +912,36 @@ function renderSidebar() {
   attachResourceHandlers();
 }
 
-// HTML dos recursos da ficha (somente leitura — mudam pela automação do Mestre).
+// HTML dos recursos da ficha. Somente leitura por padrão (mudam pela automação
+// do Mestre); no "Modo Mestre" (STATE.gmMode) viram controles manuais de correção.
 function resourcesHtml(c, i) {
   const res = classResources(c);
   if (!res.length) return '';
-  const pipsFor = (max, left) => Array.from({length:max},(_,k)=>`<span class="res-pip ${k<left?'full':''}"></span>`).join('');
+  const gm = STATE.gmMode;
   const rows = res.map(r => {
     if (r.kind === 'slots') {
       const pool = c[r.pool] || { used:0 };
       const left = r.max - (pool.used || 0);
-      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pipsFor(r.max,left)}</span></div>`;
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" ${gm?`data-ci="${i}" data-rk="slot" data-pool="${r.pool}" data-idx="${k}"`:''}></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
     }
     if (r.kind === 'toggle') {   // Fúria
       const left = r.max - (c.resUsed[r.key]||0);
-      return `<div class="res-row"><span class="res-label ${c.raging?'on':''}">${r.label}${c.raging?' <b>ATIVA ●</b>':''}</span><span class="res-pips" title="usos">${pipsFor(r.max,left)}</span></div>`;
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}"></span>`).join('');
+      if (gm) return `<div class="res-row"><button class="res-btn ${c.raging?'on':''}" data-ci="${i}" data-rk="rage">${c.raging?'Fúria ATIVA ●':'Fúria'}</button><span class="res-pips" title="usos">${pips}</span></div>`;
+      return `<div class="res-row"><span class="res-label ${c.raging?'on':''}">${r.label}${c.raging?' <b>ATIVA ●</b>':''}</span><span class="res-pips" title="usos">${pips}</span></div>`;
     }
     if (r.kind === 'counter') {
       const left = r.max - (c.resUsed[r.key]||0);
-      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pipsFor(r.max,left)}</span></div>`;
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" ${gm?`data-ci="${i}" data-rk="ctr" data-key="${r.key}" data-idx="${k}"`:''}></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
     }
     if (r.kind === 'pool') {
       const left = r.max - (c.resUsed[r.key]||0);
-      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pool"><b>${left}</b>/${r.max}</span></div>`;
+      const ctrl = gm
+        ? `<span class="res-pool"><button class="res-mini" data-ci="${i}" data-rk="pool-" data-key="${r.key}">−5</button><b>${left}</b>/${r.max}<button class="res-mini" data-ci="${i}" data-rk="poolr" data-key="${r.key}">↺</button></span>`
+        : `<span class="res-pool"><b>${left}</b>/${r.max}</span>`;
+      return `<div class="res-row"><span class="res-label">${r.label}</span>${ctrl}</div>`;
     }
     return '';
   }).join('');
@@ -939,15 +949,62 @@ function resourcesHtml(c, i) {
 }
 
 function attachResourceHandlers() {
-  // recursos e condições são somente leitura — só o nome abre a ficha completa.
+  // clicar no nome abre a ficha completa (sempre)
   $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
+  if (!STATE.gmMode) return;   // fora do Modo Mestre, recursos/condições são só leitura
+
+  $$('#charPanel [data-rk]').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    const rk = el.dataset.rk;
+    if (rk === 'slot') {
+      const pool = c[el.dataset.pool]; if (!pool) return;
+      const idx = +el.dataset.idx, left = pool.max - pool.used;   // pip cheio gasta; vazio recupera
+      pool.used = Math.max(0, Math.min(pool.max, pool.used + ((idx < left) ? 1 : -1)));
+    } else if (rk === 'ctr') {
+      const key = el.dataset.key, idx = +el.dataset.idx;
+      const r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = Math.max(0, Math.min(r.max, (c.resUsed[key]||0) + ((idx < left) ? 1 : -1)));
+    } else if (rk === 'rage') {
+      if (c.raging) { c.raging = false; }
+      else { const left = ragesByLevel(c.level) - (c.resUsed.rage||0);
+             if (left > 0) { c.raging = true; c.resUsed.rage = (c.resUsed.rage||0)+1; }
+             else toast('Sem usos de Fúria. Descanse.'); }
+    } else if (rk === 'pool-') {
+      const key = el.dataset.key, r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = (c.resUsed[key]||0) + Math.min(5, left);
+    } else if (rk === 'poolr') {
+      c.resUsed[el.dataset.key] = 0;
+    }
+    renderSidebar();
+  });
+  // condições: adicionar (select) e remover (chip)
+  $$('#charPanel .cond-add').forEach(sel => sel.onchange = () => {
+    const c = STATE.characters[+sel.dataset.ci], v = sel.value;
+    if (v && !(c.conditions||[]).includes(v)) c.conditions = (c.conditions||[]).concat(v);
+    renderSidebar();
+  });
+  $$('#charPanel .cond-chip[data-cn]').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    c.conditions = (c.conditions||[]).filter(n => n !== el.dataset.cn);
+    renderSidebar();
+  });
 }
 
-// Chips de condição (Apêndice A) na ficha — somente leitura (aplicadas pelo Mestre).
+// Chips de condição (Apêndice A). Somente leitura por padrão; editáveis no Modo Mestre.
 function conditionsHtml(c, i) {
-  if (!(c.conditions||[]).length) return '';
-  const chips = c.conditions.map(n=>`<span class="cond-chip ro" title="${RULES.conditions[n]?RULES.conditions[n].desc:''}">${n}</span>`).join('');
-  return `<div class="cond-block"><div class="cond-chips">${chips}</div></div>`;
+  const gm = STATE.gmMode;
+  if (!gm && !(c.conditions||[]).length) return '';
+  const chips = (c.conditions||[]).map(n=> gm
+    ? `<span class="cond-chip" data-ci="${i}" data-cn="${n}" title="${RULES.conditions[n]?RULES.conditions[n].desc:''}">${n} ✕</span>`
+    : `<span class="cond-chip ro" title="${RULES.conditions[n]?RULES.conditions[n].desc:''}">${n}</span>`).join('');
+  if (!gm) return `<div class="cond-block"><div class="cond-chips">${chips}</div></div>`;
+  const opts = Object.keys(RULES.conditions).map(n=>`<option value="${n}">${n}</option>`).join('');
+  return `<div class="cond-block">
+    <select class="cond-add" data-ci="${i}"><option value="">+ condição</option>${opts}</select>
+    <div class="cond-chips">${chips}</div>
+  </div>`;
 }
 
 // ---- Ficha completa (modal) ----
@@ -1101,6 +1158,7 @@ function openOptionsMenu() {
         </select>
       </div>
       <button class="menu-item" id="miChars"><span class="mi-ic">👥</span><span><b>Ver personagens</b><small>Abre/fecha o painel de fichas</small></span></button>
+      <button class="menu-item ${STATE.gmMode?'gm-on':''}" id="miGm"><span class="mi-ic">🛠️</span><span><b>Modo Mestre — edição manual ${STATE.gmMode?'<i>(LIGADO)</i>':''}</b><small>Reativa os controles de recurso/condição na ficha p/ corrigir à mão</small></span></button>
       <button class="menu-item warn" id="miRestart"><span class="mi-ic">🔄</span><span><b>Reiniciar do começo</b><small>Recomeça a aventura com os mesmos heróis</small></span></button>
       <button class="menu-item danger" id="miLogout"><span class="mi-ic">🚪</span><span><b>Sair da conta</b><small>Faz logout e volta ao login</small></span></button>
     </div>`;
@@ -1112,6 +1170,12 @@ function openOptionsMenu() {
   $('#miMap').onclick = () => { closeOptionsMenu(); openMap(); };
   $('#miModel').onchange = e => { STATE.model = e.target.value; toast('Modelo: ' + (e.target.value.includes('sonnet')?'Sonnet 4.6':'Haiku 4.5')); };
   $('#miChars').onclick = () => { closeOptionsMenu(); $('#sidebar').classList.toggle('mobile-open'); };
+  $('#miGm').onclick = () => {
+    STATE.gmMode = !STATE.gmMode;
+    renderSidebar();
+    toast(STATE.gmMode ? '🛠️ Modo Mestre LIGADO — controles manuais ativos.' : 'Modo Mestre desligado — ficha somente leitura.');
+    openOptionsMenu();   // re-renderiza o menu p/ atualizar o rótulo
+  };
   $('#miRestart').onclick = () => { if (confirm('Reiniciar a aventura do começo? Os personagens são mantidos, mas a história recomeça.')) { closeOptionsMenu(); startGame(); } };
   $('#miLogout').onclick = () => { if (confirm('Sair da sua conta? Salve antes se quiser manter o progresso.')) { closeOptionsMenu(); doLogout(); } };
 }
@@ -1584,6 +1648,13 @@ ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 
 ## MAPA DA ILHA (ids para [REVELAR_LOCAL])
 ${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mapKnown(id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não mencione o nome até revelar/alcançar)'}`).join('\n')}
+
+## EXEMPLO de uso dos marcadores (emita-os SEMPRE que o evento ocorrer — a ficha é automática)
+Jogador: "Lanço Mísseis Mágicos no esqueleto."
+Mestre: Três dardos de força perfuram o esqueleto. [GASTAR_SLOT:Eldrin:1] [HIT:e1:9]
+Jogador: "O Bárbaro entra em fúria e ataca."
+Mestre: Bjorn ruge e avança. [GASTAR_RECURSO:Bjorn:rage] [ROLL:ataque:FOR:0]
+Mestre (após o veneno): O líquido queima as veias dele. [CONDICAO:Bjorn:Envenenado]
 
 ## CENA ATUAL: ${sc.chapter} — ${sc.location}
 Resumo: ${sc.summary}
