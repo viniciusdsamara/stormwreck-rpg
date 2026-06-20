@@ -21,7 +21,8 @@ const STATE = {
   inCombat: false,
   combat: null,         // estado de combate ativo
   creationSlot: 0,      // 0 ou 1 durante criação
-  visited: []           // ids de locais do mapa já visitados
+  visited: [],          // ids de locais do mapa já visitados (alcançados)
+  revealed: []          // ids de locais revelados pelo Mestre (mas ainda não alcançados)
 };
 
 // ---------- MAPA INTERATIVO DA ILHA ----------
@@ -38,9 +39,11 @@ const MAP_LOCS = {
   observatorio: { x:236, y:64,  label:'Observatório do Penhasco', chapter:'Cap. 4', icon:'🔭',
                   summary:'No alto do penhasco de basalto, palco do confronto final com a dragão das tempestades.' }
 };
-// mapeia cada cena do roteiro para um local no mapa
+// mapeia cada cena do roteiro para um local no mapa.
+// 'chegada' (no barco, em alto-mar) NÃO mapeia para nada — a praia só é
+// revelada quando os heróis desembarcam (cena 'praia'), preservando a imersão.
 const SCENE_LOC = {
-  chegada:'praia', praia:'praia',
+  praia:'praia',
   claustro:'claustro', claustro_volta:'claustro', epilogo:'claustro',
   cavernas:'cavernas', sharruth:'cavernas',
   naufragio:'naufragio', observatorio:'observatorio'
@@ -867,6 +870,8 @@ function startGame() {
   STATE.sceneId = 'chegada';
   STATE.activeChar = 0;
   STATE.history = [];
+  STATE.visited = [];
+  STATE.revealed = [];
   renderSidebar();
   $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
@@ -1005,6 +1010,10 @@ function mapMarkSceneVisited() {
   const loc = SCENE_LOC[STATE.sceneId];
   if (loc && !STATE.visited.includes(loc)) STATE.visited.push(loc);
 }
+// um local é "conhecido" (nome/detalhe visíveis) se foi alcançado OU revelado pelo Mestre.
+function mapKnown(id) {
+  return STATE.visited.includes(id) || (STATE.revealed||[]).includes(id);
+}
 
 // para saves antigos sem 'visited': reconstrói pela ordem linear da campanha
 const SCENE_ORDER = ['chegada','praia','claustro','cavernas','sharruth','claustro_volta','naufragio','observatorio','epilogo'];
@@ -1020,18 +1029,28 @@ function reconstructVisited(sceneId) {
 
 function mapSvg() {
   const cur = SCENE_LOC[STATE.sceneId];
-  // caminhos da rota: traça entre locais consecutivos já ambos visitados
+  // caminhos da rota: só traça entre locais já CONHECIDOS (sem revelar o que falta)
   let paths = '';
   for (let i = 0; i < MAP_ROUTE.length - 1; i++) {
     const a = MAP_LOCS[MAP_ROUTE[i]], b = MAP_LOCS[MAP_ROUTE[i+1]];
     if (!a || !b) continue;
+    if (!mapKnown(MAP_ROUTE[i]) || !mapKnown(MAP_ROUTE[i+1])) continue;
     const done = STATE.visited.includes(MAP_ROUTE[i]) && STATE.visited.includes(MAP_ROUTE[i+1]);
     paths += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="map-route ${done?'done':''}" />`;
   }
   const markers = Object.entries(MAP_LOCS).map(([id, m]) => {
     const isCur = id === cur;
     const visited = STATE.visited.includes(id);
-    const cls = isCur ? 'cur' : (visited ? 'seen' : 'dim');
+    const known = mapKnown(id);
+    // local desconhecido → marcador de névoa "?", sem revelar nome nem ícone
+    if (!known) {
+      return `<g class="map-marker unknown" data-loc="${id}" tabindex="0" role="button" aria-label="Área desconhecida">
+        <circle cx="${m.x}" cy="${m.y}" r="11" class="map-dot" />
+        <text x="${m.x}" y="${m.y+4}" class="map-icon" text-anchor="middle">?</text>
+        <text x="${m.x}" y="${m.y+26}" class="map-lbl" text-anchor="middle">???</text>
+      </g>`;
+    }
+    const cls = isCur ? 'cur' : (visited ? 'seen' : 'revealed');
     return `<g class="map-marker ${cls}" data-loc="${id}" tabindex="0" role="button" aria-label="${m.label}">
       ${isCur ? `<circle cx="${m.x}" cy="${m.y}" r="16" class="map-pulse" />` : ''}
       <circle cx="${m.x}" cy="${m.y}" r="11" class="map-dot" />
@@ -1080,22 +1099,85 @@ function openMap() {
   $('#mapCloseBtn').onclick = closeMap;
   const showDetail = id => {
     const loc = MAP_LOCS[id]; if (!loc) return;
+    // local desconhecido → não revela nome nem resumo
+    if (!mapKnown(id)) {
+      $('#mapDetail').innerHTML = `<div class="map-d-head">❔ <b>Área desconhecida</b> <span class="map-tag dim">não revelada</span></div>
+        <p>Uma região da ilha que vocês ainda não alcançaram nem ouviram falar. Explore ou deixe o Mestre revelá-la.</p>`;
+      return;
+    }
     const here = id === SCENE_LOC[STATE.sceneId];
     const seen = STATE.visited.includes(id);
     const tag = here ? '<span class="map-tag here">você está aqui</span>'
               : seen ? '<span class="map-tag seen">visitado</span>'
-              : '<span class="map-tag dim">não explorado</span>';
+              : '<span class="map-tag revealed">revelado pelo Mestre</span>';
     $('#mapDetail').innerHTML = `<div class="map-d-head">${loc.icon} <b>${loc.label}</b> ${tag}</div>
       <div class="map-d-chap">${loc.chapter}</div>
-      <p>${seen||here ? loc.summary : 'Local ainda não alcançado na campanha.'}</p>`;
+      <p>${loc.summary}</p>`;
   };
   $$('#mapCard .map-marker').forEach(g => {
     g.onclick = () => showDetail(g.dataset.loc);
     g.onkeydown = e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); showDetail(g.dataset.loc); } };
   });
-  showDetail(SCENE_LOC[STATE.sceneId]);
+  // detalhe inicial: local atual se houver; senão, instrução
+  const curLoc = SCENE_LOC[STATE.sceneId];
+  if (curLoc) showDetail(curLoc);
+  else $('#mapDetail').innerHTML = `<p>Vocês ainda estão em alto-mar, a caminho da ilha. As áreas serão reveladas conforme exploram.</p>`;
 }
 function closeMap() { $('#mapModal').classList.add('hide'); }
+
+// revela um local do mapa (chamado pelo marcador [REVELAR_LOCAL:id] do Mestre)
+function revealMapLocation(id) {
+  if (!MAP_LOCS[id] || mapKnown(id)) return false;
+  STATE.revealed = STATE.revealed || [];
+  STATE.revealed.push(id);
+  return true;
+}
+
+// ---------- AUTOMAÇÃO DE RECURSOS/CONDIÇÕES (marcadores do Mestre) ----------
+// resolve um personagem pelo nome (ou nome do jogador), tolerante a caixa/parciais
+function findCharIndexByName(name) {
+  if (!name) return -1;
+  const q = name.trim().toLowerCase();
+  const first = q.split(/\s+/)[0];
+  let i = STATE.characters.findIndex(c => c.name.toLowerCase() === q);
+  if (i < 0) i = STATE.characters.findIndex(c => c.name.toLowerCase().split(/\s+/)[0] === first);
+  if (i < 0) i = STATE.characters.findIndex(c => c.name.toLowerCase().includes(q) || q.includes(c.name.toLowerCase()));
+  if (i < 0) i = STATE.characters.findIndex(c => (c.player||'').toLowerCase() === q);
+  return i;
+}
+// consome 1 espaço de magia do nível indicado (1 ou 2)
+function spendSpellSlot(ci, level) {
+  const c = STATE.characters[ci]; if (!c) return null;
+  const pool = (+level >= 2) ? c.spellSlots2 : c.spellSlots;
+  if (!pool || pool.max == null) return null;
+  if (pool.used >= pool.max) return `${c.name}: sem slots de nível ${level}`;
+  pool.used += 1;
+  return `${c.name} gastou 1 slot nv${level} (${pool.max - pool.used}/${pool.max})`;
+}
+// casa o nome de condição com as chaves de RULES.conditions (tolerante a acento/caixa)
+function matchConditionName(name) {
+  if (!name) return null;
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const q = norm(name);
+  return Object.keys(RULES.conditions).find(k => norm(k) === q)
+      || Object.keys(RULES.conditions).find(k => norm(k).startsWith(q) || q.startsWith(norm(k)))
+      || null;
+}
+function applyCondition(ci, name) {
+  const c = STATE.characters[ci]; if (!c) return null;
+  const key = matchConditionName(name); if (!key) return null;
+  c.conditions = c.conditions || [];
+  if (c.conditions.includes(key)) return null;
+  c.conditions.push(key);
+  return `${c.name}: ${key}`;
+}
+function removeCondition(ci, name) {
+  const c = STATE.characters[ci]; if (!c) return null;
+  const key = matchConditionName(name); if (!key) return null;
+  if (!(c.conditions||[]).includes(key)) return null;
+  c.conditions = c.conditions.filter(n => n !== key);
+  return `${c.name}: fim de ${key}`;
+}
 
 function sheetHtml(c, i) {
   const abil = RULES.abilities.map(a => {
@@ -1462,7 +1544,13 @@ ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 - Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12], [ROLL:save:DES:14], [ROLL:ataque:DES:0]. Em saves, acrescente a AMEAÇA como 5º campo para ativar vantagens de traço (veneno, enfeitiçar, amedrontar, magia, sol): ex. [ROLL:save:CON:12:veneno], [ROLL:save:SAB:13:amedrontar], [ROLL:save:INT:14:magia]. O sistema aplica proficiência, vantagem/desvantagem e o dano da arma automaticamente — você só narra. Depois do marcador, PARE e espere o resultado.
 - Para iniciar combate: [COMBAT_START:${sc.combat||'id'}]
 - Em combate, ao causar dano a um inimigo: [HIT:id_do_inimigo:dano] (o sistema baixa o HP e respeita a iniciativa)
+- Quando um personagem conjura uma MAGIA de nível 1+ (não truque/cantrip): [GASTAR_SLOT:NomeDoPersonagem:nível] — ex.: [GASTAR_SLOT:Eldrin:1]. O sistema baixa o slot na ficha automaticamente. Truques NÃO gastam slot.
+- Quando um personagem fica sob uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:Garrett:Envenenado]. Quando a condição acaba: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
+- Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. Áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas.
 - Quando a cena termina: [SCENE_COMPLETE]
+
+## MAPA DA ILHA (ids para [REVELAR_LOCAL])
+${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mapKnown(id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não mencione o nome até revelar/alcançar)'}`).join('\n')}
 
 ## CENA ATUAL: ${sc.chapter} — ${sc.location}
 Resumo: ${sc.summary}
@@ -1514,6 +1602,10 @@ async function processDMReply(reply) {
     .replace(/\[COMBAT_START:[^\]]+\]/g,'')
     .replace(/\[HIT:[^\]]+\]/g,'')
     .replace(/\[SCENE_COMPLETE\]/g,'')
+    .replace(/\[GASTAR_SLOT:[^\]]+\]/g,'')
+    .replace(/\[CONDICAO:[^\]]+\]/g,'')
+    .replace(/\[REMOVER_CONDICAO:[^\]]+\]/g,'')
+    .replace(/\[REVELAR_LOCAL:[^\]]+\]/g,'')
     .trim();
 
   if (clean) await addMsgTyped('dm', clean);
@@ -1527,6 +1619,27 @@ async function processDMReply(reply) {
     });
     renderCombatBar();
   }
+
+  // automação de fichas: gasto de slot, condições aplicadas/removidas, revelação de mapa
+  let sheetChanged = false;
+  const notes = [];
+  [...reply.matchAll(/\[GASTAR_SLOT:([^:\]]+):(\d+)\]/g)].forEach(m => {
+    const ci = findCharIndexByName(m[1]); if (ci < 0) return;
+    const r = spendSpellSlot(ci, +m[2]); if (r) { notes.push('🔮 '+r); sheetChanged = true; }
+  });
+  [...reply.matchAll(/\[CONDICAO:([^:\]]+):([^:\]]+)\]/g)].forEach(m => {
+    const ci = findCharIndexByName(m[1]); if (ci < 0) return;
+    const r = applyCondition(ci, m[2]); if (r) { notes.push('☠️ '+r); sheetChanged = true; }
+  });
+  [...reply.matchAll(/\[REMOVER_CONDICAO:([^:\]]+):([^:\]]+)\]/g)].forEach(m => {
+    const ci = findCharIndexByName(m[1]); if (ci < 0) return;
+    const r = removeCondition(ci, m[2]); if (r) { notes.push('✨ '+r); sheetChanged = true; }
+  });
+  [...reply.matchAll(/\[REVELAR_LOCAL:([^\]]+)\]/g)].forEach(m => {
+    if (revealMapLocation(m[1].trim())) notes.push('🗺️ Novo local revelado: ' + MAP_LOCS[m[1].trim()].label);
+  });
+  if (sheetChanged) renderSidebar();
+  notes.forEach(n => toast(n));
 
   // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
   if (rollMatch) {
@@ -1682,7 +1795,8 @@ async function saveGame() {
     sceneId: STATE.sceneId,
     history: STATE.history,
     model: STATE.model,
-    visited: STATE.visited
+    visited: STATE.visited,
+    revealed: STATE.revealed
   };
   try {
     const { error } = await supa.from('saves').upsert({
@@ -1709,6 +1823,7 @@ async function loadGame() {
   STATE.visited = Array.isArray(save.visited) && save.visited.length
     ? save.visited
     : reconstructVisited(save.sceneId);
+  STATE.revealed = Array.isArray(save.revealed) ? save.revealed : [];
   mapMarkSceneVisited();
   STATE.history = save.history;
   STATE.model = save.model || 'claude-haiku-4-5';

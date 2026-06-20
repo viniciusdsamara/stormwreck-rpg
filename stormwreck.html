@@ -443,8 +443,10 @@
   .map-route.done { stroke:var(--ember); opacity:0.6; stroke-dasharray:none; stroke-width:2; }
   .map-marker { cursor:pointer; outline:none; }
   .map-marker .map-dot { stroke:#1a1318; stroke-width:2; transition:transform .15s; }
-  .map-marker.dim .map-dot { fill:#4a4048; }
-  .map-marker.dim .map-icon, .map-marker.dim .map-lbl { opacity:0.4; }
+  .map-marker.unknown .map-dot { fill:#332b33; stroke:#4a4048; stroke-dasharray:3 2; }
+  .map-marker.unknown .map-icon { fill:#7a6f78; font-weight:700; }
+  .map-marker.unknown .map-lbl { fill:#5a5158; letter-spacing:0.15em; }
+  .map-marker.revealed .map-dot { fill:#6b574f; stroke:var(--ember); }
   .map-marker.seen .map-dot { fill:#5a8f6b; }
   .map-marker.cur .map-dot { fill:var(--ember); }
   .map-marker:hover .map-dot, .map-marker:focus .map-dot { filter:brightness(1.25); }
@@ -460,6 +462,7 @@
   .map-tag { font-family:var(--font-mono); font-size:0.56rem; letter-spacing:0.08em; text-transform:uppercase; padding:2px 7px; border-radius:20px; }
   .map-tag.here { background:rgba(214,108,46,0.2); color:var(--ember); border:1px solid var(--ember); }
   .map-tag.seen { background:rgba(90,143,107,0.18); color:#7bc497; border:1px solid #5a8f6b; }
+  .map-tag.revealed { background:rgba(214,108,46,0.14); color:var(--ember); border:1px solid rgba(214,108,46,0.5); }
   .map-tag.dim { background:var(--basalt-700); color:var(--stone-400); border:1px solid var(--basalt-600); }
   .sh-abgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
   .sh-ab { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:7px 4px; text-align:center; }
