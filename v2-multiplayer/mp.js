@@ -155,8 +155,9 @@ function renderRoom(){
     const readyTag = !isPlayer ? `<span class="tag dm">Mestre</span>`
       : (m.ready ? `<span class="tag ready">✓ Pronto</span>` : `<span class="tag wait">aguardando</span>`);
     const kick = (admin && !isMe) ? `<button class="mini-x" data-kick="${m.user_id}" title="Remover">✕</button>` : '';
+    const charLine = m.sheet ? `<div class="mchar">${m.sheet.race}${m.sheet.subrace?` (${m.sheet.subrace})`:''} ${m.sheet.cls} · Nv${m.sheet.level}</div>` : '';
     return `<div class="member ${isMe?'me':''}">
-      <span class="mname">${m.display_name||'?'}${isMe?' <small>(você)</small>':''}</span>
+      <div><span class="mname">${m.display_name||'?'}${isMe?' <small>(você)</small>':''}</span>${charLine}</div>
       <span class="mtags">${roleTag} ${readyTag} ${kick}</span>
     </div>`;
   }).join('');
@@ -168,10 +169,18 @@ function renderRoom(){
   const readyWrap = $('#readyWrap');
   if (iAmPlayer){
     readyWrap.style.display='';
-    $('#readyBtn').textContent = me.ready ? '✓ Pronto (clique p/ cancelar)' : 'Marcar como pronto';
-    $('#readyBtn').classList.toggle('on', !!me.ready);
-    $('#readyBtn').onclick = toggleReady;
-    $('#readyNote').textContent = 'Na próxima fase você criará seu personagem aqui.';
+    const sheet = me.sheet;
+    if (sheet){
+      $('#readyBtn').textContent = '♻️ Refazer personagem';
+      $('#readyBtn').classList.remove('on');
+      $('#readyBtn').onclick = openCreate;
+      $('#readyNote').innerHTML = `✓ <b style="color:var(--myco)">${sheet.name}</b> — ${sheet.race}${sheet.subrace?` (${sheet.subrace})`:''} ${sheet.cls}${sheet.fightingStyle?` · ${sheet.fightingStyle}`:''}, Nv${sheet.level} · CA ${sheet.ca} · ${sheet.maxHp} HP`;
+    } else {
+      $('#readyBtn').textContent = '🧙 Criar meu personagem';
+      $('#readyBtn').classList.add('on');
+      $('#readyBtn').onclick = openCreate;
+      $('#readyNote').textContent = 'Crie seu aventureiro para ficar pronto para a partida.';
+    }
   } else { readyWrap.style.display='none'; }
 
   // painel do admin
@@ -204,6 +213,16 @@ function renderRoom(){
 async function toggleReady(){
   const me = myMember(); if (!me) return;
   await supa.from('room_members').update({ ready: !me.ready }).eq('room_id', ROOM.id).eq('user_id', ME.id);
+}
+// abre a criação de personagem (creation-mp.js); ao confirmar, salva a ficha
+function openCreate(){
+  startCreationMp(myMember()?.display_name || nameFromEmail(ME.email), onCharacterCreated);
+}
+async function onCharacterCreated(char){
+  const { error } = await supa.from('room_members')
+    .update({ sheet: char, ready: true }).eq('room_id', ROOM.id).eq('user_id', ME.id);
+  show('screen-room'); await refreshRoom();
+  toast(error ? ('Erro ao salvar: '+error.message) : ('Personagem pronto: '+char.name));
 }
 async function updateRoom(patch){
   await supa.from('rooms').update(patch).eq('id', ROOM.id);

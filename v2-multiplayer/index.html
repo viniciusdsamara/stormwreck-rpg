@@ -53,6 +53,7 @@
            background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:9px 12px; margin-bottom:7px; }
   .member.me{ border-color:var(--ember); }
   .mname{ font-weight:600; } .mname small{ color:var(--stone-400); font-weight:400; }
+  .mchar{ font-size:0.72rem; color:var(--stone-400); margin-top:2px; }
   .mtags{ display:flex; align-items:center; gap:6px; }
   .tag{ font-size:0.62rem; letter-spacing:0.06em; text-transform:uppercase; padding:3px 8px; border-radius:20px;
         background:var(--basalt-700); color:var(--stone-300); border:1px solid var(--basalt-600); }
@@ -66,6 +67,44 @@
   .chk{ display:flex; align-items:center; gap:8px; } .chk input{ width:auto; }
   .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--basalt-600);
           border:1px solid var(--ember); color:var(--parch); padding:10px 18px; border-radius:10px; font-size:0.86rem; z-index:99; }
+  /* ---- criação de personagem ---- */
+  .hide{ display:none; }
+  .field{ display:block; margin-bottom:6px; } .field>span{ display:block; font-size:0.74rem; color:var(--stone-300); margin-bottom:5px; }
+  .choice-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .choice{ background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:14px; cursor:pointer; transition:border-color .15s, background .15s, transform .1s; }
+  .choice:hover{ border-color:var(--stone-400); transform:translateY(-2px); }
+  .choice.selected{ border-color:var(--ember); background:rgba(232,132,60,0.08); }
+  .choice .name{ font-size:1.05rem; color:var(--parch); } .choice .meta{ font-size:0.78rem; color:var(--stone-400); margin-top:3px; }
+  .ability-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:8px; }
+  .ability-box{ background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:14px 10px; text-align:center; }
+  .ability-box.assigned{ border-color:var(--ember); }
+  .ab-label{ font-family:ui-monospace,monospace; font-size:0.62rem; letter-spacing:0.16em; color:var(--stone-300); text-transform:uppercase; }
+  .ab-score{ font-size:1.9rem; color:var(--gold); line-height:1.1; margin-top:4px; } .ab-mod{ font-size:0.82rem; color:var(--ember); font-weight:600; }
+  .ab-pb{ display:flex; align-items:center; justify-content:center; gap:8px; margin:4px 0; }
+  .pb-btn{ width:24px; height:24px; border-radius:6px; background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); cursor:pointer; font-size:1rem; line-height:1; }
+  .pb-btn:hover:not(:disabled){ border-color:var(--ember); } .pb-btn:disabled{ opacity:0.3; cursor:not-allowed; }
+  .ab-base{ font-family:ui-monospace,monospace; font-size:0.95rem; color:var(--stone-300); min-width:18px; text-align:center; }
+  .points-bar{ text-align:center; font-size:0.9rem; color:var(--stone-300); margin-bottom:14px; } .points-bar b{ font-size:1.3rem; color:var(--gold); }
+  .subsection{ margin-top:24px; } .req-note{ color:var(--stone-400); font-size:0.82rem; margin:4px 0 10px; } .req-note.done{ color:var(--myco); }
+  .skill-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:8px; }
+  .skill-chip{ background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:9px 12px; cursor:pointer; font-size:0.86rem; color:var(--stone-300); transition:all .14s; user-select:none; display:flex; justify-content:space-between; align-items:center; }
+  .skill-chip:hover{ border-color:var(--stone-400); color:var(--parch); }
+  .skill-chip.selected{ border-color:var(--ember); background:rgba(232,132,60,0.10); color:var(--parch); }
+  .skill-chip.locked{ border-color:var(--myco); background:rgba(90,143,107,0.10); color:var(--parch); cursor:default; }
+  .skill-chip.disabled{ opacity:0.35; pointer-events:none; }
+  .skill-chip .tag{ font-family:ui-monospace,monospace; font-size:0.56rem; color:var(--stone-400); }
+  .eq-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media(max-width:560px){ .eq-grid{ grid-template-columns:1fr; } }
+  .eq-field span{ display:block; font-family:ui-monospace,monospace; font-size:0.64rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--stone-300); margin-bottom:6px; }
+  .shield-row{ display:flex; align-items:center; gap:9px; margin-top:14px; font-size:0.9rem; color:var(--parch); cursor:pointer; }
+  .shield-row input{ width:18px; height:18px; accent-color:var(--ember); } .shield-row.disabled{ opacity:0.4; pointer-events:none; }
+  .ac-badge{ display:inline-flex; align-items:baseline; gap:9px; margin-top:16px; padding:10px 18px; border:1px solid var(--ember); border-radius:10px; background:rgba(232,132,60,0.07); }
+  .ac-badge b{ font-size:1.8rem; color:var(--gold); line-height:1; } .ac-badge span{ font-family:ui-monospace,monospace; font-size:0.62rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--stone-300); }
+  .startkit{ margin-top:14px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:10px 14px; }
+  .startkit-title{ font-family:ui-monospace,monospace; font-size:0.6rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--ember); }
+  .startkit ul{ margin:8px 0 0; padding-left:18px; columns:2; column-gap:18px; } .startkit li{ font-size:0.82rem; color:var(--stone-300); line-height:1.5; break-inside:avoid; }
+  .pf-grid{ display:grid; gap:10px; } .pf span{ display:block; font-size:0.72rem; color:var(--stone-300); margin-bottom:4px; }
+  .pf textarea{ width:100%; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:0.86rem; resize:vertical; }
+  .creation-missing{ font-size:0.8rem; color:var(--ember); text-align:right; max-width:55%; line-height:1.35; } .creation-missing.ok{ color:var(--myco); }
 </style>
 </head>
 <body>
@@ -184,9 +223,113 @@
     </div>
   </section>
 
+  <!-- CRIAÇÃO DE PERSONAGEM -->
+  <section id="screen-create" class="screen">
+    <div class="topline">
+      <div><div class="eyebrow">Seu aventureiro</div><h1>Forje seu herói</h1></div>
+    </div>
+
+    <div class="panel">
+      <label class="field"><span>Nome do personagem</span><input id="cName" type="text" placeholder="Ex.: Branca, Dortar, Kael..."></label>
+
+      <label class="field"><span>Raça</span></label>
+      <div class="choice-grid" id="raceGrid"></div>
+
+      <div class="subsection hide" id="subraceSection">
+        <label class="field"><span>Sub-raça</span></label>
+        <div class="choice-grid" id="subraceGrid"></div>
+      </div>
+
+      <label class="field" style="margin-top:20px"><span>Classe</span></label>
+      <div class="choice-grid" id="classGrid"></div>
+
+      <label class="field" style="margin-top:20px"><span>Atributos — distribua os pontos</span></label>
+      <div class="points-bar">Pontos restantes: <b id="pointsLeft">27</b></div>
+      <div class="ability-grid" id="abilityGrid"></div>
+
+      <div class="subsection hide" id="asiChoiceSection">
+        <label class="field"><span>Aumento de habilidade — escolha (+1 cada)</span></label>
+        <p class="req-note" id="asiChoiceNote"></p>
+        <div class="choice-grid" id="asiChoiceGrid"></div>
+      </div>
+
+      <div class="subsection hide" id="skillsSection">
+        <label class="field"><span>Perícias</span></label>
+        <p class="req-note" id="skillsNote"></p>
+        <div class="skill-grid" id="skillsGrid"></div>
+        <div class="hide" id="skillsExtraWrap">
+          <p class="req-note" id="skillsExtraNote" style="margin-top:14px"></p>
+          <div class="skill-grid" id="skillsExtraGrid"></div>
+        </div>
+      </div>
+
+      <div class="subsection hide" id="equipmentSection">
+        <label class="field"><span>Equipamento inicial</span></label>
+        <div class="eq-grid">
+          <label class="eq-field"><span>Armadura</span><select id="armorSelect"></select></label>
+          <label class="eq-field"><span>Arma principal</span><select id="weaponSelect"></select></label>
+        </div>
+        <label class="shield-row" id="shieldRow"><input type="checkbox" id="shieldCheck"> Usar escudo (+2 CA)</label>
+        <div class="ac-badge"><b id="acPreview">10</b><span>Classe de Armadura</span></div>
+        <div class="startkit" id="startKit"><span class="startkit-title">🎒 Itens iniciais</span><ul id="startKitList"></ul></div>
+      </div>
+
+      <div class="subsection hide" id="classOptionsSection">
+        <div id="fightingStyleWrap" class="hide">
+          <label class="field"><span>Estilo de Luta</span></label>
+          <div class="choice-grid" id="fightingStyleGrid"></div>
+        </div>
+        <div id="archetypeWrap" class="hide">
+          <label class="field"><span>Subclasse</span></label>
+          <div class="choice-grid" id="archetypeGrid"></div>
+        </div>
+      </div>
+
+      <div class="subsection hide" id="spellSection">
+        <div id="cantripWrap" class="hide">
+          <label class="field"><span>Truques</span></label>
+          <p class="req-note" id="cantripNote"></p>
+          <div class="skill-grid" id="cantripGrid"></div>
+        </div>
+        <div id="spellWrap" class="hide">
+          <label class="field" style="margin-top:14px"><span id="spellWrapTitle">Magias de nível 1</span></label>
+          <p class="req-note" id="spellNote"></p>
+          <div class="skill-grid" id="spellGrid"></div>
+        </div>
+      </div>
+
+      <div class="subsection hide" id="expertiseSection">
+        <label class="field"><span>Especialização — proficiência dobrada</span></label>
+        <p class="req-note" id="expertiseNote"></p>
+        <div class="skill-grid" id="expertiseGrid"></div>
+      </div>
+
+      <div class="subsection">
+        <label class="field"><span>Perfil (opcional — o Mestre usa para te conhecer)</span></label>
+        <div class="pf-grid">
+          <label class="pf"><span>Aparência</span><textarea id="pf_appearance" rows="2"></textarea></label>
+          <label class="pf"><span>Por que está aqui</span><textarea id="pf_context" rows="2"></textarea></label>
+          <label class="pf"><span>Motivações</span><textarea id="pf_motivation" rows="2"></textarea></label>
+          <label class="pf"><span>Defeitos</span><textarea id="pf_flaw" rows="2"></textarea></label>
+          <label class="pf"><span>Qualidades</span><textarea id="pf_quality" rows="2"></textarea></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:space-between;align-items:center;gap:14px">
+      <button class="btn ghost" id="cBackBtn">← Voltar à sala</button>
+      <div class="row" style="align-items:center;gap:14px">
+        <span class="creation-missing" id="cMissing"></span>
+        <button class="btn" id="cCreateBtn" disabled>Confirmar personagem ✓</button>
+      </div>
+    </div>
+  </section>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="rules.js"></script>
+<script src="creation-mp.js"></script>
 <script src="mp.js"></script>
 </body>
 </html>
