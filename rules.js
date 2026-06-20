@@ -712,7 +712,8 @@ function attackProfile(c, abr, hadAdvantage) {
 // kind: 'slots' | 'toggle' (Fúria) | 'counter' | 'pool'. recharge: 'short' | 'long'.
 function classResources(c) {
   const out = [], L = c.level;
-  if (c.spellSlots) out.push({ key:'slot1', label: c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia (nv1)', kind:'slots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  if (c.spellSlots) out.push({ key:'slot1', label: (c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia') + ` (nv${c.spellSlots.level||1})`, kind:'slots', pool:'spellSlots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  if (c.spellSlots2 && c.spellSlots2.max) out.push({ key:'slot2', label:'Slots de magia (nv2)', kind:'slots', pool:'spellSlots2', max: c.spellSlots2.max, recharge:'long' });
   switch (c.cls) {
     case 'Bárbaro':    out.push({ key:'rage', label:'Fúria', kind:'toggle', max: ragesByLevel(L), recharge:'long' }); break;
     case 'Guerreiro':  out.push({ key:'secondwind', label:'Retomar Fôlego', kind:'counter', max:1, recharge:'short' });
@@ -724,6 +725,45 @@ function classResources(c) {
     case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
   }
   return out;
+}
+
+// ----- LEVEL-UP (nível 2-3) -----
+function hitDieAverage(hd) { return Math.floor(hd / 2) + 1; }   // ganho médio de HP por nível
+
+// Recalcula os slots de magia conforme classe + nível (nv1 em c.spellSlots, nv2 em c.spellSlots2).
+function recomputeSpellSlots(c) {
+  const L = c.level;
+  if (c.cls === 'Paladino' || c.cls === 'Patrulheiro') {       // meio-conjuradores: começam no nível 2
+    if (L < 2) { c.spellSlots = null; c.spellSlots2 = null; return; }
+    const ability = c.cls === 'Paladino' ? 'CAR' : 'SAB';
+    const max = L >= 3 ? 3 : 2;
+    c.spellSlots = { max, used: Math.min((c.spellSlots && c.spellSlots.used) || 0, max), ability, pact:false, level:1 };
+    c.spellSlots2 = null;
+    c.spellAbility = ability;
+    c.spellDC = 8 + c.prof + abilityMod(c.abilities[ability]);
+    return;
+  }
+  const sp = RULES.classes[c.cls].spell;
+  if (!sp || !c.spellSlots) return;
+  if (sp.pact) {                                                // Bruxo (Magia de Pacto)
+    c.spellSlots.max = L >= 2 ? 2 : 1;
+    c.spellSlots.level = L >= 3 ? 2 : 1;
+    c.spellSlots.used = Math.min(c.spellSlots.used || 0, c.spellSlots.max);
+    return;
+  }
+  c.spellSlots.max = L >= 3 ? 4 : L === 2 ? 3 : 2;             // conjurador pleno: nv1 = 2/3/4
+  c.spellSlots.level = 1;
+  c.spellSlots.used = Math.min(c.spellSlots.used || 0, c.spellSlots.max);
+  c.spellSlots2 = L >= 3 ? { max: 2, used: Math.min((c.spellSlots2 && c.spellSlots2.used) || 0, 2) } : null;
+}
+
+// O que o personagem precisa ESCOLHER ao chegar a newLevel.
+function levelUpNeeds(c, newLevel) {
+  const cd = RULES.classes[c.cls];
+  return {
+    subclass: cd.subclassLevel === newLevel && !c.archetype && (cd.subclasses || []).length > 0,
+    fightingStyle: (c.cls === 'Paladino' || c.cls === 'Patrulheiro') && newLevel >= 2 && !c.fightingStyle
+  };
 }
 
 // Agrega os efeitos das condições ativas que afetam quem rola (Fase 5).

@@ -444,6 +444,20 @@
   .cc-name { cursor:pointer; }
   .cc-name:hover { color:var(--ember); }
 
+  /* ====== Level-up (modal) ====== */
+  .lu-head { font-family:var(--font-display); font-size:1.5rem; color:var(--gold-bone); margin-bottom:14px; }
+  .lu-char { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .lu-name { font-family:var(--font-display); font-size:1.15rem; color:var(--parch); margin-bottom:8px; }
+  .lu-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  .lu-row > span { font-size:0.82rem; color:var(--stone-300); }
+  .lu-row em { color:var(--ember); font-style:normal; font-size:0.72rem; }
+  .lu-opts { display:flex; gap:6px; flex-wrap:wrap; }
+  .lu-opt { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:7px; padding:5px 11px; font-size:0.78rem; cursor:pointer; transition:all .14s; }
+  .lu-opt:hover { border-color:var(--stone-400); color:var(--parch); }
+  .lu-opt.sel { border-color:var(--ember); background:rgba(232,132,60,0.12); color:var(--parch); }
+  .lu-feats { font-size:0.78rem; color:var(--myco); margin-top:8px; }
+  .lu-actions { display:flex; justify-content:flex-end; margin-top:6px; }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -665,6 +679,11 @@
 <!-- ============ FICHA COMPLETA (modal) ============ -->
 <div class="sheet-modal hide" id="sheetModal">
   <div class="sheet-card" id="sheetCard"></div>
+</div>
+
+<!-- ============ LEVEL-UP (modal) ============ -->
+<div class="sheet-modal hide" id="levelupModal">
+  <div class="sheet-card" id="levelupCard"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1383,7 +1402,8 @@ function attackProfile(c, abr, hadAdvantage) {
 // kind: 'slots' | 'toggle' (Fúria) | 'counter' | 'pool'. recharge: 'short' | 'long'.
 function classResources(c) {
   const out = [], L = c.level;
-  if (c.spellSlots) out.push({ key:'slot1', label: c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia (nv1)', kind:'slots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  if (c.spellSlots) out.push({ key:'slot1', label: (c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia') + ` (nv${c.spellSlots.level||1})`, kind:'slots', pool:'spellSlots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  if (c.spellSlots2 && c.spellSlots2.max) out.push({ key:'slot2', label:'Slots de magia (nv2)', kind:'slots', pool:'spellSlots2', max: c.spellSlots2.max, recharge:'long' });
   switch (c.cls) {
     case 'Bárbaro':    out.push({ key:'rage', label:'Fúria', kind:'toggle', max: ragesByLevel(L), recharge:'long' }); break;
     case 'Guerreiro':  out.push({ key:'secondwind', label:'Retomar Fôlego', kind:'counter', max:1, recharge:'short' });
@@ -1395,6 +1415,45 @@ function classResources(c) {
     case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
   }
   return out;
+}
+
+// ----- LEVEL-UP (nível 2-3) -----
+function hitDieAverage(hd) { return Math.floor(hd / 2) + 1; }   // ganho médio de HP por nível
+
+// Recalcula os slots de magia conforme classe + nível (nv1 em c.spellSlots, nv2 em c.spellSlots2).
+function recomputeSpellSlots(c) {
+  const L = c.level;
+  if (c.cls === 'Paladino' || c.cls === 'Patrulheiro') {       // meio-conjuradores: começam no nível 2
+    if (L < 2) { c.spellSlots = null; c.spellSlots2 = null; return; }
+    const ability = c.cls === 'Paladino' ? 'CAR' : 'SAB';
+    const max = L >= 3 ? 3 : 2;
+    c.spellSlots = { max, used: Math.min((c.spellSlots && c.spellSlots.used) || 0, max), ability, pact:false, level:1 };
+    c.spellSlots2 = null;
+    c.spellAbility = ability;
+    c.spellDC = 8 + c.prof + abilityMod(c.abilities[ability]);
+    return;
+  }
+  const sp = RULES.classes[c.cls].spell;
+  if (!sp || !c.spellSlots) return;
+  if (sp.pact) {                                                // Bruxo (Magia de Pacto)
+    c.spellSlots.max = L >= 2 ? 2 : 1;
+    c.spellSlots.level = L >= 3 ? 2 : 1;
+    c.spellSlots.used = Math.min(c.spellSlots.used || 0, c.spellSlots.max);
+    return;
+  }
+  c.spellSlots.max = L >= 3 ? 4 : L === 2 ? 3 : 2;             // conjurador pleno: nv1 = 2/3/4
+  c.spellSlots.level = 1;
+  c.spellSlots.used = Math.min(c.spellSlots.used || 0, c.spellSlots.max);
+  c.spellSlots2 = L >= 3 ? { max: 2, used: Math.min((c.spellSlots2 && c.spellSlots2.used) || 0, 2) } : null;
+}
+
+// O que o personagem precisa ESCOLHER ao chegar a newLevel.
+function levelUpNeeds(c, newLevel) {
+  const cd = RULES.classes[c.cls];
+  return {
+    subclass: cd.subclassLevel === newLevel && !c.archetype && (cd.subclasses || []).length > 0,
+    fightingStyle: (c.cls === 'Paladino' || c.cls === 'Patrulheiro') && newLevel >= 2 && !c.fightingStyle
+  };
 }
 
 // Agrega os efeitos das condições ativas que afetam quem rola (Fase 5).
@@ -1654,6 +1713,7 @@ const CAMPAIGN = {
       location: "Observatório no alto do penhasco",
       level: 3,
       summary: "Clímax. A dragão cromática jovem que arma as ameaças da ilha está aqui. Possível paz ou batalha final.",
+      levelUp: 3,
       readAloud: `No ponto mais alto de Stormwreck Isle ergue-se um antigo observatório de pedra, cúpula rachada aberta para o céu. Daqui se vê a ilha inteira — as cavernas fumegantes, o naufrágio negro, o claustro distante. E aqui está a fonte de tudo: uma jovem dragão cromática, escamas reluzentes, que tem usado a ilha como tabuleiro. Ela vira a cabeça serpentina na sua direção. "Então os ratos do claustro mandaram campeões. Que adorável."`,
       objectives: ["Confrontar a dragão jovem", "Escolher: negociar a paz entre dragões OU batalha final", "Resolver o destino da ilha"],
       combat: 'final_dragon',
@@ -2348,8 +2408,9 @@ function resourcesHtml(c, i) {
   if (!res.length) return '';
   const rows = res.map(r => {
     if (r.kind === 'slots') {
-      const left = r.max - (c.spellSlots ? c.spellSlots.used : 0);
-      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="slot" data-idx="${k}"></span>`).join('');
+      const pool = c[r.pool] || { used:0 };
+      const left = r.max - (pool.used || 0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="slot" data-pool="${r.pool}" data-idx="${k}"></span>`).join('');
       return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
     }
     if (r.kind === 'toggle') {   // Fúria
@@ -2376,9 +2437,9 @@ function attachResourceHandlers() {
     const c = STATE.characters[+el.dataset.ci];
     const rk = el.dataset.rk;
     if (rk === 'slot') {
-      const idx = +el.dataset.idx, left = c.spellSlots.max - c.spellSlots.used;
-      c.spellSlots.used += (idx < left) ? 1 : -1;          // pip cheio gasta; vazio recupera
-      c.spellSlots.used = Math.max(0, Math.min(c.spellSlots.max, c.spellSlots.used));
+      const pool = c[el.dataset.pool]; if (!pool) return;
+      const idx = +el.dataset.idx, left = pool.max - pool.used;   // pip cheio gasta; vazio recupera
+      pool.used = Math.max(0, Math.min(pool.max, pool.used + ((idx < left) ? 1 : -1)));
     } else if (rk === 'ctr') {
       const key = el.dataset.key, idx = +el.dataset.idx;
       const r = classResources(c).find(x=>x.key===key);
@@ -2447,7 +2508,7 @@ function sheetHtml(c, i) {
   const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
   const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
   const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag">${t}</span>`).join('')}</div>` : '';
-  const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv1 ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
+  const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv${c.spellSlots.level||1} ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.spellSlots2&&c.spellSlots2.max?`, nv2 ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}`:''}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
   const inv    = (c.inventory||[]).map(it=>`<li>${it}</li>`).join('') || '<li>—</li>';
   const p = c.profile || {};
   const pf = (k,label) => `<label class="sh-pf"><span>${label}</span><textarea data-prof="${k}" data-ci="${i}" rows="2">${p[k]||''}</textarea></label>`;
@@ -2495,10 +2556,11 @@ function doRest(kind) {
     if (kind === 'long') {
       c.hp = c.maxHp; c.raging = false; c.resUsed = {};
       if (c.spellSlots) c.spellSlots.used = 0;
+      if (c.spellSlots2) c.spellSlots2.used = 0;
     } else {
       res.forEach(r => {
         if (r.recharge === 'short') {
-          if (r.kind === 'slots' && c.spellSlots) c.spellSlots.used = 0;  // Bruxo (Pacto)
+          if (r.kind === 'slots') { if (c[r.pool]) c[r.pool].used = 0; }   // Bruxo (Pacto)
           else c.resUsed[r.key] = 0;
         }
       });
@@ -2629,8 +2691,8 @@ async function beginScene(sceneId, isFirst) {
   const sc = CAMPAIGN.scenes[sceneId];
   updateTopbar(); updateQuickActions(); updateTurnIndicator();
 
-  // level up automático se a cena exige
-  if (sc.levelUp) applyLevelUp(sc.levelUp);
+  // level up interativo se a cena exige
+  if (sc.levelUp) await beginLevelUp(sc.levelUp);
 
   // mostra o texto de leitura da cena (vem do roteiro, não da IA — economiza tokens)
   await addMsgTyped('dm', sc.readAloud);
@@ -2647,20 +2709,81 @@ function formatNarration(text) {
   return text.replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g,'\n');
 }
 
-function applyLevelUp(newLevel) {
-  STATE.characters.forEach(c => {
-    if (c.level < newLevel) {
-      const hd = RULES.classes[c.cls].hitDie;
-      const gain = Math.floor(hd/2)+1 + abilityMod(c.abilities.CON); // média do hit die
-      c.level = newLevel;
-      c.maxHp += gain;
-      c.hp = c.maxHp;
-      c.xp = RULES.xpTable[newLevel];
-      if (c.spellSlots) c.spellSlots.max = Math.min(c.spellSlots.max+1, 4);
-    }
+// ---- LEVEL-UP INTERATIVO ----
+let LU = null, LU_LEVEL = 1, LU_RESOLVE = null;
+
+function beginLevelUp(newLevel) {
+  const leveling = STATE.characters.map((c,i)=>({c,i})).filter(x => x.c.level < newLevel);
+  if (!leveling.length) return Promise.resolve();
+  LU_LEVEL = newLevel;
+  LU = leveling.map(({c,i}) => ({
+    i, hpMode:'avg', hpRolled:null,
+    hpGain: hitDieAverage(RULES.classes[c.cls].hitDie) + abilityMod(c.abilities.CON),
+    archetype:null, fightingStyle:null
+  }));
+  renderLevelUp();
+  $('#levelupModal').classList.remove('hide');
+  return new Promise(res => { LU_RESOLVE = res; });
+}
+
+function luCharHtml(st, k) {
+  const c = STATE.characters[st.i];
+  const hd = RULES.classes[c.cls].hitDie;
+  const avg = hitDieAverage(hd) + abilityMod(c.abilities.CON);
+  const need = levelUpNeeds(c, LU_LEVEL);
+  const feats = (RULES.classes[c.cls].features && RULES.classes[c.cls].features[LU_LEVEL]) || [];
+  let h = `<div class="lu-char"><div class="lu-name">${c.name} — ${c.cls} nível ${c.level} → ${LU_LEVEL}</div>`;
+  h += `<div class="lu-row"><span>Pontos de vida (CON ${fmtMod(abilityMod(c.abilities.CON))})</span><div class="lu-opts">
+    <button class="lu-opt ${st.hpMode==='avg'?'sel':''}" data-lu="avg" data-k="${k}">Média +${avg}</button>
+    <button class="lu-opt ${st.hpMode==='roll'?'sel':''}" data-lu="roll" data-k="${k}">🎲 Rolar d${hd}${st.hpRolled?` → +${st.hpGain}`:''}</button>
+  </div></div>`;
+  if (need.subclass) h += `<div class="lu-row"><span>Subclasse <em>(obrigatório)</em></span><div class="lu-opts">` +
+    (RULES.classes[c.cls].subclasses||[]).map(s=>`<button class="lu-opt ${st.archetype===s?'sel':''}" data-lu="arch" data-k="${k}" data-v="${s}">${s}</button>`).join('') + `</div></div>`;
+  if (need.fightingStyle) h += `<div class="lu-row"><span>Estilo de Luta <em>(obrigatório)</em></span><div class="lu-opts">` +
+    Object.keys(RULES.fightingStyles).map(s=>`<button class="lu-opt ${st.fightingStyle===s?'sel':''}" data-lu="fs" data-k="${k}" data-v="${s}">${s}</button>`).join('') + `</div></div>`;
+  if (feats.length) h += `<div class="lu-feats">Ganha: ${feats.join(', ')}</div>`;
+  return h + `</div>`;
+}
+
+function renderLevelUp() {
+  const card = $('#levelupCard');
+  card.innerHTML = `<div class="lu-head">⬆ Subir para o nível ${LU_LEVEL}</div>` +
+    LU.map((st,k)=>luCharHtml(st,k)).join('') +
+    `<div class="lu-actions"><button class="btn" id="luApplyBtn">Aplicar e continuar →</button></div>`;
+  LU.forEach((st, k) => {
+    const c = STATE.characters[st.i], hd = RULES.classes[c.cls].hitDie, conMod = abilityMod(c.abilities.CON);
+    card.querySelector(`[data-lu="avg"][data-k="${k}"]`).onclick = () => { st.hpMode='avg'; st.hpRolled=null; st.hpGain=hitDieAverage(hd)+conMod; renderLevelUp(); };
+    card.querySelector(`[data-lu="roll"][data-k="${k}"]`).onclick = () => { st.hpRolled=rollDie(hd); st.hpMode='roll'; st.hpGain=st.hpRolled+conMod; renderLevelUp(); };
+    card.querySelectorAll(`[data-lu="arch"][data-k="${k}"]`).forEach(el=>el.onclick=()=>{ st.archetype=el.dataset.v; renderLevelUp(); });
+    card.querySelectorAll(`[data-lu="fs"][data-k="${k}"]`).forEach(el=>el.onclick=()=>{ st.fightingStyle=el.dataset.v; renderLevelUp(); });
   });
+  const ok = LU.every(st => { const c=STATE.characters[st.i], n=levelUpNeeds(c,LU_LEVEL); return (!n.subclass||st.archetype)&&(!n.fightingStyle||st.fightingStyle); });
+  $('#luApplyBtn').disabled = !ok;
+  $('#luApplyBtn').onclick = applyLevelUp;
+}
+
+function applyLevelUp() {
+  LU.forEach(st => {
+    const c = STATE.characters[st.i];
+    c.maxHp += Math.max(1, st.hpGain);
+    c.level = LU_LEVEL;
+    c.xp = RULES.xpTable[LU_LEVEL] || c.xp;
+    c.prof = profBonus(c.level);
+    if (st.archetype) c.archetype = st.archetype;
+    if (st.fightingStyle) c.fightingStyle = st.fightingStyle;
+    if (c.fightingStyle === 'Defesa' && c.armor && c.armor !== 'Nenhuma') c.ca = computeAC(c.cls, c.abilities, c.armor, c.shield) + 1;
+    ((RULES.classes[c.cls].features && RULES.classes[c.cls].features[c.level]) || []).forEach(f => { if (!c.features.includes(f)) c.features.push(f); });
+    recomputeSpellSlots(c);
+    // descanso longo embutido: restaura tudo
+    c.hp = c.maxHp; c.raging = false; c.resUsed = {}; c.conditions = [];
+    if (c.spellSlots) c.spellSlots.used = 0;
+    if (c.spellSlots2) c.spellSlots2.used = 0;
+  });
+  $('#levelupModal').classList.add('hide');
   renderSidebar();
-  toast(`Subiram para o nível ${newLevel}! HP restaurado.`);
+  toast(`Subiram para o nível ${LU_LEVEL}!`);
+  const r = LU_RESOLVE; LU = null; LU_RESOLVE = null;
+  if (r) r();
 }
 
 // =====================================================
@@ -2696,7 +2819,7 @@ function buildSystemPrompt() {
     `Saves proficientes: ${c.saves.join(', ')}. Perícias proficientes: ${(c.skills||[]).join(', ')||'nenhuma'}. Bônus de proficiência +${c.prof}.` +
     (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
     (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
-    (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'') +
+    (c.spellSlots?` Spell slots nv${c.spellSlots.level||1}: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).${c.spellSlots2&&c.spellSlots2.max?` Nv2: ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}.`:''}`:'') +
     (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'') +
     ((c.profile&&(c.profile.appearance||c.profile.context||c.profile.motivation||c.profile.flaw||c.profile.quality))
       ? ` Perfil — aparência: ${c.profile.appearance||'—'}; por que está aqui: ${c.profile.context||'—'}; motivações: ${c.profile.motivation||'—'}; defeitos: ${c.profile.flaw||'—'}; qualidades: ${c.profile.quality||'—'}.`

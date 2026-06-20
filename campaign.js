@@ -143,6 +143,7 @@ const CAMPAIGN = {
       location: "Observatório no alto do penhasco",
       level: 3,
       summary: "Clímax. A dragão cromática jovem que arma as ameaças da ilha está aqui. Possível paz ou batalha final.",
+      levelUp: 3,
       readAloud: `No ponto mais alto de Stormwreck Isle ergue-se um antigo observatório de pedra, cúpula rachada aberta para o céu. Daqui se vê a ilha inteira — as cavernas fumegantes, o naufrágio negro, o claustro distante. E aqui está a fonte de tudo: uma jovem dragão cromática, escamas reluzentes, que tem usado a ilha como tabuleiro. Ela vira a cabeça serpentina na sua direção. "Então os ratos do claustro mandaram campeões. Que adorável."`,
       objectives: ["Confrontar a dragão jovem", "Escolher: negociar a paz entre dragões OU batalha final", "Resolver o destino da ilha"],
       combat: 'final_dragon',
