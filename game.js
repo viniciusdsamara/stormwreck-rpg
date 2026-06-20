@@ -782,10 +782,37 @@ function checkCreationReady() {
   const picks = DRAFT.cls ? spellPicks(DRAFT.cls, draftAbilities(), 1) : null;
   const spellsOk = !picks || (DRAFT.cantrips.length === picks.cantrips && DRAFT.spells.length === Math.min(picks.spells, picks.spellList.length));
   const expertiseOk = DRAFT.cls !== 'Ladino' || DRAFT.expertise.length === 2;
+  const nameOk = $('#charName').value.trim(), playerOk = $('#playerName').value.trim();
   const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && skillsOk && extraOk && styleOk && archOk && spellsOk && expertiseOk
-    && $('#charName').value.trim() && $('#playerName').value.trim();
+    && nameOk && playerOk;
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
+
+  // lista o que ainda falta para liberar o botão
+  const miss = [];
+  if (!nameOk) miss.push('nome do personagem');
+  if (!playerOk) miss.push('seu nome (jogador)');
+  if (!DRAFT.race) miss.push('raça');
+  else if (!subOk) miss.push('sub-raça');
+  if (!asiOk && r && r.asiChoice) miss.push(`${r.asiChoice.count} atributo(s) +1`);
+  if (!DRAFT.cls) miss.push('classe');
+  else {
+    if (!skillsOk) miss.push(`perícias (${DRAFT.skills.length}/${RULES.classes[DRAFT.cls].skillCount})`);
+    if (!extraOk) miss.push(`perícia(s) extra de raça (${DRAFT.skillsExtra.length}/${extraN})`);
+    if (!styleOk) miss.push('estilo de luta');
+    if (!archOk) miss.push('subclasse');
+    if (!spellsOk && picks) {
+      if (DRAFT.cantrips.length !== picks.cantrips) miss.push(`truques (${DRAFT.cantrips.length}/${picks.cantrips})`);
+      const sNeed = Math.min(picks.spells, picks.spellList.length);
+      if (DRAFT.spells.length !== sNeed) miss.push(`magias (${DRAFT.spells.length}/${sNeed})`);
+    }
+    if (!expertiseOk) miss.push(`especializações (${DRAFT.expertise.length}/2)`);
+  }
+  const el = $('#creationMissing');
+  if (el) {
+    if (ready) { el.textContent = '✓ Tudo pronto!'; el.classList.add('ok'); }
+    else { el.textContent = 'Falta: ' + miss.join(', '); el.classList.remove('ok'); }
+  }
 }
 
 function commitCharacter() {
