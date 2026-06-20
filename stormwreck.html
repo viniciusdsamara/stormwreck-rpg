@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tormenta de Stormwreck — Mestre IA</title>
+<style>
+  /* ====== DESIGN TOKENS ====================================
+     Tema: ilha vulcânica de ossos de dragão.
+     Não é o "fundo creme + serif" padrão de IA.
+     Pedra basáltica escura, brasa de dragão (âmbar/ferrugem),
+     verde-fosforescente de myconid como acento frio.
+  ========================================================= */
+  :root {
+    --basalt-900: #0d0b0f;
+    --basalt-800: #15121a;
+    --basalt-700: #1f1a26;
+    --basalt-600: #2b2435;
+    --stone-400: #6b6275;
+    --stone-300: #9a8fa6;
+    --parch: #e8dfd0;
+    --ember: #e8843c;      /* brasa de dragão */
+    --ember-deep: #b8501f;
+    --gold-bone: #d4b483;  /* osso de dragão dourado */
+    --myco: #7fd4a3;       /* verde myconid (acento frio) */
+    --blood: #c4485a;      /* dano / perigo */
+    --azure: #6fa8d4;      /* magia / frio */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', 'Palatino', 'Book Antiqua', Georgia, serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'SF Mono', 'Cascadia Mono', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background:
+      radial-gradient(ellipse at 50% -10%, rgba(232,132,60,0.10), transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(127,212,163,0.06), transparent 45%),
+      var(--basalt-900);
+    color: var(--parch);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: block; }
+
+  /* ====== SETUP / TÍTULO ====== */
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+
+  .title-block { text-align: center; margin-bottom: 8px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: -0.01em;
+    background: linear-gradient(170deg, var(--parch) 30%, var(--gold-bone) 75%, var(--ember-deep));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--stone-300);
+    font-style: italic;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    margin-top: 14px;
+  }
+
+  .panel {
+    background: linear-gradient(180deg, var(--basalt-700), var(--basalt-800));
+    border: 1px solid var(--basalt-600);
+    border-radius: 14px;
+    padding: 28px;
+    margin-top: 28px;
+    box-shadow: 0 18px 40px -20px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .panel h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 1.5rem;
+    margin-bottom: 6px;
+    color: var(--gold-bone);
+  }
+  .panel .hint { color: var(--stone-400); font-size: 0.92rem; margin-bottom: 20px; }
+
+  label.field { display:block; margin-bottom: 18px; }
+  label.field > span {
+    display:block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--stone-300);
+    margin-bottom: 7px;
+  }
+  input[type=text], input[type=password], select {
+    width: 100%;
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 9px;
+    color: var(--parch);
+    padding: 12px 14px;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    transition: border-color 0.18s;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--ember); }
+
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    background: linear-gradient(160deg, var(--ember), var(--ember-deep));
+    color: #1a0f08;
+    font-weight: 650;
+    font-family: var(--font-body);
+    border: none;
+    border-radius: 10px;
+    padding: 13px 24px;
+    font-size: 0.98rem;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.18s, opacity 0.18s;
+    box-shadow: 0 6px 18px -6px rgba(232,132,60,0.5);
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -8px rgba(232,132,60,0.65); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform:none; box-shadow:none; }
+  .btn.ghost {
+    background: transparent;
+    color: var(--stone-300);
+    border: 1px solid var(--basalt-600);
+    box-shadow:none;
+  }
+  .btn.ghost:hover { border-color: var(--stone-400); color: var(--parch); }
+  .btn.myco { background: linear-gradient(160deg, var(--myco), #4a9c6f); color:#06160d; box-shadow:0 6px 18px -6px rgba(127,212,163,0.45); }
+
+  /* ====== CRIAÇÃO DE PERSONAGEM ====== */
+  .choice-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:10px; }
+  .choice {
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  }
+  .choice:hover { border-color: var(--stone-400); transform: translateY(-2px); }
+  .choice.selected { border-color: var(--ember); background: rgba(232,132,60,0.08); }
+  .choice .name { font-family: var(--font-display); font-size: 1.1rem; color: var(--parch); }
+  .choice .meta { font-size: 0.78rem; color: var(--stone-400); margin-top: 3px; }
+
+  .ability-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-top:8px; }
+  .ability-box {
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align:center;
+    position:relative;
+  }
+  .ability-box .ab-label { font-family:var(--font-mono); font-size:0.64rem; letter-spacing:0.18em; color:var(--stone-300); text-transform:uppercase; }
+  .ability-box .ab-score { font-family:var(--font-display); font-size:2rem; color:var(--gold-bone); line-height:1.1; margin-top:4px; }
+  .ability-box .ab-mod { font-size:0.82rem; color:var(--ember); font-weight:600; }
+  .ability-box.assigned { border-color: var(--ember); }
+
+  .pool { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; justify-content:center; }
+  .pool .chip {
+    background: var(--basalt-600);
+    border:1px solid var(--stone-400);
+    border-radius:8px;
+    padding:8px 14px;
+    font-family:var(--font-display);
+    font-size:1.2rem;
+    color:var(--parch);
+    cursor:grab;
+    user-select:none;
+    transition: transform 0.1s, opacity 0.1s;
+  }
+  .pool .chip:hover { transform: translateY(-2px); border-color: var(--ember); }
+  .pool .chip.used { opacity:0.25; pointer-events:none; }
+
+  .player-tag { display:inline-block; font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.15em; padding:4px 10px; border-radius:6px; text-transform:uppercase; }
+  .player-tag.p1 { background:rgba(232,132,60,0.15); color:var(--ember); }
+  .player-tag.p2 { background:rgba(111,168,212,0.15); color:var(--azure); }
+
+  /* ====== TELA DE JOGO ====== */
+  .game-layout { display:grid; grid-template-columns: 300px 1fr; gap:0; min-height:100vh; }
+  @media (max-width: 820px) { .game-layout { grid-template-columns: 1fr; } .sidebar { display:none; } .sidebar.mobile-open { display:block; position:fixed; inset:0; z-index:50; overflow-y:auto;} }
+
+  .sidebar {
+    background: var(--basalt-800);
+    border-right: 1px solid var(--basalt-600);
+    padding: 20px 16px;
+    overflow-y:auto;
+    max-height:100vh;
+  }
+  .char-card {
+    background: linear-gradient(180deg, var(--basalt-700), var(--basalt-900));
+    border:1px solid var(--basalt-600);
+    border-radius:12px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .char-card.active-turn { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember), 0 8px 20px -10px rgba(232,132,60,0.5); }
+  .char-card .cc-name { font-family:var(--font-display); font-size:1.25rem; color:var(--parch); }
+  .char-card .cc-sub { font-size:0.78rem; color:var(--stone-400); margin-bottom:10px; }
+  .hpbar-wrap { background:var(--basalt-900); border-radius:6px; height:18px; overflow:hidden; position:relative; border:1px solid var(--basalt-600); }
+  .hpbar { height:100%; background:linear-gradient(90deg,var(--blood),#e06b7a); transition:width 0.4s; }
+  .hpbar-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:var(--parch); text-shadow:0 1px 2px #000; }
+  .stat-row { display:flex; justify-content:space-between; font-size:0.8rem; margin-top:8px; color:var(--stone-300); }
+  .stat-row b { color:var(--parch); }
+  .mini-abilities { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:10px; }
+  .mini-ab { background:var(--basalt-900); border-radius:6px; padding:5px 2px; text-align:center; }
+  .mini-ab .l { font-family:var(--font-mono); font-size:0.55rem; color:var(--stone-400); letter-spacing:0.1em; }
+  .mini-ab .v { font-size:0.95rem; color:var(--gold-bone); font-weight:600; }
+  .spell-slots { display:flex; gap:4px; margin-top:8px; }
+  .slot { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); }
+  .slot.full { background:var(--azure); }
+
+  .main-col { display:flex; flex-direction:column; max-height:100vh; }
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px; border-bottom:1px solid var(--basalt-600);
+    background:var(--basalt-800);
+  }
+  .topbar .loc { font-family:var(--font-display); font-size:1.15rem; color:var(--gold-bone); }
+  .topbar .loc .chapter { font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.2em; color:var(--ember); text-transform:uppercase; display:block; }
+
+  .narrative {
+    flex:1; overflow-y:auto; padding:26px 22px;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .msg { max-width:760px; }
+  .msg.dm { align-self:flex-start; }
+  .msg.dm .body {
+    font-family:var(--font-display);
+    font-size:1.06rem;
+    line-height:1.7;
+    color:var(--parch);
+    white-space:pre-wrap;
+  }
+  .msg.dm .body em { color: var(--gold-bone); }
+  .msg.player { align-self:flex-end; max-width:560px; }
+  .msg.player .body {
+    background:var(--basalt-700);
+    border:1px solid var(--basalt-600);
+    border-radius:12px 12px 4px 12px;
+    padding:11px 15px;
+    font-size:0.96rem;
+  }
+  .msg .who { font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--stone-400); margin-bottom:5px; }
+  .msg.player .who { text-align:right; }
+
+  .roll-card {
+    align-self:center;
+    background: var(--basalt-900);
+    border:1px solid var(--ember);
+    border-radius:12px;
+    padding:14px 22px;
+    text-align:center;
+    min-width:220px;
+    box-shadow:0 0 24px -10px rgba(232,132,60,0.5);
+  }
+  .roll-card .rtype { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--ember); }
+  .roll-card .rnum { font-family:var(--font-display); font-size:3.2rem; line-height:1; color:var(--parch); margin:6px 0; }
+  .roll-card .rnum.crit { color:var(--myco); }
+  .roll-card .rnum.fumble { color:var(--blood); }
+  .roll-card .rbreak { font-size:0.82rem; color:var(--stone-300); }
+  .roll-card .rout { margin-top:8px; font-size:0.86rem; font-weight:600; }
+  .rout.success { color:var(--myco); }
+  .rout.fail { color:var(--blood); }
+
+  .composer { border-top:1px solid var(--basalt-600); padding:14px 22px; background:var(--basalt-800); }
+  .turn-indicator { font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:8px; color:var(--stone-300); }
+  .composer-row { display:flex; gap:10px; }
+  .composer textarea {
+    flex:1; resize:none; min-height:52px; max-height:140px;
+    background:var(--basalt-900); border:1px solid var(--basalt-600);
+    border-radius:10px; color:var(--parch); padding:12px 14px;
+    font-family:var(--font-body); font-size:0.98rem; line-height:1.5;
+  }
+  .composer textarea:focus { outline:none; border-color:var(--ember); }
+  .quick-actions { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+  .qa {
+    background:var(--basalt-700); border:1px solid var(--basalt-600);
+    border-radius:7px; padding:6px 12px; font-size:0.82rem; color:var(--stone-300);
+    cursor:pointer; transition:all 0.14s;
+  }
+  .qa:hover { border-color:var(--ember); color:var(--parch); }
+
+  .thinking { align-self:flex-start; color:var(--stone-400); font-style:italic; font-family:var(--font-display); }
+  .thinking::after { content:'...'; animation: dots 1.4s infinite; }
+  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+
+  .dice-anim { display:inline-block; animation: tumble 0.6s ease-out; }
+  @keyframes tumble { 0%{transform:rotate(0) scale(0.5);opacity:0} 60%{transform:rotate(380deg) scale(1.15)} 100%{transform:rotate(360deg) scale(1);opacity:1} }
+
+  .toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--basalt-700); border:1px solid var(--ember);
+    border-radius:10px; padding:12px 20px; z-index:100;
+    font-size:0.9rem; box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
+    animation: slideup 0.3s;
+  }
+  @keyframes slideup { from{transform:translate(-50%,20px);opacity:0} to{transform:translate(-50%,0);opacity:1} }
+
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .row.end { justify-content:flex-end; }
+  .spacer { flex:1; }
+  .err { color:var(--blood); font-size:0.85rem; margin-top:8px; }
+  .ok { color:var(--myco); font-size:0.85rem; margin-top:8px; }
+  details { margin-top:14px; }
+  summary { cursor:pointer; color:var(--stone-300); font-size:0.88rem; }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+
+<!-- ============ TELA 1: CONFIGURAÇÃO ============ -->
+<div class="screen active" id="screen-setup">
+  <div class="wrap">
+    <div class="title-block">
+      <div class="eyebrow">Dungeons &amp; Dragons 5e · Mestre conduzido por IA</div>
+      <h1>Tormenta de<br>Stormwreck</h1>
+      <p class="subtitle">Uma ilha forjada pela fúria de dragões. Dois aventureiros. Um Mestre que nunca dorme.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Chave da API</h2>
+      <p class="hint">O Mestre é narrado pela IA da Anthropic (modelo Haiku — rápido e barato). Sua chave fica salva só neste navegador, nunca sai do seu computador.</p>
+      <label class="field">
+        <span>Anthropic API Key</span>
+        <input type="password" id="apiKey" placeholder="sk-ant-...">
+      </label>
+      <div class="row">
+        <select id="modelChoice" style="max-width:280px">
+          <option value="claude-haiku-4-5">Haiku 4.5 — barato e rápido (recomendado)</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6 — narração mais rica (mais caro)</option>
+        </select>
+        <button class="btn ghost" id="testKeyBtn">Testar chave</button>
+      </div>
+      <div id="keyStatus"></div>
+      <details>
+        <summary>Onde consigo uma chave?</summary>
+        <p class="hint" style="margin-top:10px">Crie uma conta em console.anthropic.com, vá em API Keys e gere uma. Você adiciona créditos pré-pagos (a partir de US$5) e cada sessão de jogo custa centavos.</p>
+      </details>
+    </div>
+
+    <div class="row end" style="margin-top:24px">
+      <button class="btn ghost" id="loadSaveBtn" style="display:none">Continuar jogo salvo</button>
+      <button class="btn" id="toCreationBtn">Criar aventureiros →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TELA 2: CRIAÇÃO ============ -->
+<div class="screen" id="screen-creation">
+  <div class="wrap">
+    <div class="title-block">
+      <div class="eyebrow" id="creationStepLabel">Aventureiro 1 de 2</div>
+      <h1 style="font-size:clamp(2rem,5vw,3rem)">Forje seu herói</h1>
+    </div>
+    <div class="panel">
+      <label class="field">
+        <span>Nome do personagem</span>
+        <input type="text" id="charName" placeholder="Ex.: Branca, Dortar, Kael...">
+      </label>
+      <label class="field">
+        <span>Quem controla? (nome do jogador)</span>
+        <input type="text" id="playerName" placeholder="Seu nome">
+      </label>
+
+      <label class="field"><span>Raça</span></label>
+      <div class="choice-grid" id="raceGrid"></div>
+
+      <label class="field" style="margin-top:20px"><span>Classe</span></label>
+      <div class="choice-grid" id="classGrid"></div>
+
+      <label class="field" style="margin-top:20px"><span>Atributos — role e distribua</span></label>
+      <p class="hint" id="abilityHint">Clique em "Rolar atributos" para gerar 6 valores (4d6, descarta o menor). Depois clique num valor e num atributo para atribuir.</p>
+      <div class="pool" id="scorePool"></div>
+      <div class="row" style="justify-content:center;margin-bottom:14px">
+        <button class="btn ghost" id="rollScoresBtn">🎲 Rolar atributos</button>
+        <button class="btn ghost" id="resetScoresBtn">Limpar</button>
+      </div>
+      <div class="ability-grid" id="abilityGrid"></div>
+    </div>
+
+    <div class="row end" style="margin-top:24px">
+      <button class="btn" id="charNextBtn" disabled>Próximo →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TELA 3: JOGO ============ -->
+<div class="screen" id="screen-game">
+  <div class="game-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main-col">
+      <div class="topbar">
+        <div class="loc">
+          <span class="chapter" id="chapterLabel">Capítulo 1</span>
+          <span id="locationLabel">Dragon's Rest</span>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="saveBtn" style="padding:8px 14px;font-size:0.82rem">Salvar</button>
+          <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
+        </div>
+      </div>
+      <div class="narrative" id="narrative"></div>
+      <div class="composer">
+        <div class="turn-indicator" id="turnIndicator"></div>
+        <div class="quick-actions" id="quickActions"></div>
+        <div class="composer-row">
+          <textarea id="actionInput" placeholder="O que você faz?"></textarea>
+          <button class="btn" id="sendBtn">Agir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="rules.js"></script>
+<script src="campaign.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

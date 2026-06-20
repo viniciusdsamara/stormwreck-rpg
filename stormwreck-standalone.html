@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tormenta de Stormwreck — Mestre IA</title>
+<style>
+  /* ====== DESIGN TOKENS ====================================
+     Tema: ilha vulcânica de ossos de dragão.
+     Não é o "fundo creme + serif" padrão de IA.
+     Pedra basáltica escura, brasa de dragão (âmbar/ferrugem),
+     verde-fosforescente de myconid como acento frio.
+  ========================================================= */
+  :root {
+    --basalt-900: #0d0b0f;
+    --basalt-800: #15121a;
+    --basalt-700: #1f1a26;
+    --basalt-600: #2b2435;
+    --stone-400: #6b6275;
+    --stone-300: #9a8fa6;
+    --parch: #e8dfd0;
+    --ember: #e8843c;      /* brasa de dragão */
+    --ember-deep: #b8501f;
+    --gold-bone: #d4b483;  /* osso de dragão dourado */
+    --myco: #7fd4a3;       /* verde myconid (acento frio) */
+    --blood: #c4485a;      /* dano / perigo */
+    --azure: #6fa8d4;      /* magia / frio */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', 'Palatino', 'Book Antiqua', Georgia, serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'SF Mono', 'Cascadia Mono', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background:
+      radial-gradient(ellipse at 50% -10%, rgba(232,132,60,0.10), transparent 55%),
+      radial-gradient(ellipse at 90% 100%, rgba(127,212,163,0.06), transparent 45%),
+      var(--basalt-900);
+    color: var(--parch);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: block; }
+
+  /* ====== SETUP / TÍTULO ====== */
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+
+  .title-block { text-align: center; margin-bottom: 8px; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(2.4rem, 7vw, 4.2rem);
+    font-weight: 400;
+    line-height: 0.98;
+    letter-spacing: -0.01em;
+    background: linear-gradient(170deg, var(--parch) 30%, var(--gold-bone) 75%, var(--ember-deep));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--stone-300);
+    font-style: italic;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    margin-top: 14px;
+  }
+
+  .panel {
+    background: linear-gradient(180deg, var(--basalt-700), var(--basalt-800));
+    border: 1px solid var(--basalt-600);
+    border-radius: 14px;
+    padding: 28px;
+    margin-top: 28px;
+    box-shadow: 0 18px 40px -20px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .panel h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 1.5rem;
+    margin-bottom: 6px;
+    color: var(--gold-bone);
+  }
+  .panel .hint { color: var(--stone-400); font-size: 0.92rem; margin-bottom: 20px; }
+
+  label.field { display:block; margin-bottom: 18px; }
+  label.field > span {
+    display:block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--stone-300);
+    margin-bottom: 7px;
+  }
+  input[type=text], input[type=password], select {
+    width: 100%;
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 9px;
+    color: var(--parch);
+    padding: 12px 14px;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    transition: border-color 0.18s;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--ember); }
+
+  .btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    background: linear-gradient(160deg, var(--ember), var(--ember-deep));
+    color: #1a0f08;
+    font-weight: 650;
+    font-family: var(--font-body);
+    border: none;
+    border-radius: 10px;
+    padding: 13px 24px;
+    font-size: 0.98rem;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.18s, opacity 0.18s;
+    box-shadow: 0 6px 18px -6px rgba(232,132,60,0.5);
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -8px rgba(232,132,60,0.65); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform:none; box-shadow:none; }
+  .btn.ghost {
+    background: transparent;
+    color: var(--stone-300);
+    border: 1px solid var(--basalt-600);
+    box-shadow:none;
+  }
+  .btn.ghost:hover { border-color: var(--stone-400); color: var(--parch); }
+  .btn.myco { background: linear-gradient(160deg, var(--myco), #4a9c6f); color:#06160d; box-shadow:0 6px 18px -6px rgba(127,212,163,0.45); }
+
+  /* ====== CRIAÇÃO DE PERSONAGEM ====== */
+  .choice-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:10px; }
+  .choice {
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 10px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  }
+  .choice:hover { border-color: var(--stone-400); transform: translateY(-2px); }
+  .choice.selected { border-color: var(--ember); background: rgba(232,132,60,0.08); }
+  .choice .name { font-family: var(--font-display); font-size: 1.1rem; color: var(--parch); }
+  .choice .meta { font-size: 0.78rem; color: var(--stone-400); margin-top: 3px; }
+
+  .ability-grid { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin-top:8px; }
+  .ability-box {
+    background: var(--basalt-900);
+    border: 1px solid var(--basalt-600);
+    border-radius: 10px;
+    padding: 14px 10px;
+    text-align:center;
+    position:relative;
+  }
+  .ability-box .ab-label { font-family:var(--font-mono); font-size:0.64rem; letter-spacing:0.18em; color:var(--stone-300); text-transform:uppercase; }
+  .ability-box .ab-score { font-family:var(--font-display); font-size:2rem; color:var(--gold-bone); line-height:1.1; margin-top:4px; }
+  .ability-box .ab-mod { font-size:0.82rem; color:var(--ember); font-weight:600; }
+  .ability-box.assigned { border-color: var(--ember); }
+
+  .pool { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; justify-content:center; }
+  .pool .chip {
+    background: var(--basalt-600);
+    border:1px solid var(--stone-400);
+    border-radius:8px;
+    padding:8px 14px;
+    font-family:var(--font-display);
+    font-size:1.2rem;
+    color:var(--parch);
+    cursor:grab;
+    user-select:none;
+    transition: transform 0.1s, opacity 0.1s;
+  }
+  .pool .chip:hover { transform: translateY(-2px); border-color: var(--ember); }
+  .pool .chip.used { opacity:0.25; pointer-events:none; }
+
+  .player-tag { display:inline-block; font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.15em; padding:4px 10px; border-radius:6px; text-transform:uppercase; }
+  .player-tag.p1 { background:rgba(232,132,60,0.15); color:var(--ember); }
+  .player-tag.p2 { background:rgba(111,168,212,0.15); color:var(--azure); }
+
+  /* ====== TELA DE JOGO ====== */
+  .game-layout { display:grid; grid-template-columns: 300px 1fr; gap:0; min-height:100vh; }
+  @media (max-width: 820px) { .game-layout { grid-template-columns: 1fr; } .sidebar { display:none; } .sidebar.mobile-open { display:block; position:fixed; inset:0; z-index:50; overflow-y:auto;} }
+
+  .sidebar {
+    background: var(--basalt-800);
+    border-right: 1px solid var(--basalt-600);
+    padding: 20px 16px;
+    overflow-y:auto;
+    max-height:100vh;
+  }
+  .char-card {
+    background: linear-gradient(180deg, var(--basalt-700), var(--basalt-900));
+    border:1px solid var(--basalt-600);
+    border-radius:12px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .char-card.active-turn { border-color: var(--ember); box-shadow: 0 0 0 1px var(--ember), 0 8px 20px -10px rgba(232,132,60,0.5); }
+  .char-card .cc-name { font-family:var(--font-display); font-size:1.25rem; color:var(--parch); }
+  .char-card .cc-sub { font-size:0.78rem; color:var(--stone-400); margin-bottom:10px; }
+  .hpbar-wrap { background:var(--basalt-900); border-radius:6px; height:18px; overflow:hidden; position:relative; border:1px solid var(--basalt-600); }
+  .hpbar { height:100%; background:linear-gradient(90deg,var(--blood),#e06b7a); transition:width 0.4s; }
+  .hpbar-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:var(--parch); text-shadow:0 1px 2px #000; }
+  .stat-row { display:flex; justify-content:space-between; font-size:0.8rem; margin-top:8px; color:var(--stone-300); }
+  .stat-row b { color:var(--parch); }
+  .mini-abilities { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:10px; }
+  .mini-ab { background:var(--basalt-900); border-radius:6px; padding:5px 2px; text-align:center; }
+  .mini-ab .l { font-family:var(--font-mono); font-size:0.55rem; color:var(--stone-400); letter-spacing:0.1em; }
+  .mini-ab .v { font-size:0.95rem; color:var(--gold-bone); font-weight:600; }
+  .spell-slots { display:flex; gap:4px; margin-top:8px; }
+  .slot { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); }
+  .slot.full { background:var(--azure); }
+
+  .main-col { display:flex; flex-direction:column; max-height:100vh; }
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px; border-bottom:1px solid var(--basalt-600);
+    background:var(--basalt-800);
+  }
+  .topbar .loc { font-family:var(--font-display); font-size:1.15rem; color:var(--gold-bone); }
+  .topbar .loc .chapter { font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.2em; color:var(--ember); text-transform:uppercase; display:block; }
+
+  .narrative {
+    flex:1; overflow-y:auto; padding:26px 22px;
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .msg { max-width:760px; }
+  .msg.dm { align-self:flex-start; }
+  .msg.dm .body {
+    font-family:var(--font-display);
+    font-size:1.06rem;
+    line-height:1.7;
+    color:var(--parch);
+    white-space:pre-wrap;
+  }
+  .msg.dm .body em { color: var(--gold-bone); }
+  .msg.player { align-self:flex-end; max-width:560px; }
+  .msg.player .body {
+    background:var(--basalt-700);
+    border:1px solid var(--basalt-600);
+    border-radius:12px 12px 4px 12px;
+    padding:11px 15px;
+    font-size:0.96rem;
+  }
+  .msg .who { font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--stone-400); margin-bottom:5px; }
+  .msg.player .who { text-align:right; }
+
+  .roll-card {
+    align-self:center;
+    background: var(--basalt-900);
+    border:1px solid var(--ember);
+    border-radius:12px;
+    padding:14px 22px;
+    text-align:center;
+    min-width:220px;
+    box-shadow:0 0 24px -10px rgba(232,132,60,0.5);
+  }
+  .roll-card .rtype { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--ember); }
+  .roll-card .rnum { font-family:var(--font-display); font-size:3.2rem; line-height:1; color:var(--parch); margin:6px 0; }
+  .roll-card .rnum.crit { color:var(--myco); }
+  .roll-card .rnum.fumble { color:var(--blood); }
+  .roll-card .rbreak { font-size:0.82rem; color:var(--stone-300); }
+  .roll-card .rout { margin-top:8px; font-size:0.86rem; font-weight:600; }
+  .rout.success { color:var(--myco); }
+  .rout.fail { color:var(--blood); }
+
+  .composer { border-top:1px solid var(--basalt-600); padding:14px 22px; background:var(--basalt-800); }
+  .turn-indicator { font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:8px; color:var(--stone-300); }
+  .composer-row { display:flex; gap:10px; }
+  .composer textarea {
+    flex:1; resize:none; min-height:52px; max-height:140px;
+    background:var(--basalt-900); border:1px solid var(--basalt-600);
+    border-radius:10px; color:var(--parch); padding:12px 14px;
+    font-family:var(--font-body); font-size:0.98rem; line-height:1.5;
+  }
+  .composer textarea:focus { outline:none; border-color:var(--ember); }
+  .quick-actions { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+  .qa {
+    background:var(--basalt-700); border:1px solid var(--basalt-600);
+    border-radius:7px; padding:6px 12px; font-size:0.82rem; color:var(--stone-300);
+    cursor:pointer; transition:all 0.14s;
+  }
+  .qa:hover { border-color:var(--ember); color:var(--parch); }
+
+  .thinking { align-self:flex-start; color:var(--stone-400); font-style:italic; font-family:var(--font-display); }
+  .thinking::after { content:'...'; animation: dots 1.4s infinite; }
+  @keyframes dots { 0%,20%{content:'.'} 40%{content:'..'} 60%,100%{content:'...'} }
+
+  .dice-anim { display:inline-block; animation: tumble 0.6s ease-out; }
+  @keyframes tumble { 0%{transform:rotate(0) scale(0.5);opacity:0} 60%{transform:rotate(380deg) scale(1.15)} 100%{transform:rotate(360deg) scale(1);opacity:1} }
+
+  .toast {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--basalt-700); border:1px solid var(--ember);
+    border-radius:10px; padding:12px 20px; z-index:100;
+    font-size:0.9rem; box-shadow:0 10px 30px -10px rgba(0,0,0,0.7);
+    animation: slideup 0.3s;
+  }
+  @keyframes slideup { from{transform:translate(-50%,20px);opacity:0} to{transform:translate(-50%,0);opacity:1} }
+
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .row.end { justify-content:flex-end; }
+  .spacer { flex:1; }
+  .err { color:var(--blood); font-size:0.85rem; margin-top:8px; }
+  .ok { color:var(--myco); font-size:0.85rem; margin-top:8px; }
+  details { margin-top:14px; }
+  summary { cursor:pointer; color:var(--stone-300); font-size:0.88rem; }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+
+<!-- ============ TELA 1: CONFIGURAÇÃO ============ -->
+<div class="screen active" id="screen-setup">
+  <div class="wrap">
+    <div class="title-block">
+      <div class="eyebrow">Dungeons &amp; Dragons 5e · Mestre conduzido por IA</div>
+      <h1>Tormenta de<br>Stormwreck</h1>
+      <p class="subtitle">Uma ilha forjada pela fúria de dragões. Dois aventureiros. Um Mestre que nunca dorme.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Chave da API</h2>
+      <p class="hint">O Mestre é narrado pela IA da Anthropic (modelo Haiku — rápido e barato). Sua chave fica salva só neste navegador, nunca sai do seu computador.</p>
+      <label class="field">
+        <span>Anthropic API Key</span>
+        <input type="password" id="apiKey" placeholder="sk-ant-...">
+      </label>
+      <div class="row">
+        <select id="modelChoice" style="max-width:280px">
+          <option value="claude-haiku-4-5">Haiku 4.5 — barato e rápido (recomendado)</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6 — narração mais rica (mais caro)</option>
+        </select>
+        <button class="btn ghost" id="testKeyBtn">Testar chave</button>
+      </div>
+      <div id="keyStatus"></div>
+      <details>
+        <summary>Onde consigo uma chave?</summary>
+        <p class="hint" style="margin-top:10px">Crie uma conta em console.anthropic.com, vá em API Keys e gere uma. Você adiciona créditos pré-pagos (a partir de US$5) e cada sessão de jogo custa centavos.</p>
+      </details>
+    </div>
+
+    <div class="row end" style="margin-top:24px">
+      <button class="btn ghost" id="loadSaveBtn" style="display:none">Continuar jogo salvo</button>
+      <button class="btn" id="toCreationBtn">Criar aventureiros →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TELA 2: CRIAÇÃO ============ -->
+<div class="screen" id="screen-creation">
+  <div class="wrap">
+    <div class="title-block">
+      <div class="eyebrow" id="creationStepLabel">Aventureiro 1 de 2</div>
+      <h1 style="font-size:clamp(2rem,5vw,3rem)">Forje seu herói</h1>
+    </div>
+    <div class="panel">
+      <label class="field">
+        <span>Nome do personagem</span>
+        <input type="text" id="charName" placeholder="Ex.: Branca, Dortar, Kael...">
+      </label>
+      <label class="field">
+        <span>Quem controla? (nome do jogador)</span>
+        <input type="text" id="playerName" placeholder="Seu nome">
+      </label>
+
+      <label class="field"><span>Raça</span></label>
+      <div class="choice-grid" id="raceGrid"></div>
+
+      <label class="field" style="margin-top:20px"><span>Classe</span></label>
+      <div class="choice-grid" id="classGrid"></div>
+
+      <label class="field" style="margin-top:20px"><span>Atributos — role e distribua</span></label>
+      <p class="hint" id="abilityHint">Clique em "Rolar atributos" para gerar 6 valores (4d6, descarta o menor). Depois clique num valor e num atributo para atribuir.</p>
+      <div class="pool" id="scorePool"></div>
+      <div class="row" style="justify-content:center;margin-bottom:14px">
+        <button class="btn ghost" id="rollScoresBtn">🎲 Rolar atributos</button>
+        <button class="btn ghost" id="resetScoresBtn">Limpar</button>
+      </div>
+      <div class="ability-grid" id="abilityGrid"></div>
+    </div>
+
+    <div class="row end" style="margin-top:24px">
+      <button class="btn" id="charNextBtn" disabled>Próximo →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TELA 3: JOGO ============ -->
+<div class="screen" id="screen-game">
+  <div class="game-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main-col">
+      <div class="topbar">
+        <div class="loc">
+          <span class="chapter" id="chapterLabel">Capítulo 1</span>
+          <span id="locationLabel">Dragon's Rest</span>
+        </div>
+        <div class="row">
+          <button class="btn ghost" id="saveBtn" style="padding:8px 14px;font-size:0.82rem">Salvar</button>
+          <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
+        </div>
+      </div>
+      <div class="narrative" id="narrative"></div>
+      <div class="composer">
+        <div class="turn-indicator" id="turnIndicator"></div>
+        <div class="quick-actions" id="quickActions"></div>
+        <div class="composer-row">
+          <textarea id="actionInput" placeholder="O que você faz?"></textarea>
+          <button class="btn" id="sendBtn">Agir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// rules.js — Regras de D&D 5e (Basic Rules, nível 1-3)
+// Subconjunto adequado a Stormwreck Isle.
+// ============================================================
+
+const RULES = {
+  abilities: ['FOR', 'DES', 'CON', 'INT', 'SAB', 'CAR'],
+  abilityNames: {
+    FOR: 'Força', DES: 'Destreza', CON: 'Constituição',
+    INT: 'Inteligência', SAB: 'Sabedoria', CAR: 'Carisma'
+  },
+  abilityEng: { FOR:'STR', DES:'DEX', CON:'CON', INT:'INT', SAB:'WIS', CAR:'CHA' },
+
+  // Raças do Basic Rules + ASI
+  races: {
+    'Humano':      { asi: { FOR:1, DES:1, CON:1, INT:1, SAB:1, CAR:1 }, speed:9, traits:['Versátil'], darkvision:false },
+    'Anão':        { asi: { CON:2 }, speed:7.5, traits:['Visão no escuro','Resistência a veneno','Treino com machados'], darkvision:true },
+    'Elfo':        { asi: { DES:2 }, speed:9, traits:['Visão no escuro','Sentidos aguçados','Ancestral feérico','Transe'], darkvision:true },
+    'Halfling':    { asi: { DES:2 }, speed:7.5, traits:['Sortudo','Bravura','Agilidade halfling'], darkvision:false },
+    'Draconato':   { asi: { FOR:2, CAR:1 }, speed:9, traits:['Sopro elemental','Resistência a dano'], darkvision:false },
+    'Gnomo':       { asi: { INT:2 }, speed:7.5, traits:['Visão no escuro','Astúcia gnômica'], darkvision:true },
+    'Meio-Elfo':   { asi: { CAR:2 }, speed:9, traits:['Visão no escuro','Ancestral feérico','Versatilidade'], darkvision:true, choice2:true },
+    'Meio-Orc':    { asi: { FOR:2, CON:1 }, speed:9, traits:['Visão no escuro','Resistência implacável','Ataques selvagens'], darkvision:true },
+    'Tiefling':    { asi: { INT:1, CAR:2 }, speed:9, traits:['Visão no escuro','Resistência infernal','Legado infernal'], darkvision:true }
+  },
+
+  // Classes do Basic Rules
+  classes: {
+    'Guerreiro': { hitDie:10, primary:['FOR','DES'], saves:['FOR','CON'], armor:'pesada+escudo', baseCA:16,
+                   features:['Estilo de luta','Retomar fôlego'],
+                   desc:'Mestre de armas e armaduras. Resistente e versátil.' },
+    'Mago':      { hitDie:6, primary:['INT'], saves:['INT','SAB'], armor:'nenhuma', baseCA:null,
+                   features:['Conjuração arcana','Recuperação arcana'],
+                   cantrips:3, spellsKnown:6, slots1:2,
+                   desc:'Conjurador erudito. Frágil, mas com magia versátil.' },
+    'Clérigo':   { hitDie:8, primary:['SAB'], saves:['SAB','CAR'], armor:'média+escudo', baseCA:14,
+                   features:['Conjuração divina','Domínio divino'],
+                   cantrips:3, slots1:2,
+                   desc:'Canaliza poder divino. Cura e protege aliados.' },
+    'Ladino':    { hitDie:8, primary:['DES'], saves:['DES','INT'], armor:'leve', baseCA:13,
+                   features:['Ataque furtivo','Especialização','Gíria de ladrão'],
+                   desc:'Ágil e astuto. Dano preciso e perícia incomparável.' },
+    'Patrulheiro':{ hitDie:10, primary:['DES','SAB'], saves:['FOR','DES'], armor:'média', baseCA:14,
+                   features:['Inimigo favorito','Explorador nato'],
+                   desc:'Caçador das terras selvagens. Combina arco e natureza.' },
+    'Bárbaro':   { hitDie:12, primary:['FOR'], saves:['FOR','CON'], armor:'leve', baseCA:13,
+                   features:['Fúria','Defesa sem armadura'],
+                   desc:'Guerreiro feroz movido a fúria. O mais resistente.' },
+    'Bardo':     { hitDie:8, primary:['CAR'], saves:['DES','CAR'], armor:'leve', baseCA:13,
+                   features:['Inspiração de bardo','Conjuração'],
+                   cantrips:2, slots1:2,
+                   desc:'Mestre da inspiração e da palavra. Versátil e social.' },
+    'Paladino':  { hitDie:10, primary:['FOR','CAR'], saves:['SAB','CAR'], armor:'pesada+escudo', baseCA:16,
+                   features:['Sentido divino','Imposição das mãos'],
+                   desc:'Guerreiro sagrado ligado a um juramento. Robusto.' },
+    'Feiticeiro':{ hitDie:6, primary:['CAR'], saves:['CON','CAR'], armor:'nenhuma', baseCA:null,
+                   features:['Magia inata','Origem mágica'],
+                   cantrips:4, slots1:2,
+                   desc:'Magia no sangue. Poder bruto e imprevisível.' },
+    'Bruxo':     { hitDie:8, primary:['CAR'], saves:['SAB','CAR'], armor:'leve', baseCA:13,
+                   features:['Pacto arcano','Patrono'],
+                   cantrips:2, slots1:1,
+                   desc:'Poder vindo de um pacto com uma entidade.' },
+    'Druida':    { hitDie:8, primary:['SAB'], saves:['INT','SAB'], armor:'leve', baseCA:13,
+                   features:['Conjuração','Druídico'],
+                   cantrips:2, slots1:2,
+                   desc:'Guardião da natureza. Conjura e mais tarde se transforma.' },
+    'Monge':     { hitDie:8, primary:['DES','SAB'], saves:['FOR','DES'], armor:'nenhuma', baseCA:null,
+                   features:['Defesa sem armadura','Artes marciais'],
+                   desc:'Disciplina corporal. Rápido e ágil sem armadura.' }
+  },
+
+  // XP por nível (só precisamos de 1-3 para Stormwreck)
+  xpTable: { 1:0, 2:300, 3:900, 4:2700 },
+
+  profByLevel: { 1:2, 2:2, 3:2, 4:2 }
+};
+
+function abilityMod(score) { return Math.floor((score - 10) / 2); }
+function fmtMod(m) { return (m >= 0 ? '+' : '') + m; }
+
+// Calcula CA conforme classe + DES
+function computeCA(cls, abilities) {
+  const c = RULES.classes[cls];
+  const dexMod = abilityMod(abilities.DES);
+  if (c.baseCA) {
+    // armaduras pesadas ignoram DES; médias limitam +2; aqui simplificamos
+    if (c.armor.startsWith('pesada')) return c.baseCA;
+    if (c.armor.startsWith('média')) return c.baseCA + Math.min(dexMod, 2);
+    if (c.armor.startsWith('leve')) return c.baseCA + dexMod;
+    return c.baseCA + dexMod;
+  }
+  // sem armadura: classes mágicas = 10 + DES; monge/bárbaro têm cálculos próprios
+  if (cls === 'Monge') return 10 + dexMod + abilityMod(abilities.SAB);
+  if (cls === 'Bárbaro') return 10 + dexMod + abilityMod(abilities.CON);
+  return 10 + dexMod;
+}
+
+// Cria um personagem completo a partir das escolhas
+function buildCharacter({ name, player, slot, race, cls, scores }) {
+  const r = RULES.races[race];
+  const c = RULES.classes[cls];
+  // aplica ASI racial
+  const abilities = {};
+  RULES.abilities.forEach(a => { abilities[a] = scores[a] + (r.asi[a] || 0); });
+
+  const conMod = abilityMod(abilities.CON);
+  const maxHp = c.hitDie + conMod;
+  const ca = computeCA(cls, abilities);
+
+  return {
+    name, player, slot, race, cls,
+    level: 1, xp: 0, prof: 2,
+    abilities,
+    maxHp, hp: maxHp,
+    ca,
+    speed: r.speed,
+    darkvision: r.darkvision,
+    saves: c.saves,
+    traits: r.traits,
+    features: c.features,
+    spellSlots: c.slots1 ? { max: c.slots1, used: 0 } : null,
+    conditions: [],
+    inventory: ['Equipamento inicial de ' + cls]
+  };
+}
+
+</script>
+<script>
+// ============================================================
+// campaign.js — DRAGONS OF STORMWRECK ISLE
+// Estrutura em CENAS. Cada cena é um "trilho" que a IA segue.
+// A IA recebe só a cena atual + estado. Não improvisa a trama.
+// ============================================================
+
+const CAMPAIGN = {
+  title: "Dragões da Ilha Tormenta",
+  premise: `Stormwreck Isle é uma ilha pequena e rochosa no Mar das Espadas, 25 milhas ao sul de Águasfundas (Neverwinter). Diz a lenda que a fúria aprisionada da dragão vermelha Sharruth formou a ilha — seus fogos ergueram a terra dos vulcões submarinos onde seus inimigos a prenderam. A terra carrega cicatrizes mágicas de eras de batalhas entre dragões cromáticos (malignos) e metálicos (benignos). O claustro de Dragon's Rest tenta deixar o conflito no passado e servir de refúgio de paz, liderado pela dragão de bronze Runara em forma humana. Mas algo perturba a ilha de novo.`,
+
+  // Regras globais que a IA SEMPRE respeita
+  dmRules: [
+    "Você é o Mestre (DM). Narre em português do Brasil, com termos de regra em inglês (HP, AC, saving throw, DC).",
+    "NUNCA role dados você mesmo. Quando uma ação exige rolagem, peça a rolagem usando o marcador [ROLL:tipo:atributo:CD] e PARE. O sistema rola e devolve o resultado.",
+    "NUNCA decida o resultado de uma ação incerta sem dado. Combate, persuasão, furtividade, arcanismo: tudo exige rolagem.",
+    "NUNCA controle os personagens dos jogadores nem decida o que eles sentem ou falam.",
+    "Mantenha a narração concisa: 2 a 4 parágrafos curtos por turno. Termine sempre devolvendo o controle ao jogador.",
+    "Permaneça DENTRO da cena atual fornecida. Não invente locais ou NPCs fora do roteiro. Se os jogadores tentarem ir além, gentilmente reconduza ou use a transição apropriada.",
+    "Quando os objetivos da cena forem cumpridos, sinalize com [SCENE_COMPLETE] ao final.",
+    "Para iniciar combate, use [COMBAT_START:id_do_encontro].",
+    "Dois personagens jogam. Dê espaço para ambos agirem; pergunte de quem é a vez quando fizer sentido.",
+    "Tom: aventura heroica acessível, leve assombração nas masmorras. Sem crueldade gráfica."
+  ],
+
+  // ===================================================
+  // CENAS — o coração do sistema
+  // ===================================================
+  scenes: {
+
+    // ---------- CAPÍTULO 1: DRAGON'S REST ----------
+    'chegada': {
+      chapter: "Capítulo 1 — Dragon's Rest",
+      location: "Mar das Espadas, a bordo do Próspero",
+      level: 1,
+      summary: "Os heróis chegam de barco à ilha. Uma tempestade súbita e antinatural ameaça o navio perto da costa.",
+      readAloud: `O barco mercante *Próspero* corta as ondas cinzentas rumo a Stormwreck Isle. Vocês foram contratados — ou pediram carona — para entregar suprimentos ao claustro de Dragon's Rest. O capitão, um meio-orc taciturno chamado Sabpast, aponta para os penhascos de basalto negro à frente. "Lá está. Ilha esquisita. Dizem que é feita de osso de dragão." Então o céu escurece rápido demais. Um vento que não devia existir uiva entre as velas. Nuvens cor de brasa se enrolam sobre o mastro.`,
+      objectives: ["Sobreviver à tempestade mágica", "Chegar à praia de Dragon's Rest"],
+      npcs: {
+        'Sabast': "Capitão meio-orc do Próspero. Prático, supersticioso, quer largar a carga e ir embora."
+      },
+      possibleRolls: ["DEX (Acrobacia) para se segurar no convés", "STR (Atletismo) para amarrar carga solta", "WIS (Percepção) para notar rochas"],
+      transitions: { 'praia': "Quando chegam à praia em segurança" },
+      next: 'praia'
+    },
+
+    'praia': {
+      chapter: "Capítulo 1 — Dragon's Rest",
+      location: "Praia de Dragon's Rest",
+      level: 1,
+      summary: "Na praia, marinheiros afogados de OUTRO naufrágio se erguem como zumbis. Primeiro combate.",
+      readAloud: `A tempestade passa tão rápido quanto veio. O *Próspero* encalha numa enseada de areia preta. Vocês pisam em terra firme — e veem corpos na praia. Marinheiros afogados, inchados pela água. Então, um deles se mexe. Depois outro. Olhos vazios se abrem. Eles se levantam com movimentos quebrados e começam a arrastar-se na sua direção.`,
+      objectives: ["Derrotar os mortos-vivos", "Alcançar o claustro acima dos penhascos"],
+      combat: 'praia_zumbis',
+      transitions: { 'claustro': "Depois do combate, ao subir ao claustro" },
+      next: 'claustro'
+    },
+
+    'claustro': {
+      chapter: "Capítulo 1 — Dragon's Rest",
+      location: "Claustro de Dragon's Rest",
+      level: 1,
+      summary: "Refúgio no topo dos penhascos. Conhecer Runara e moradores. Hub de missões.",
+      readAloud: `Uma escadaria esculpida na rocha leva ao claustro de Dragon's Rest — um conjunto de prédios de pedra clara abraçados pela face do penhasco, com jardins de flores brancas balançando ao vento salgado. Uma mulher de cabelos cor de bronze e olhos dourados vem ao seu encontro, túnica simples, postura serena mas que carrega algo antigo. "Bem-vindos. Sou Runara. Vocês chegaram num momento difícil." Ela observa o sangue de zumbi nas suas roupas e não parece surpresa.`,
+      objectives: ["Conhecer Runara e os moradores", "Descobrir os problemas da ilha", "Aceitar investigar as Cavernas Seagrow"],
+      npcs: {
+        'Runara': "Dragão de bronze milenar em forma humana. Líder do claustro. Sábia, calma, busca a paz entre dragões. Cabelos de bronze, olhos dourados.",
+        'Irmão Clavel': "Acólito humano nervoso, cuida da biblioteca e das ervas.",
+        'Tibor': "Velho marinheiro tagarela que sobreviveu a um naufrágio; conhece fofocas da ilha."
+      },
+      hooks: [
+        "Os myconids (povo-cogumelo) das Cavernas Seagrow ficaram em silêncio — paravam de comerciar ervas com o claustro. Algo os atacou.",
+        "Um naufrágio amaldiçoado apareceu na costa norte, exalando uma aura de morte.",
+        "Há um wyrmling (filhote de dragão) perdido na ilha."
+      ],
+      possibleRolls: ["CHA (Persuasão) com Runara", "INT (História/Religião) sobre dragões", "WIS (Intuição) para ler Runara"],
+      transitions: { 'cavernas': "Quando decidem ir às Cavernas Seagrow" },
+      next: 'cavernas'
+    },
+
+    // ---------- CAPÍTULO 2: SEAGROW CAVES ----------
+    'cavernas': {
+      chapter: "Capítulo 2 — Cavernas Seagrow",
+      location: "Entrada das Cavernas Seagrow",
+      level: 1,
+      summary: "Caverna dos myconids. Um polvo-fungo morto-vivo guarda a entrada. A tumba da dragão Sharruth vaza magia do Plano do Fogo.",
+      readAloud: `Do lado sudoeste da ilha, fumaça tóxica sobe de fendas no chão — vapores que dizem vir da tumba vulcânica da dragão vermelha Sharruth. As Cavernas Seagrow se abrem na encosta, úmidas e fosforescentes. Lá dentro vivia uma colônia de myconids, gente-cogumelo pacífica que troca ervas raras com o claustro. Mas faz semanas que se calaram. Na entrada da caverna, algo se move na poça escura — tentáculos pálidos, cobertos de fungo apodrecido.`,
+      objectives: ["Entrar nas cavernas", "Descobrir o que silenciou os myconids", "Encontrar Sinensa, líder dos myconids"],
+      combat: 'polvo_fungo',
+      npcs: {
+        'Sinensa': "Líder myconid. Comunica-se por esporos (telepatia limitada). Pacífica, assustada. Sabe da tumba de Sharruth.",
+      },
+      possibleRolls: ["INT (Natureza) sobre os fungos", "DEX (Furtividade) na caverna", "CON (save) contra esporos tóxicos"],
+      transitions: { 'sharruth': "Ao investigar a fonte de magia de fogo", 'claustro_volta': "Se voltarem ao claustro" },
+      next: 'sharruth'
+    },
+
+    'sharruth': {
+      chapter: "Capítulo 2 — Cavernas Seagrow",
+      location: "Câmara da Tumba de Sharruth",
+      level: 2,
+      summary: "Fendas para o Plano do Fogo. Pequenos dragões de fumaça (fume drakes) emergem. Sub-chefe do capítulo.",
+      readAloud: `No fundo das cavernas, o calor aumenta. Uma câmara se abre, cortada por fendas brilhantes de luz alaranjada — rachaduras na própria realidade que conectam ao Plano Elemental do Fogo. Esta é a borda da tumba de Sharruth, a dragão vermelha cuja raiva, dizem, criou a ilha. Dela escapam criaturas pequenas e malignas: fume drakes, draconetes feitos de fumaça e cinza, que sibilam ao vê-los.`,
+      objectives: ["Derrotar ou afugentar os fume drakes", "Selar ou entender as fendas", "Aprender o segredo da tumba de Sharruth"],
+      combat: 'fume_drakes',
+      lore: "Nos fume drakes derrotados, deixe que revelem que a tumba/prisão de Sharruth fica sob a ilha. Os jogadores podem ponderar se Sharruth está viva ou morta e que poder ela teria — mas deixe claro que responder isso é assunto para outro dia, longe daqui.",
+      possibleRolls: ["INT (Arcana) sobre as fendas planares", "DEX (save) contra explosões de fogo"],
+      transitions: { 'claustro_volta': "Após resolver as cavernas, voltam ao claustro (sobem para nível 2)" },
+      next: 'claustro_volta'
+    },
+
+    'claustro_volta': {
+      chapter: "Capítulo 2 — Interlúdio",
+      location: "Claustro de Dragon's Rest",
+      level: 2,
+      summary: "Retorno ao claustro. Descanso, recompensa, gancho para o naufrágio amaldiçoado. SOBE PARA NÍVEL 2.",
+      readAloud: `Vocês retornam ao claustro com notícias das cavernas. Runara escuta em silêncio, o rosto dourado tenso ao ouvir sobre as fendas de Sharruth. "Então a velha ferida ainda sangra", murmura ela. Ela cuida dos seus ferimentos e oferece descanso. Mas há mais. "Um navio surgiu na costa norte. Não devia estar ali — afundou há anos. E carrega uma escuridão que sinto daqui."`,
+      objectives: ["Descansar e subir para o nível 2", "Receber recompensa de Runara", "Aceitar investigar o Naufrágio Amaldiçoado"],
+      levelUp: 2,
+      npcs: { 'Runara': "Mais aberta agora, confia nos heróis. Revela preocupação com a tumba de Sharruth." },
+      transitions: { 'naufragio': "Quando partem para o naufrágio" },
+      next: 'naufragio'
+    },
+
+    // ---------- CAPÍTULO 3: CURSED SHIPWRECK ----------
+    'naufragio': {
+      chapter: "Capítulo 3 — Naufrágio Amaldiçoado",
+      location: "Casco do navio naufragado, costa norte",
+      level: 2,
+      summary: "Navio fantasma encalhado. Zumbis e ghouls. Um efígie de Orcus, Príncipe Demônio dos Mortos-Vivos.",
+      readAloud: `A costa norte é um cemitério de navios — mas um deles se destaca, encalhado nas rochas, o casco coberto de cracas e algo pior: uma película negra que suga a luz. O ar cheira a sal e podridão. Pegadas molhadas levam ao convés rachado. Lá dentro, na escuridão do porão, formas se arrastam. E numa parede, alguém esculpiu um símbolo: a cabeça de um carneiro com uma maça — o emblema de Orcus.`,
+      objectives: ["Explorar o navio amaldiçoado", "Enfrentar os mortos-vivos", "Descobrir a origem da maldição (culto a Orcus)"],
+      combat: 'naufragio_undead',
+      npcs: {},
+      lore: "Em testes de Religião, deixe os jogadores aprenderem sobre Orcus e seu reino terrível de Thanatos. A maldição vem de um efígie deixada por um cultista.",
+      possibleRolls: ["INT (Religião) sobre Orcus", "WIS (save) contra medo", "DEX (Furtividade) no porão"],
+      transitions: { 'observatorio': "Após limpar o navio, sobem para nível 3 e seguem ao Observatório" },
+      next: 'observatorio'
+    },
+
+    // ---------- CAPÍTULO 4: CLIFFTOP OBSERVATORY ----------
+    'observatorio': {
+      chapter: "Capítulo 4 — Observatório do Penhasco",
+      location: "Observatório no alto do penhasco",
+      level: 3,
+      summary: "Clímax. A dragão cromática jovem que arma as ameaças da ilha está aqui. Possível paz ou batalha final.",
+      readAloud: `No ponto mais alto de Stormwreck Isle ergue-se um antigo observatório de pedra, cúpula rachada aberta para o céu. Daqui se vê a ilha inteira — as cavernas fumegantes, o naufrágio negro, o claustro distante. E aqui está a fonte de tudo: uma jovem dragão cromática, escamas reluzentes, que tem usado a ilha como tabuleiro. Ela vira a cabeça serpentina na sua direção. "Então os ratos do claustro mandaram campeões. Que adorável."`,
+      objectives: ["Confrontar a dragão jovem", "Escolher: negociar a paz entre dragões OU batalha final", "Resolver o destino da ilha"],
+      combat: 'final_dragon',
+      climax: true,
+      lore: "Este é o clímax. A dragão pode ser combatida OU os jogadores podem buscar a paz entre as famílias de dragões (com Runara). Honre a escolha deles. Se negociarem bem (testes de CHA difíceis), a paz é possível e Runara intervém como aliada.",
+      possibleRolls: ["CHA (Persuasão) DC alta para paz", "todos os tipos em combate"],
+      transitions: { 'epilogo': "Quando a dragão é derrotada ou a paz é selada" },
+      next: 'epilogo'
+    },
+
+    'epilogo': {
+      chapter: "Epílogo",
+      location: "Dragon's Rest",
+      level: 3,
+      summary: "Desfecho. Runara honra os heróis. Gancho para futuras aventuras (Costa da Espada).",
+      readAloud: `Stormwreck Isle respira de novo. No claustro, Runara — que vocês agora sabem ser uma dragão de bronze milenar — assume sua verdadeira forma por um instante, asas de metal vivo refletindo o pôr do sol, antes de voltar ao rosto humano. "Vocês trouxeram paz a uma terra que conheceu só guerra por eras. Os dragões lembrarão disso." Um navio espera na enseada para levá-los de volta à Costa da Espada — e às próximas aventuras.`,
+      objectives: ["Receber o reconhecimento", "Encerrar a campanha"],
+      ending: true,
+      transitions: {}
+    }
+  },
+
+  // ===================================================
+  // ENCONTROS DE COMBATE — stats prontos
+  // ===================================================
+  encounters: {
+    'praia_zumbis': {
+      name: "Marinheiros Afogados",
+      enemies: [
+        { id:'z1', name:'Zumbi Afogado', hp:22, ca:8, mod:3, dmg:'1d6+1', xp:50, traits:'Fortitude Morta-Viva: se reduzido a 0, rola CON save DC 5+dano para ficar com 1 HP' },
+        { id:'z2', name:'Zumbi Afogado', hp:22, ca:8, mod:3, dmg:'1d6+1', xp:50 }
+      ],
+      tactics: "Lentos mas implacáveis. Avançam em linha reta. Bom primeiro combate — assustador mas vencível.",
+      xpTotal: 100
+    },
+    'polvo_fungo': {
+      name: "Polvo-Fungo Morto-Vivo",
+      enemies: [
+        { id:'po', name:'Polvo de Fungo', hp:26, ca:11, mod:4, dmg:'1d6+2', xp:100, traits:'Multiataque: 2 tentáculos. Pode agarrar (grapple).' }
+      ],
+      tactics: "Guarda a poça da entrada. Agarra com tentáculos e puxa para a água. Foge se muito ferido.",
+      xpTotal: 100
+    },
+    'fume_drakes': {
+      name: "Fume Drakes da Tumba",
+      enemies: [
+        { id:'f1', name:'Fume Drake', hp:13, ca:13, mod:4, dmg:'1d4+2 +1d4 fogo', xp:100 },
+        { id:'f2', name:'Fume Drake', hp:13, ca:13, mod:4, dmg:'1d4+2 +1d4 fogo', xp:100 }
+      ],
+      tactics: "Voam e cospem fumaça quente. Sibilam segredos sobre Sharruth ao morrer. Cobardes em grupo pequeno.",
+      xpTotal: 200
+    },
+    'naufragio_undead': {
+      name: "Tripulação Amaldiçoada",
+      enemies: [
+        { id:'g1', name:'Ghoul', hp:22, ca:12, mod:4, dmg:'1d6+2', xp:200, traits:'Garras podem paralisar: alvo faz CON save DC 10 ou fica paralisado 1 min' },
+        { id:'zu1', name:'Zumbi', hp:22, ca:8, mod:3, dmg:'1d6+1', xp:50 },
+        { id:'zu2', name:'Zumbi', hp:22, ca:8, mod:3, dmg:'1d6+1', xp:50 }
+      ],
+      tactics: "Ghoul lidera, tenta paralisar o mais forte. Zumbis cercam. Ambiente escuro favorece emboscada.",
+      xpTotal: 300
+    },
+    'final_dragon': {
+      name: "Dragão Cromático Jovem",
+      enemies: [
+        { id:'dragon', name:'Dragão Jovem', hp:75, ca:17, mod:6, dmg:'2d6+4', xp:1800, traits:'Sopro elemental (recarrega): área, DEX save DC 14 metade do dano. Multiataque: mordida + 2 garras. Pode VOAR.' }
+      ],
+      tactics: "Clímax. Usa o sopro cedo, depois mordida+garras. Voa para reposicionar. PODE ser convencida a parar se os heróis negociarem a paz (CHA DC 16) — nesse caso vira aliada relutante com ajuda de Runara.",
+      xpTotal: 1800,
+      negotiable: true
+    }
+  }
+};
+
+</script>
+<script>
+// ============================================================
+// game.js — Motor do jogo
+// Gerencia: estado, telas, criação de personagem, rolagem de
+// dados (justa, no código), e comunicação com a IA (Haiku).
+// ============================================================
+
+// ---------- ESTADO GLOBAL ----------
+const STATE = {
+  apiKey: '',
+  model: 'claude-haiku-4-5',
+  characters: [],       // [{...}, {...}]
+  activeChar: 0,        // de quem é a vez
+  sceneId: 'chegada',
+  history: [],          // mensagens da conversa com a IA
+  inCombat: false,
+  combat: null,         // estado de combate ativo
+  creationSlot: 0       // 0 ou 1 durante criação
+};
+
+// rascunho de criação do personagem atual
+let DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+
+// ---------- UTIL DOM ----------
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+function showScreen(id) {
+  $$('.screen').forEach(s => s.classList.remove('active'));
+  $('#'+id).classList.add('active');
+}
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ---------- DADOS (rolagem justa) ----------
+function rollDie(s) { return Math.floor(Math.random() * s) + 1; }
+function rollDiceArr(count, sides) { return Array.from({length:count}, () => rollDie(sides)); }
+function rollAbility() {
+  const r = rollDiceArr(4,6).sort((a,b)=>b-a);
+  const dropped = r.pop();
+  return r.reduce((s,x)=>s+x,0);
+}
+function d20(mod=0, opts={}) {
+  let a = rollDie(20), b = null, chosen = a;
+  if (opts.adv || opts.dis) { b = rollDie(20); chosen = opts.adv ? Math.max(a,b) : Math.min(a,b); }
+  return { nat: chosen, total: chosen+mod, mod, dice:[a,b].filter(x=>x!==null), crit: chosen===20, fumble: chosen===1 };
+}
+// rola expressão tipo "1d6+2" ou "2d6+4"
+function rollExpr(expr) {
+  const m = expr.match(/(\d+)d(\d+)(?:\+(\d+))?/);
+  if (!m) return { total:0, rolls:[] };
+  const [, c, s, bonus] = m;
+  const rolls = rollDiceArr(+c, +s);
+  const total = rolls.reduce((a,b)=>a+b,0) + (bonus ? +bonus : 0);
+  return { total, rolls, bonus: bonus?+bonus:0 };
+}
+
+// =====================================================
+//  TELA 1 — SETUP
+// =====================================================
+function initSetup() {
+  // recupera chave e save salvos no navegador
+  const savedKey = localStorage.getItem('sw_apikey');
+  if (savedKey) { $('#apiKey').value = savedKey; STATE.apiKey = savedKey; }
+  if (localStorage.getItem('sw_save')) $('#loadSaveBtn').style.display = 'inline-flex';
+
+  $('#testKeyBtn').onclick = testApiKey;
+  $('#toCreationBtn').onclick = () => {
+    const k = $('#apiKey').value.trim();
+    if (!k) { showKeyStatus('Cole sua chave da API antes de continuar.', false); return; }
+    STATE.apiKey = k;
+    STATE.model = $('#modelChoice').value;
+    localStorage.setItem('sw_apikey', k);
+    startCreation();
+  };
+  $('#loadSaveBtn').onclick = loadGame;
+}
+
+function showKeyStatus(msg, ok) {
+  $('#keyStatus').innerHTML = `<div class="${ok?'ok':'err'}">${msg}</div>`;
+}
+
+async function testApiKey() {
+  const k = $('#apiKey').value.trim();
+  if (!k) { showKeyStatus('Cole uma chave primeiro.', false); return; }
+  showKeyStatus('Testando...', true);
+  try {
+    const r = await callClaude([{role:'user', content:'Responda apenas: OK'}], 'Você é um teste. Responda OK.', 20, k, $('#modelChoice').value);
+    if (r) showKeyStatus('Chave válida. Pronto para jogar.', true);
+  } catch(e) {
+    showKeyStatus('Erro: ' + e.message, false);
+  }
+}
+
+// =====================================================
+//  TELA 2 — CRIAÇÃO DE PERSONAGEM
+// =====================================================
+function startCreation() {
+  STATE.creationSlot = 0;
+  STATE.characters = [];
+  showScreen('screen-creation');
+  renderCreation();
+}
+
+function renderCreation() {
+  DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+  $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
+  $('#charName').value = '';
+  $('#playerName').value = '';
+
+  // raças
+  $('#raceGrid').innerHTML = Object.entries(RULES.races).map(([name, r]) => {
+    const asi = Object.entries(r.asi).map(([k,v])=>`${k}+${v}`).join(' ');
+    return `<div class="choice" data-race="${name}">
+      <div class="name">${name}</div>
+      <div class="meta">${asi}${r.darkvision?' · darkvision':''}</div>
+    </div>`;
+  }).join('');
+
+  // classes
+  $('#classGrid').innerHTML = Object.entries(RULES.classes).map(([name, c]) => {
+    return `<div class="choice" data-class="${name}">
+      <div class="name">${name}</div>
+      <div class="meta">d${c.hitDie} · ${c.primary.join('/')}</div>
+    </div>`;
+  }).join('');
+
+  // atributos vazios
+  renderScorePool();
+  renderAbilityGrid();
+
+  // eventos
+  $$('#raceGrid .choice').forEach(el => el.onclick = () => {
+    $$('#raceGrid .choice').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected'); DRAFT.race = el.dataset.race; checkCreationReady();
+  });
+  $$('#classGrid .choice').forEach(el => el.onclick = () => {
+    $$('#classGrid .choice').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected'); DRAFT.cls = el.dataset.class; checkCreationReady();
+  });
+  $('#rollScoresBtn').onclick = doRollScores;
+  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); checkCreationReady(); };
+  $('#charName').oninput = checkCreationReady;
+  $('#playerName').oninput = checkCreationReady;
+  $('#charNextBtn').onclick = commitCharacter;
+}
+
+function doRollScores() {
+  DRAFT.scores = Array.from({length:6}, () => rollAbility());
+  DRAFT.assigned = {};
+  renderScorePool();
+  renderAbilityGrid();
+  $('#abilityHint').textContent = 'Clique num valor abaixo e depois num atributo para atribuí-lo.';
+  checkCreationReady();
+}
+
+let pendingScore = null;
+function renderScorePool() {
+  if (!DRAFT.scores) { $('#scorePool').innerHTML = '<span class="hint">Nenhum atributo rolado ainda.</span>'; return; }
+  const usedIdx = Object.values(DRAFT.assigned);
+  $('#scorePool').innerHTML = DRAFT.scores.map((s, i) => {
+    const used = usedIdx.includes(i);
+    return `<div class="chip ${used?'used':''}" data-idx="${i}">${s}</div>`;
+  }).join('');
+  $$('#scorePool .chip').forEach(el => el.onclick = () => {
+    if (el.classList.contains('used')) return;
+    $$('#scorePool .chip').forEach(c=>c.style.outline='');
+    pendingScore = +el.dataset.idx;
+    el.style.outline = '2px solid var(--ember)';
+  });
+}
+
+function renderAbilityGrid() {
+  $('#abilityGrid').innerHTML = RULES.abilities.map(ab => {
+    const idx = DRAFT.assigned[ab];
+    const score = idx!==undefined ? DRAFT.scores[idx] : null;
+    const raceBonus = DRAFT.race ? (RULES.races[DRAFT.race].asi[ab]||0) : 0;
+    const finalScore = score!==null ? score + raceBonus : null;
+    const mod = finalScore!==null ? abilityMod(finalScore) : null;
+    return `<div class="ability-box ${score!==null?'assigned':''}" data-ab="${ab}">
+      <div class="ab-label">${ab}${raceBonus?` <span style="color:var(--myco)">+${raceBonus}</span>`:''}</div>
+      <div class="ab-score">${finalScore!==null?finalScore:'—'}</div>
+      <div class="ab-mod">${mod!==null?fmtMod(mod):''}</div>
+    </div>`;
+  }).join('');
+  $$('#abilityGrid .ability-box').forEach(el => el.onclick = () => {
+    const ab = el.dataset.ab;
+    if (pendingScore !== null) {
+      // remove esse score de qualquer atributo anterior
+      for (const k in DRAFT.assigned) if (DRAFT.assigned[k]===pendingScore) delete DRAFT.assigned[k];
+      DRAFT.assigned[ab] = pendingScore;
+      pendingScore = null;
+      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+    } else if (DRAFT.assigned[ab] !== undefined) {
+      // clicar num atribuído remove
+      delete DRAFT.assigned[ab];
+      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+    }
+  });
+}
+
+function checkCreationReady() {
+  const allAssigned = DRAFT.scores && Object.keys(DRAFT.assigned).length === 6;
+  const ready = DRAFT.race && DRAFT.cls && allAssigned && $('#charName').value.trim() && $('#playerName').value.trim();
+  $('#charNextBtn').disabled = !ready;
+  $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
+}
+
+function commitCharacter() {
+  const scores = {};
+  RULES.abilities.forEach(ab => { scores[ab] = DRAFT.scores[DRAFT.assigned[ab]]; });
+  const char = buildCharacter({
+    name: $('#charName').value.trim(),
+    player: $('#playerName').value.trim(),
+    slot: STATE.creationSlot,
+    race: DRAFT.race, cls: DRAFT.cls, scores
+  });
+  STATE.characters.push(char);
+
+  if (STATE.creationSlot === 0) {
+    STATE.creationSlot = 1;
+    renderCreation();
+    window.scrollTo(0,0);
+  } else {
+    startGame();
+  }
+}
+
+// =====================================================
+//  TELA 3 — JOGO
+// =====================================================
+function startGame() {
+  showScreen('screen-game');
+  STATE.sceneId = 'chegada';
+  STATE.activeChar = 0;
+  STATE.history = [];
+  renderSidebar();
+  $('#saveBtn').onclick = saveGame;
+  $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#sendBtn').onclick = submitAction;
+  $('#actionInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
+  });
+  // primeira narração da cena de abertura
+  beginScene('chegada', true);
+}
+
+function renderSidebar() {
+  const sb = $('#sidebar');
+  sb.innerHTML = STATE.characters.map((c, i) => {
+    const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
+    const slots = c.spellSlots ? `<div class="spell-slots">${
+      Array.from({length:c.spellSlots.max}, (_,k)=>`<div class="slot ${k < c.spellSlots.max - c.spellSlots.used ? 'full':''}"></div>`).join('')
+    }</div>` : '';
+    return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
+      <div class="cc-name">${c.name}</div>
+      <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${c.race} ${c.cls} Nv${c.level}</div>
+      <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
+      <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
+      <div class="stat-row"><span>XP <b>${c.xp}/${RULES.xpTable[c.level+1]||'max'}</b></span></div>
+      <div class="mini-abilities">${RULES.abilities.map(ab=>`
+        <div class="mini-ab"><div class="l">${ab}</div><div class="v">${c.abilities[ab]} <span style="color:var(--stone-400);font-size:0.7rem">${fmtMod(abilityMod(c.abilities[ab]))}</span></div></div>
+      `).join('')}</div>
+      ${slots}
+    </div>`;
+  }).join('');
+}
+
+// ---------- NARRATIVA / MENSAGENS ----------
+function addMsg(role, html, who) {
+  const n = $('#narrative');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = (who?`<div class="who">${who}</div>`:'') + `<div class="body">${html}</div>`;
+  n.appendChild(div);
+  n.scrollTop = n.scrollHeight;
+  return div;
+}
+function addThinking() {
+  const n = $('#narrative');
+  const d = document.createElement('div');
+  d.className = 'thinking'; d.id = 'thinkingNode'; d.textContent = 'O Mestre observa';
+  n.appendChild(d); n.scrollTop = n.scrollHeight;
+}
+function removeThinking() { const t = $('#thinkingNode'); if (t) t.remove(); }
+
+function showRollCard(label, result, dc) {
+  const n = $('#narrative');
+  const div = document.createElement('div');
+  div.className = 'roll-card';
+  let outcome = '';
+  if (dc != null) {
+    const success = result.total >= dc;
+    outcome = `<div class="rout ${success?'success':'fail'}">${success?'SUCESSO':'FALHA'} (CD ${dc})</div>`;
+  }
+  const numClass = result.crit ? 'crit' : result.fumble ? 'fumble' : '';
+  const diceStr = result.dice ? result.dice.join(', ') : '';
+  div.innerHTML = `<div class="rtype">${label}</div>
+    <div class="rnum ${numClass} dice-anim">${result.total}</div>
+    <div class="rbreak">d20 [${diceStr}] ${result.mod>=0?'+':''}${result.mod}${result.crit?' · CRÍTICO!':''}${result.fumble?' · FALHA CRÍTICA':''}</div>
+    ${outcome}`;
+  n.appendChild(div); n.scrollTop = n.scrollHeight;
+}
+
+// ---------- FLUXO DE CENA ----------
+function updateTopbar() {
+  const sc = CAMPAIGN.scenes[STATE.sceneId];
+  $('#chapterLabel').textContent = sc.chapter;
+  $('#locationLabel').textContent = sc.location;
+}
+
+function updateQuickActions() {
+  const sc = CAMPAIGN.scenes[STATE.sceneId];
+  const acts = sc.possibleRolls || [];
+  $('#quickActions').innerHTML = acts.map(a => `<div class="qa">${a}</div>`).join('');
+  $$('#quickActions .qa').forEach(el => el.onclick = () => {
+    $('#actionInput').value = el.textContent;
+    $('#actionInput').focus();
+  });
+}
+
+function updateTurnIndicator() {
+  const c = STATE.characters[STATE.activeChar];
+  $('#turnIndicator').innerHTML = `Vez de <b style="color:var(--ember)">${c.name}</b> (${c.player})`;
+}
+
+async function beginScene(sceneId, isFirst) {
+  STATE.sceneId = sceneId;
+  const sc = CAMPAIGN.scenes[sceneId];
+  updateTopbar(); updateQuickActions(); updateTurnIndicator();
+
+  // level up automático se a cena exige
+  if (sc.levelUp) applyLevelUp(sc.levelUp);
+
+  // mostra o texto de leitura da cena imediatamente (vem do roteiro, não da IA — economiza tokens)
+  addMsg('dm', formatNarration(sc.readAloud));
+
+  // pede à IA para continuar/ambientar a cena e abrir para ação
+  const kickoff = isFirst
+    ? "Apresente a cena aos jogadores de forma viva e termine perguntando o que eles fazem. Não repita literalmente o texto que já foi lido."
+    : "Continue a partir do texto da cena. Ambiente brevemente e abra para a ação dos jogadores.";
+  await askDM(kickoff, true);
+}
+
+function formatNarration(text) {
+  // converte *itálico* em <em>
+  return text.replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g,'\n');
+}
+
+function applyLevelUp(newLevel) {
+  STATE.characters.forEach(c => {
+    if (c.level < newLevel) {
+      const hd = RULES.classes[c.cls].hitDie;
+      const gain = Math.floor(hd/2)+1 + abilityMod(c.abilities.CON); // média do hit die
+      c.level = newLevel;
+      c.maxHp += gain;
+      c.hp = c.maxHp;
+      c.xp = RULES.xpTable[newLevel];
+      if (c.spellSlots) c.spellSlots.max = Math.min(c.spellSlots.max+1, 4);
+    }
+  });
+  renderSidebar();
+  toast(`Subiram para o nível ${newLevel}! HP restaurado.`);
+}
+
+// =====================================================
+//  AÇÃO DO JOGADOR
+// =====================================================
+async function submitAction() {
+  const txt = $('#actionInput').value.trim();
+  if (!txt) return;
+  const c = STATE.characters[STATE.activeChar];
+  addMsg('player', txt, `${c.name} · ${c.player}`);
+  $('#actionInput').value = '';
+  await askDM(`[${c.name} (${c.player})]: ${txt}`, false);
+}
+
+// alterna de personagem ativo
+function switchTurn() {
+  STATE.activeChar = (STATE.activeChar + 1) % STATE.characters.length;
+  renderSidebar();
+  updateTurnIndicator();
+}
+
+// ============================================================
+//  COMUNICAÇÃO COM A IA (HAIKU) — prompt enxuto por cena
+// ============================================================
+function buildSystemPrompt() {
+  const sc = CAMPAIGN.scenes[STATE.sceneId];
+  const enc = sc.combat ? CAMPAIGN.encounters[sc.combat] : null;
+
+  const charSheets = STATE.characters.map(c =>
+    `- ${c.name} (jogador ${c.player}): ${c.race} ${c.cls} Nv${c.level}. ` +
+    `HP ${c.hp}/${c.maxHp}, AC ${c.ca}. ` +
+    `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}. ` +
+    `Saves proficientes: ${c.saves.join(', ')}. Perícia bônus +${c.prof}.` +
+    (c.spellSlots?` Spell slots: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}.`:'')
+  ).join('\n');
+
+  const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';
+
+  let combatInfo = '';
+  if (enc) {
+    combatInfo = `\n## COMBATE DESTA CENA: ${enc.name}\nInimigos:\n` +
+      enc.enemies.map(e=>`- ${e.name}: HP ${e.hp}, AC ${e.ca}, ataque +${e.mod} (${e.dmg})${e.traits?'. '+e.traits:''}`).join('\n') +
+      `\nTática: ${enc.tactics}` +
+      (enc.negotiable?`\nEste combate é NEGOCIÁVEL — os jogadores podem evitar a luta com bons testes sociais.`:'');
+  }
+
+  return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
+
+${CAMPAIGN.premise}
+
+## REGRAS DO MESTRE (siga rigorosamente)
+${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
+
+## MARCADORES DE SISTEMA (use quando aplicável, em linha própria)
+- Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12] ou [ROLL:save:DES:14] ou [ROLL:ataque:DES:0]. Depois do marcador, PARE e espere o resultado.
+- Para iniciar combate: [COMBAT_START:${sc.combat||'id'}]
+- Quando a cena termina: [SCENE_COMPLETE]
+
+## CENA ATUAL: ${sc.chapter} — ${sc.location}
+Resumo: ${sc.summary}
+Objetivos: ${sc.objectives.join('; ')}
+${sc.lore?'Lore a revelar: '+sc.lore:''}
+${sc.hooks?'Ganchos disponíveis: '+sc.hooks.join(' | '):''}
+
+## NPCs DESTA CENA
+${npcs}
+${combatInfo}
+
+## PERSONAGENS DOS JOGADORES
+${charSheets}
+
+Narre só esta cena. Seja conciso (2-4 parágrafos). Português do Brasil, termos de regra em inglês.`;
+}
+
+async function askDM(userMsg, isSceneKickoff) {
+  addThinking();
+  $('#sendBtn').disabled = true;
+
+  STATE.history.push({ role:'user', content: userMsg });
+  // mantém histórico enxuto: últimas 12 mensagens
+  const recent = STATE.history.slice(-12);
+
+  try {
+    const reply = await callClaude(recent, buildSystemPrompt(), 700, STATE.apiKey, STATE.model);
+    removeThinking();
+    STATE.history.push({ role:'assistant', content: reply });
+    await processDMReply(reply);
+  } catch(e) {
+    removeThinking();
+    addMsg('dm', `<span style="color:var(--blood)">O Mestre tropeçou: ${e.message}. Tente novamente ou verifique sua chave/créditos.</span>`);
+  } finally {
+    $('#sendBtn').disabled = false;
+  }
+}
+
+// processa marcadores [ROLL], [COMBAT_START], [SCENE_COMPLETE]
+async function processDMReply(reply) {
+  // separa marcadores do texto
+  const rollMatch = reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)\]/);
+  const combatMatch = reply.match(/\[COMBAT_START:([^\]]+)\]/);
+  const sceneComplete = reply.includes('[SCENE_COMPLETE]');
+
+  // texto limpo de marcadores
+  const clean = reply
+    .replace(/\[ROLL:[^\]]+\]/g,'')
+    .replace(/\[COMBAT_START:[^\]]+\]/g,'')
+    .replace(/\[SCENE_COMPLETE\]/g,'')
+    .trim();
+
+  if (clean) addMsg('dm', formatNarration(clean));
+
+  // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
+  if (rollMatch) {
+    const [, tipo, atr, cd] = rollMatch;
+    const c = STATE.characters[STATE.activeChar];
+    const abr = atr.toUpperCase().slice(0,3);
+    let mod = abilityMod(c.abilities[abr] || 10);
+    // adiciona proficiência se for save proficiente
+    if (tipo.toLowerCase()==='save' && c.saves.includes(abr)) mod += c.prof;
+    // perícias: adiciona proficiência por padrão (simplificação)
+    else if (tipo.toLowerCase()!=='save' && tipo.toLowerCase()!=='ataque') mod += c.prof;
+    else if (tipo.toLowerCase()==='ataque') mod += c.prof;
+
+    const result = d20(mod);
+    const cdNum = +cd > 0 ? +cd : null;
+    showRollCard(`${c.name} · ${tipo} (${abr})`, result, cdNum);
+
+    // devolve o resultado para a IA narrar a consequência
+    const outcome = cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado';
+    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr}): d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}${result.crit?' (CRÍTICO!)':''}${result.fumble?' (FALHA CRÍTICA!)':''}. Narre a consequência e continue.`, false);
+    return;
+  }
+
+  // início de combate
+  if (combatMatch) {
+    startCombat(combatMatch[1]);
+    return;
+  }
+
+  // fim de cena → transição
+  if (sceneComplete) {
+    const sc = CAMPAIGN.scenes[STATE.sceneId];
+    if (sc.ending) {
+      addMsg('dm', `<div style="text-align:center;color:var(--gold-bone);font-family:var(--font-display);font-size:1.3rem;margin-top:20px">⚜ Fim da aventura ⚜</div>`);
+      return;
+    }
+    if (sc.next) {
+      setTimeout(() => {
+        addMsg('dm', `<div style="text-align:center;color:var(--ember);font-family:var(--font-mono);font-size:0.8rem;letter-spacing:0.15em;margin:14px 0">— A jornada continua —</div>`);
+        beginScene(sc.next, false);
+      }, 1400);
+    }
+  }
+
+  // alterna turno entre jogadores após ação resolvida (fora de combate)
+  if (!STATE.inCombat && !rollMatch) switchTurn();
+}
+
+// ---------- COMBATE (simplificado, IA narra, código rola) ----------
+function startCombat(encId) {
+  const enc = CAMPAIGN.encounters[encId];
+  if (!enc) return;
+  STATE.inCombat = true;
+  STATE.combat = {
+    enc: encId,
+    enemies: enc.enemies.map(e => ({...e, curHp: e.hp})),
+  };
+  addMsg('dm', `<div style="text-align:center;color:var(--blood);font-family:var(--font-mono);font-size:0.82rem;letter-spacing:0.18em;margin:10px 0">⚔ COMBATE: ${enc.name.toUpperCase()} ⚔</div>`);
+  toast('Combate iniciado! Role iniciativa.');
+  // a IA conduz o combate via narração; o código continua rolando dados quando ela pede [ROLL]
+}
+
+// =====================================================
+//  CHAMADA À API ANTHROPIC
+// =====================================================
+async function callClaude(messages, system, maxTokens, key, model) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
+}
+
+// =====================================================
+//  SALVAR / CARREGAR
+// =====================================================
+function saveGame() {
+  const save = {
+    characters: STATE.characters,
+    activeChar: STATE.activeChar,
+    sceneId: STATE.sceneId,
+    history: STATE.history,
+    model: STATE.model
+  };
+  localStorage.setItem('sw_save', JSON.stringify(save));
+  toast('Jogo salvo neste navegador.');
+}
+
+function loadGame() {
+  const raw = localStorage.getItem('sw_save');
+  if (!raw) return;
+  const save = JSON.parse(raw);
+  STATE.apiKey = $('#apiKey').value.trim() || localStorage.getItem('sw_apikey');
+  STATE.characters = save.characters;
+  STATE.activeChar = save.activeChar;
+  STATE.sceneId = save.sceneId;
+  STATE.history = save.history;
+  STATE.model = save.model || 'claude-haiku-4-5';
+
+  showScreen('screen-game');
+  renderSidebar();
+  updateTopbar(); updateQuickActions(); updateTurnIndicator();
+  $('#saveBtn').onclick = saveGame;
+  $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#sendBtn').onclick = submitAction;
+  $('#actionInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
+  });
+
+  // re-renderiza histórico
+  const n = $('#narrative'); n.innerHTML = '';
+  save.history.forEach(m => {
+    if (m.role === 'assistant') {
+      const clean = m.content.replace(/\[[^\]]+\]/g,'').trim();
+      if (clean) addMsg('dm', formatNarration(clean));
+    } else if (m.role === 'user' && !m.content.startsWith('[RESULTADO') && !m.content.includes('Apresente a cena')) {
+      const match = m.content.match(/^\[([^\]]+)\]:\s*(.+)/s);
+      if (match) addMsg('player', match[2], match[1]);
+    }
+  });
+  toast('Jogo carregado.');
+}
+
+// ---------- INIT ----------
+initSetup();
+
+</script>
+</body>
+</html>
