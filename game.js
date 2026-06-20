@@ -87,6 +87,27 @@ function rollDamage(spec, crit) {
   return { total, detail: `${nDice}d${sides}${spec.bonus?fmtMod(spec.bonus):''} (${rolls.join(',')})` };
 }
 
+// rola o dano de um ATAQUE com features (Armas Grandes re-rola 1/2, Ataque Furtivo, crit dobra tudo).
+function rollAttackDamage(ap, crit) {
+  let total = 0; const parts = [];
+  if (ap.dmg) {
+    const m = ap.dmg.match(/(\d+)d(\d+)/);
+    let n = +m[1]; const sides = +m[2];
+    if (crit) n *= 2;
+    if (crit && ap.savage) n += 1;                       // Ataques Selvagens (Meio-Orc)
+    const r = [];
+    for (let k=0;k<n;k++){ let v=rollDie(sides); if (ap.gwf && (v===1||v===2)) v=rollDie(sides); r.push(v); }
+    total += r.reduce((a,b)=>a+b,0); parts.push(`${n}d${sides}(${r.join(',')})`);
+  } else { total += (ap.flat||1); parts.push(`${ap.flat||1}`); }
+  if (ap.sneak) {                                         // Ataque Furtivo (Ladino)
+    let n = ap.sneak; if (crit) n *= 2;
+    const r = []; for (let k=0;k<n;k++) r.push(rollDie(6));
+    total += r.reduce((a,b)=>a+b,0); parts.push(`Furtivo ${n}d6(${r.join(',')})`);
+  }
+  if (ap.bonus) { total += ap.bonus; parts.push(fmtMod(ap.bonus)); }
+  return { total, detail: parts.join(' + ') };
+}
+
 // =====================================================
 //  TELA 1 — SETUP
 // =====================================================
@@ -182,7 +203,8 @@ function startCreation() {
 
 function renderCreation() {
   DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
-            skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null };
+            skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
+            fightingStyle:null, archetype:null };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
   $('#playerName').value = '';
@@ -208,7 +230,7 @@ function renderCreation() {
   }).join('');
 
   // seções dependentes começam ocultas
-  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection'].forEach(s=>$(s).classList.add('hide'));
+  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection','#classOptionsSection'].forEach(s=>$(s).classList.add('hide'));
 
   // atributos vazios
   renderScorePool();
@@ -228,7 +250,8 @@ function renderCreation() {
     el.classList.add('selected');
     DRAFT.cls = el.dataset.class; DRAFT.skills = [];
     DRAFT.armor = null; DRAFT.weapon = null;   // recalcula equipamento padrão p/ a nova classe
-    renderSkills(); renderEquipment(); checkCreationReady();
+    DRAFT.fightingStyle = null; DRAFT.archetype = null;
+    renderSkills(); renderEquipment(); renderClassOptions(); checkCreationReady();
   });
   $('#rollScoresBtn').onclick = doRollScores;
   $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
@@ -371,8 +394,36 @@ function draftAbilities() {
 }
 function updateAC() {
   if (!DRAFT.cls) return;
-  const ac = computeAC(DRAFT.cls, draftAbilities(), DRAFT.armor, DRAFT.shield);
+  let ac = computeAC(DRAFT.cls, draftAbilities(), DRAFT.armor, DRAFT.shield);
+  if (DRAFT.fightingStyle === 'Defesa' && DRAFT.armor && DRAFT.armor !== 'Nenhuma') ac += 1;
   const el = $('#acPreview'); if (el) el.textContent = ac;
+}
+
+// ---- Opções de classe: Estilo de Luta (Guerreiro nv1) e Subclasse (nv1) ----
+function renderClassOptions() {
+  const sec = $('#classOptionsSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  const cls = DRAFT.cls;
+  const hasStyle = fightingStyleLevel(cls) === 1;                 // no nível 1, só Guerreiro
+  const subAtL1 = RULES.classes[cls].subclassLevel === 1;         // Bruxo, Clérigo, Feiticeiro
+  if (!hasStyle && !subAtL1) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+
+  const fw = $('#fightingStyleWrap');
+  if (hasStyle) {
+    fw.classList.remove('hide');
+    $('#fightingStyleGrid').innerHTML = Object.entries(RULES.fightingStyles).map(([name,desc])=>
+      `<div class="choice ${DRAFT.fightingStyle===name?'selected':''}" data-fs="${name}"><div class="name">${name}</div><div class="meta">${desc}</div></div>`).join('');
+    $$('#fightingStyleGrid .choice').forEach(el=>el.onclick=()=>{ DRAFT.fightingStyle=el.dataset.fs; renderClassOptions(); updateAC(); checkCreationReady(); });
+  } else { fw.classList.add('hide'); DRAFT.fightingStyle=null; }
+
+  const aw = $('#archetypeWrap');
+  if (subAtL1) {
+    aw.classList.remove('hide');
+    $('#archetypeGrid').innerHTML = (RULES.classes[cls].subclasses||[]).map(name=>
+      `<div class="choice ${DRAFT.archetype===name?'selected':''}" data-arch="${name}"><div class="name">${name}</div></div>`).join('');
+    $$('#archetypeGrid .choice').forEach(el=>el.onclick=()=>{ DRAFT.archetype=el.dataset.arch; renderClassOptions(); checkCreationReady(); });
+  } else { aw.classList.add('hide'); DRAFT.archetype=null; }
 }
 
 function doRollScores() {
@@ -445,7 +496,9 @@ function checkCreationReady() {
   const skillsOk = DRAFT.cls && DRAFT.skills.length === RULES.classes[DRAFT.cls].skillCount;
   const extraN = r ? (r.skillChoiceExtra||0) : 0;
   const extraOk = DRAFT.skillsExtra.length === extraN;
-  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && allAssigned && skillsOk && extraOk
+  const styleOk = !DRAFT.cls || fightingStyleLevel(DRAFT.cls) !== 1 || DRAFT.fightingStyle;
+  const archOk  = !DRAFT.cls || RULES.classes[DRAFT.cls].subclassLevel !== 1 || DRAFT.archetype;
+  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && allAssigned && skillsOk && extraOk && styleOk && archOk
     && $('#charName').value.trim() && $('#playerName').value.trim();
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
@@ -462,7 +515,8 @@ function commitCharacter() {
     asiChoices: DRAFT.asiChoices,
     skills: [...DRAFT.skills, ...DRAFT.skillsExtra],
     armor: DRAFT.armor, shield: DRAFT.shield,
-    weapons: DRAFT.weapon ? [DRAFT.weapon] : []
+    weapons: DRAFT.weapon ? [DRAFT.weapon] : [],
+    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype
   });
   STATE.characters.push(char);
 
@@ -497,23 +551,103 @@ function startGame() {
 
 function renderSidebar() {
   const sb = $('#charPanel');
-  sb.innerHTML = STATE.characters.map((c, i) => {
+  const restBar = `<div class="rest-bar"><button class="rest-btn" id="shortRestBtn">☕ Descanso Curto</button><button class="rest-btn" id="longRestBtn">🌙 Descanso Longo</button></div>`;
+  sb.innerHTML = restBar + STATE.characters.map((c, i) => {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
-    const slots = c.spellSlots ? `<div class="spell-slots">${
-      Array.from({length:c.spellSlots.max}, (_,k)=>`<div class="slot ${k < c.spellSlots.max - c.spellSlots.used ? 'full':''}"></div>`).join('')
-    }</div>` : '';
+    const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
       <div class="cc-name">${c.name}</div>
-      <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${c.race} ${c.cls} Nv${c.level}</div>
+      <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${sub}</div>
       <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
       <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
       <div class="stat-row"><span>XP <b>${c.xp}/${RULES.xpTable[c.level+1]||'max'}</b></span></div>
       <div class="mini-abilities">${RULES.abilities.map(ab=>`
         <div class="mini-ab"><div class="l">${ab}</div><div class="v">${c.abilities[ab]} <span style="color:var(--stone-400);font-size:0.7rem">${fmtMod(abilityMod(c.abilities[ab]))}</span></div></div>
       `).join('')}</div>
-      ${slots}
+      ${resourcesHtml(c, i)}
     </div>`;
   }).join('');
+  $('#shortRestBtn').onclick = () => doRest('short');
+  $('#longRestBtn').onclick = () => doRest('long');
+  attachResourceHandlers();
+}
+
+// HTML dos recursos clicáveis da ficha (slots, Fúria, contadores, pool).
+function resourcesHtml(c, i) {
+  const res = classResources(c);
+  if (!res.length) return '';
+  const rows = res.map(r => {
+    if (r.kind === 'slots') {
+      const left = r.max - (c.spellSlots ? c.spellSlots.used : 0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="slot" data-idx="${k}"></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
+    }
+    if (r.kind === 'toggle') {   // Fúria
+      const left = r.max - (c.resUsed[r.key]||0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}"></span>`).join('');
+      return `<div class="res-row"><button class="res-btn ${c.raging?'on':''}" data-ci="${i}" data-rk="rage">${c.raging?'Fúria ATIVA ●':'Fúria'}</button><span class="res-pips" title="usos">${pips}</span></div>`;
+    }
+    if (r.kind === 'counter') {
+      const left = r.max - (c.resUsed[r.key]||0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="ctr" data-key="${r.key}" data-idx="${k}"></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
+    }
+    if (r.kind === 'pool') {
+      const left = r.max - (c.resUsed[r.key]||0);
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pool"><button class="res-mini" data-ci="${i}" data-rk="pool-" data-key="${r.key}">−5</button><b>${left}</b>/${r.max}<button class="res-mini" data-ci="${i}" data-rk="poolr" data-key="${r.key}">↺</button></span></div>`;
+    }
+    return '';
+  }).join('');
+  return `<div class="res-block">${rows}</div>`;
+}
+
+function attachResourceHandlers() {
+  $$('#charPanel [data-rk]').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    const rk = el.dataset.rk;
+    if (rk === 'slot') {
+      const idx = +el.dataset.idx, left = c.spellSlots.max - c.spellSlots.used;
+      c.spellSlots.used += (idx < left) ? 1 : -1;          // pip cheio gasta; vazio recupera
+      c.spellSlots.used = Math.max(0, Math.min(c.spellSlots.max, c.spellSlots.used));
+    } else if (rk === 'ctr') {
+      const key = el.dataset.key, idx = +el.dataset.idx;
+      const r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = Math.max(0, Math.min(r.max, (c.resUsed[key]||0) + ((idx < left) ? 1 : -1)));
+    } else if (rk === 'rage') {
+      if (c.raging) { c.raging = false; }                  // desligar não devolve o uso
+      else { const left = ragesByLevel(c.level) - (c.resUsed.rage||0);
+             if (left > 0) { c.raging = true; c.resUsed.rage = (c.resUsed.rage||0)+1; }
+             else toast('Sem usos de Fúria. Descanse.'); }
+    } else if (rk === 'pool-') {
+      const key = el.dataset.key, r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = (c.resUsed[key]||0) + Math.min(5, left);
+    } else if (rk === 'poolr') {
+      c.resUsed[el.dataset.key] = 0;
+    }
+    renderSidebar();
+  });
+}
+
+// Descanso: curto restaura recursos 'short' (e Pacto do Bruxo); longo restaura tudo + HP.
+function doRest(kind) {
+  STATE.characters.forEach(c => {
+    const res = classResources(c);
+    if (kind === 'long') {
+      c.hp = c.maxHp; c.raging = false; c.resUsed = {};
+      if (c.spellSlots) c.spellSlots.used = 0;
+    } else {
+      res.forEach(r => {
+        if (r.recharge === 'short') {
+          if (r.kind === 'slots' && c.spellSlots) c.spellSlots.used = 0;  // Bruxo (Pacto)
+          else c.resUsed[r.key] = 0;
+        }
+      });
+    }
+  });
+  renderSidebar();
+  toast(kind === 'long' ? 'Descanso longo: HP e recursos restaurados.' : 'Descanso curto: recursos de descanso curto restaurados.');
 }
 
 // ---------- NARRATIVA / MENSAGENS ----------
@@ -695,11 +829,13 @@ function buildSystemPrompt() {
   const enc = sc.combat ? CAMPAIGN.encounters[sc.combat] : null;
 
   const charSheets = STATE.characters.map(c =>
-    `- ${c.name} (jogador ${c.player}): ${c.race} ${c.cls} Nv${c.level}. ` +
+    `- ${c.name} (jogador ${c.player}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.archetype?` [${c.archetype}]`:''} Nv${c.level}${c.raging?' — EM FÚRIA':''}. ` +
     `HP ${c.hp}/${c.maxHp}, AC ${c.ca}. ` +
     `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}. ` +
-    `Saves proficientes: ${c.saves.join(', ')}. Perícia bônus +${c.prof}.` +
-    (c.spellSlots?` Spell slots: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}.`:'')
+    `Saves proficientes: ${c.saves.join(', ')}. Perícias proficientes: ${(c.skills||[]).join(', ')||'nenhuma'}. Bônus de proficiência +${c.prof}.` +
+    (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
+    (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
+    (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'')
   ).join('\n');
 
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';
@@ -794,9 +930,9 @@ async function processDMReply(reply) {
     // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
     let dmgNote = '';
     if (tipo.toLowerCase() === 'ataque') {
-      const spec = weaponDamageSpec(c, abr);
-      const dmg = rollDamage(spec, result.crit);
-      dmgNote = ` Dano se acertar: ${dmg.total} [${spec.type}] (${spec.name}: ${dmg.detail}${result.crit?' — CRÍTICO, dados dobrados':''}).`;
+      const ap = attackProfile(c, abr, adv && !dis);
+      const dmg = rollAttackDamage(ap, result.crit);
+      dmgNote = ` Dano se acertar: ${dmg.total} [${ap.type}] (${ap.name}: ${dmg.detail}${result.crit?' — CRÍTICO':''}${ap.sneak?' · Ataque Furtivo!':''}${c.raging?' · Fúria':''}).`;
     }
 
     const outcome = cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado';

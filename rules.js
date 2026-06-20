@@ -437,6 +437,14 @@ const RULES = {
     }
   },
 
+  // Estilos de Luta (Guerreiro nv1; Paladino/Patrulheiro nv2)
+  fightingStyles: {
+    'Arquearia':     '+2 nas jogadas de ataque com armas à distância.',
+    'Defesa':        '+1 na CA enquanto usar armadura.',
+    'Duelo':         '+2 no dano com arma de uma mão corpo-a-corpo.',
+    'Armas Grandes': 'Re-rola 1 e 2 nos dados de dano de armas de duas mãos.'
+  },
+
   // XP por nível (Stormwreck cobre 1-3; incluímos até 4 para folga)
   xpTable: { 1:0, 2:300, 3:900, 4:2700 },
   profByLevel: { 1:2, 2:2, 3:2, 4:2 }
@@ -606,11 +614,18 @@ function rollModifiers(c, tipo, abr, tag) {
     if (tg && (fx.saveAdv || []).some(s => tg.includes(s.toLowerCase()) || s.toLowerCase().includes(tg))) adv = true;
     // Astúcia Gnômica: vantagem em saves de INT/SAB/CAR contra magia
     if ((fx.saveAdvVsMagic || []).includes(abr) && (tg.includes('magia') || tg.includes('magic'))) adv = true;
+    // Fúria: vantagem em saves de Força
+    if (c.raging && abr === 'FOR') adv = true;
   } else if (t === 'ataque' || t === 'attack') {
     mod += c.prof; prof = true;
+    // Estilo de Luta — Arquearia: +2 em ataques à distância
+    const w0 = RULES.weapons[(c.weapons && c.weapons[0])];
+    if (c.fightingStyle === 'Arquearia' && w0 && !w0.melee) mod += 2;
   } else {
     // teste de perícia: proficiência só se o personagem realmente a tem
     if (skillProficient(c, tipo)) { mod += c.prof; prof = true; }
+    // Fúria: vantagem em testes de Força (ex.: Atletismo)
+    if (c.raging && abr === 'FOR') adv = true;
   }
 
   // Sensibilidade à Luz Solar (Drow): desvantagem em ataques e Percepção sob sol direto
@@ -627,6 +642,54 @@ function weaponDamageSpec(c, abr) {
   const savage = !!(c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.savageCrit);
   if (!w) return { name: 'desarmado', dmg: null, flat: 1, bonus: 0, type: 'concussão', savage };
   return { name: wname, dmg: w.dmg, bonus: abilityMod(c.abilities[abr] || 10), type: w.type, savage };
+}
+
+// ----- FEATURES DE CLASSE (Fase 4) -----
+function sneakAttackDice(level) { return Math.ceil(level / 2); }   // 1d6 nv1-2, 2d6 nv3-4
+function ragesByLevel(level)    { return level >= 3 ? 3 : 2; }     // 2 usos nv1-2, 3 nv3-5
+function rageDamage(level)      { return 2; }                      // +2 de dano até nv8
+function fightingStyleLevel(cls){ return cls === 'Guerreiro' ? 1 : (cls === 'Paladino' || cls === 'Patrulheiro') ? 2 : null; }
+
+// Perfil de dano de um ATAQUE, com features (Duelo, Fúria, Ataque Furtivo, Armas Grandes).
+// hadAdvantage = se a jogada de ataque teve vantagem (gatilho do Ataque Furtivo).
+function attackProfile(c, abr, hadAdvantage) {
+  const wname = (c.weapons && c.weapons[0]) || null;
+  const w = wname && RULES.weapons[wname];
+  const fs = c.fightingStyle;
+  const props = (w && w.props) || [];
+  const twoH = props.includes('duas-mãos');
+  const oneHandMelee = w && w.melee && !twoH;
+  const finesseOrRanged = w && (!w.melee || props.includes('acuidade'));
+  const savage = !!(c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.savageCrit);
+
+  let bonus = abilityMod(c.abilities[abr] || 10);
+  if (fs === 'Duelo' && oneHandMelee) bonus += 2;                        // Estilo: Duelo
+  if (c.raging && w && w.melee && abr === 'FOR') bonus += rageDamage(c.level); // Fúria
+
+  let sneak = 0;                                                          // Ataque Furtivo
+  if (c.cls === 'Ladino' && hadAdvantage && finesseOrRanged) sneak = sneakAttackDice(c.level);
+
+  const gwf = fs === 'Armas Grandes' && twoH;                            // Estilo: Armas Grandes
+  return { name: wname || 'desarmado', dmg: w ? w.dmg : null, flat: w ? 0 : 1,
+           bonus, type: w ? w.type : 'concussão', savage, sneak, gwf };
+}
+
+// Recursos rastreáveis da classe no nível atual (slots, Fúria, etc.).
+// kind: 'slots' | 'toggle' (Fúria) | 'counter' | 'pool'. recharge: 'short' | 'long'.
+function classResources(c) {
+  const out = [], L = c.level;
+  if (c.spellSlots) out.push({ key:'slot1', label: c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia (nv1)', kind:'slots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  switch (c.cls) {
+    case 'Bárbaro':    out.push({ key:'rage', label:'Fúria', kind:'toggle', max: ragesByLevel(L), recharge:'long' }); break;
+    case 'Guerreiro':  out.push({ key:'secondwind', label:'Retomar Fôlego', kind:'counter', max:1, recharge:'short' });
+                       if (L >= 2) out.push({ key:'actionsurge', label:'Surto de Ação', kind:'counter', max:1, recharge:'short' }); break;
+    case 'Clérigo':    if (L >= 2) out.push({ key:'channel', label:'Canalizar Divindade', kind:'counter', max:1, recharge:'short' }); break;
+    case 'Monge':      if (L >= 2) out.push({ key:'ki', label:'Pontos de Ki', kind:'counter', max:L, recharge:'short' }); break;
+    case 'Bardo':      out.push({ key:'bardic', label:'Inspiração de Bardo', kind:'counter', max: Math.max(1, abilityMod(c.abilities.CAR)), recharge:'long' }); break;
+    case 'Paladino':   out.push({ key:'layon', label:'Imposição das Mãos (HP)', kind:'pool', max: L*5, recharge:'long' }); break;
+    case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
+  }
+  return out;
 }
 
 // ============================================================
@@ -658,7 +721,9 @@ function buildCharacter(opts) {
   // equipamento/CA
   const armorName = opts.armor || 'Nenhuma';
   const hasShield = !!opts.shield;
-  const ca = computeAC(cls, abilities, armorName, hasShield);
+  const fightingStyle = opts.fightingStyle || null;
+  let ca = computeAC(cls, abilities, armorName, hasShield);
+  if (fightingStyle === 'Defesa' && armorName !== 'Nenhuma') ca += 1;   // Estilo de Luta: Defesa
   const weapons = opts.weapons || [];
 
   // proficiências de armadura/arma (raça pode adicionar — Anão da Montanha)
@@ -705,6 +770,10 @@ function buildCharacter(opts) {
     spellAbility: c.spell ? c.spell.ability : null,
     spellDC,
     subclassPending: c.subclassLevel === 1 ? c.subclasses : null,
+    fightingStyle,
+    archetype: opts.archetype || null,
+    raging: false,
+    resUsed: {},                       // contagem de usos por recurso (Fase 4)
     conditions: [],
     inventory: ['Equipamento inicial de ' + cls]
   };

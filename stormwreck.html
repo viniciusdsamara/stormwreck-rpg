@@ -351,6 +351,26 @@
   .rl-entry.ok .rl-out, .rl-entry.crit .rl-out { color:var(--myco); }
   .rl-entry.fail .rl-out, .rl-entry.fumble .rl-out { color:var(--blood); }
 
+  /* ====== Recursos de classe (botões na ficha) ====== */
+  .rest-bar { display:flex; gap:8px; margin-bottom:14px; }
+  .rest-btn { flex:1; background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:8px; padding:7px 6px; font-size:0.74rem; cursor:pointer; transition:all .14s; }
+  .rest-btn:hover { border-color:var(--ember); color:var(--parch); }
+  .res-block { margin-top:12px; padding-top:10px; border-top:1px solid var(--basalt-600); display:flex; flex-direction:column; gap:7px; }
+  .res-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .res-label { font-size:0.74rem; color:var(--stone-300); }
+  .res-pips { display:flex; gap:4px; }
+  .res-pip { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); cursor:pointer; transition:transform .1s, background .12s; }
+  .res-pip.full { background:var(--azure); }
+  .res-pip:hover { transform:scale(1.2); border-color:var(--ember); }
+  .res-btn { background:var(--basalt-900); border:1px solid var(--blood); color:var(--blood); border-radius:7px; padding:4px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; transition:all .14s; }
+  .res-btn:hover { background:rgba(196,72,90,0.12); }
+  .res-btn.on { background:var(--blood); color:#fff; animation: ragepulse 1.2s infinite; }
+  @keyframes ragepulse { 50% { box-shadow:0 0 10px -2px var(--blood); } }
+  .res-pool { font-size:0.78rem; color:var(--gold-bone); display:flex; align-items:center; gap:6px; }
+  .res-pool b { color:var(--myco); }
+  .res-mini { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:6px; padding:2px 7px; font-size:0.7rem; cursor:pointer; }
+  .res-mini:hover { border-color:var(--ember); color:var(--parch); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -495,6 +515,17 @@
           <input type="checkbox" id="shieldCheck"> Usar escudo (+2 CA)
         </label>
         <div class="ac-badge"><b id="acPreview">10</b><span>Classe de Armadura</span></div>
+      </div>
+
+      <div class="subsection hide" id="classOptionsSection">
+        <div id="fightingStyleWrap" class="hide">
+          <label class="field"><span>Estilo de Luta</span></label>
+          <div class="choice-grid" id="fightingStyleGrid"></div>
+        </div>
+        <div id="archetypeWrap" class="hide">
+          <label class="field"><span>Subclasse</span></label>
+          <div class="choice-grid" id="archetypeGrid"></div>
+        </div>
       </div>
     </div>
 
