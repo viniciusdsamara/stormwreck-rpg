@@ -3,16 +3,23 @@
 //  Porta a criação guiada da V1, reaproveitando rules.js. Cada jogador
 //  cria UM personagem; ao concluir, ON_DONE(char) devolve ao lobby.
 // ====================================================================
-let DRAFT = null, ON_DONE = null;
+let DRAFT = null, ON_DONE = null, PLAYER_NAME = 'Jogador', CC = { history:[], spec:null };
 const POINT_COST = {8:0,9:1,10:2,11:3,12:4,13:5,14:7,15:9};
 const POINT_BUDGET = 27;
 
+// ponto de entrada: escolhe o modo (guiada ou conversa com o Mestre)
 function startCreationMp(playerName, onDone){
-  ON_DONE = onDone;
+  ON_DONE = onDone; PLAYER_NAME = playerName || 'Jogador';
+  show('screen-cmode');
+  $('#cmGuided').onclick = openGuidedCreation;
+  $('#cmChat').onclick = openChatCreation;
+  $('#cmBack').onclick = () => { show('screen-room'); refreshRoom(); };
+}
+function openGuidedCreation(){
   DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
             fightingStyle:null, archetype:null, cantrips:[], spells:[], expertise:[],
-            player: playerName || 'Jogador',
+            player: PLAYER_NAME,
             profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   show('screen-create');
   renderCreationForm();
@@ -55,7 +62,7 @@ function renderCreationForm(){
     const el = $('#pf_'+k); if (el){ el.value=''; el.oninput = () => DRAFT.profile[k] = el.value; }
   });
   $('#cCreateBtn').onclick = finishCreationMp;
-  $('#cBackBtn').onclick = () => { show('screen-room'); refreshRoom(); };
+  $('#cBackBtn').onclick = () => show('screen-cmode');
   checkCreationReady();
 }
 
@@ -339,4 +346,143 @@ function finishCreationMp(){
     profile: { ...DRAFT.profile }
   });
   if (ON_DONE) ON_DONE(char);
+}
+
+// ====================================================================
+//  Criação por conversa com o Mestre (IA) — usa a Edge Function da sala
+// ====================================================================
+function fmtNarr(t){ return (t||'').replace(/\*([^*]+)\*/g, '<em>$1</em>'); }
+
+function openChatCreation(){
+  CC = { history:[], spec:null };
+  show('screen-cchat');
+  $('#ccChat').innerHTML = '';
+  $('#ccFinishBtn').classList.add('hide');
+  $('#ccSendBtn').onclick = ccSend;
+  $('#ccBackBtn').onclick = () => show('screen-cmode');
+  $('#ccFinishBtn').onclick = ccFinish;
+  $('#ccInput').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ccSend(); } };
+  ccAddMsg('dm', 'Olá! Vou te ajudar a criar seu aventureiro para *Stormwreck Isle*. Me conta: que herói você imagina? Pode ser um conceito ("um anão durão"), uma raça/classe, ou só uma vibe.');
+}
+function ccAddMsg(role, text){
+  const n = $('#ccChat');
+  const d = document.createElement('div');
+  d.className = 'cc-msg ' + role;
+  if (role === 'dm') d.innerHTML = fmtNarr(text); else d.textContent = text;
+  n.appendChild(d); n.scrollTop = n.scrollHeight;
+}
+function creationChatSystemPrompt(){
+  const races = Object.keys(RULES.races).join(', ');
+  const classes = Object.keys(RULES.classes).join(', ');
+  const skills = Object.keys(RULES.skills).join(', ');
+  return `Você é o Mestre de D&D 5e ajudando a criar UM personagem de NÍVEL 1 para a campanha Dragons of Stormwreck Isle. Fale em português do Brasil, de forma acolhedora e concisa (2-4 frases por vez): faça perguntas, sugira e explique. Conduza por: conceito → raça (e sub-raça se houver) → classe → atributos → perícias → equipamento → opções de classe (estilo de luta/subclasse) → magias (se conjurador) → perfil (aparência, contexto, motivações, defeitos, qualidades).
+
+Opções válidas (use os nomes EXATOS):
+- Raças: ${races}. (algumas têm sub-raças)
+- Classes: ${classes}.
+- Atributos: point-buy de 27 pontos, cada um entre 8 e 15.
+- Perícias: ${skills}.
+
+Quando — e SOMENTE quando — tudo estiver definido e o jogador confirmar, inclua na MESMA mensagem, na última linha, um bloco JSON exatamente neste formato (nomes exatos do sistema; campos não aplicáveis como null ou lista vazia):
+[CHARACTER]{"name":"","race":"","subrace":null,"cls":"","base":{"FOR":10,"DES":10,"CON":10,"INT":10,"SAB":10,"CAR":10},"asiChoices":[],"skills":[],"armor":"Nenhuma","shield":false,"weapon":"","fightingStyle":null,"archetype":null,"cantrips":[],"spells":[],"expertise":[],"profile":{"appearance":"","context":"","motivation":"","flaw":"","quality":""}}[/CHARACTER]
+NÃO emita o bloco antes de tudo estar pronto e confirmado.`;
+}
+async function ccSend(){
+  const txt = $('#ccInput').value.trim();
+  if (!txt) return;
+  ccAddMsg('player', txt);
+  $('#ccInput').value = '';
+  CC.history.push({ role:'user', content: txt });
+  const thinking = document.createElement('div');
+  thinking.className = 'cc-msg dm'; thinking.textContent = 'O Mestre pensa…';
+  $('#ccChat').appendChild(thinking); $('#ccChat').scrollTop = $('#ccChat').scrollHeight;
+  $('#ccSendBtn').disabled = true;
+  try {
+    const reply = await callClaudeMp(CC.history.slice(-16), creationChatSystemPrompt(), 700);
+    thinking.remove();
+    CC.history.push({ role:'assistant', content: reply });
+    const m = reply.match(/\[CHARACTER\]([\s\S]*?)\[\/CHARACTER\]/);
+    const visible = reply.replace(/\[CHARACTER\][\s\S]*?\[\/CHARACTER\]/, '').trim();
+    if (visible) ccAddMsg('dm', visible);
+    if (m) {
+      try { CC.spec = JSON.parse(m[1].trim()); $('#ccFinishBtn').classList.remove('hide'); ccAddMsg('dm', '✓ *Ficha montada!* Revise acima e clique em **Concluir personagem** — ou peça ajustes.'); }
+      catch (e) { ccAddMsg('dm', '(tive um problema ao montar a ficha — pode confirmar os detalhes de novo?)'); }
+    }
+  } catch (e) {
+    thinking.remove(); ccAddMsg('dm', 'Erro: ' + e.message);
+  } finally { $('#ccSendBtn').disabled = false; }
+}
+function ccFinish(){
+  if (!CC.spec) { $('#ccInput').value = 'Pode finalizar minha ficha agora?'; ccSend(); return; }
+  const char = buildFromSpec(CC.spec);
+  if (ON_DONE) ON_DONE(char);
+}
+// monta o personagem a partir do JSON do Mestre, validando contra as regras
+function buildFromSpec(s){
+  s = s || {};
+  const race = RULES.races[s.race] ? s.race : 'Humano';
+  const r = RULES.races[race];
+  const subs = Object.keys(r.subraces || {});
+  const subrace = subs.length ? (r.subraces[s.subrace] ? s.subrace : subs[0]) : null;
+  const cls = RULES.classes[s.cls] ? s.cls : 'Guerreiro';
+  const c = RULES.classes[cls];
+  const base = {};
+  RULES.abilities.forEach(a => { let v = (s.base && +s.base[a]) || 10; base[a] = Math.max(8, Math.min(15, v)); });
+  let asiChoices = [];
+  if (r.asiChoice) {
+    const excl = r.asiChoice.exclude || [];
+    asiChoices = (Array.isArray(s.asiChoices) ? s.asiChoices : []).filter(a => RULES.abilities.includes(a) && !excl.includes(a));
+    asiChoices = Array.from(new Set(asiChoices)).slice(0, r.asiChoice.count);
+    RULES.abilities.forEach(a => { if (asiChoices.length < r.asiChoice.count && !asiChoices.includes(a) && !excl.includes(a)) asiChoices.push(a); });
+  }
+  const abilities = applyASI(base, race, subrace, asiChoices);
+  const pool = skillOptionsFor(cls), fixed = fixedRacialSkills(race, subrace);
+  let skills = (Array.isArray(s.skills) ? s.skills : []).filter(x => pool.includes(x) && !fixed.includes(x));
+  skills = Array.from(new Set(skills)).slice(0, c.skillCount);
+  for (const cand of pool) { if (skills.length >= c.skillCount) break; if (!skills.includes(cand) && !fixed.includes(cand)) skills.push(cand); }
+  let extra = [];
+  if (r.skillChoiceExtra) {
+    const taken = new Set([...skills, ...fixed]);
+    extra = (Array.isArray(s.skillsExtra) ? s.skillsExtra : []).filter(x => RULES.skills[x] && !taken.has(x)).slice(0, r.skillChoiceExtra);
+    for (const cand of Object.keys(RULES.skills)) { if (extra.length >= r.skillChoiceExtra) break; if (!taken.has(cand) && !extra.includes(cand)) extra.push(cand); }
+  }
+  const allSkills = [...skills, ...extra];
+  const armors = availableArmors(cls, race, subrace);
+  const armor = armors.includes(s.armor) ? s.armor : defaultArmor(cls, race, subrace);
+  const shield = !!s.shield && canUseShield(cls, race, subrace);
+  const weapons = availableWeapons(cls, race, subrace).sort();
+  const weapon = weapons.includes(s.weapon) ? s.weapon : weapons[0];
+  const fightingStyle = fightingStyleLevel(cls) === 1 ? (RULES.fightingStyles[s.fightingStyle] ? s.fightingStyle : 'Defesa') : null;
+  const archetype = c.subclassLevel === 1 ? ((c.subclasses || []).includes(s.archetype) ? s.archetype : (c.subclasses || [])[0]) : null;
+  let cantrips = [], spells = [];
+  const picks = spellPicks(cls, abilities, 1);
+  if (picks) {
+    cantrips = (Array.isArray(s.cantrips) ? s.cantrips : []).filter(x => picks.cantripList.includes(x)).slice(0, picks.cantrips);
+    for (const cand of picks.cantripList) { if (cantrips.length >= picks.cantrips) break; if (!cantrips.includes(cand)) cantrips.push(cand); }
+    const needSp = Math.min(picks.spells, picks.spellList.length);
+    spells = (Array.isArray(s.spells) ? s.spells : []).filter(x => picks.spellList.includes(x)).slice(0, needSp);
+    for (const cand of picks.spellList) { if (spells.length >= needSp) break; if (!spells.includes(cand)) spells.push(cand); }
+  }
+  let expertise = [];
+  if (cls === 'Ladino') {
+    const epool = Array.from(new Set([...allSkills, ...fixed]));
+    expertise = (Array.isArray(s.expertise) ? s.expertise : []).filter(x => epool.includes(x)).slice(0, 2);
+    for (const cand of epool) { if (expertise.length >= 2) break; if (!expertise.includes(cand)) expertise.push(cand); }
+  }
+  const profile = Object.assign({ appearance:'', context:'', motivation:'', flaw:'', quality:'' }, s.profile || {});
+  const name = (s.name || '').toString().trim() || 'Aventureiro';
+  return buildCharacter({ name, player: PLAYER_NAME, slot: 0, race, subrace, cls, scores: base, asiChoices,
+    skills: allSkills, armor, shield, weapons: [weapon], fightingStyle, archetype, cantrips, spells, expertise, profile });
+}
+async function callClaudeMp(messages, system, maxTokens){
+  const { data: { session } } = await supa.auth.getSession();
+  if (!session) throw new Error('Sessão expirada. Entre novamente.');
+  const res = await fetch(`${SUPA_URL}/functions/v1/dm`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}`, 'apikey':SUPA_KEY },
+    body: JSON.stringify({ model: (ROOM && ROOM.model) || 'claude-haiku-4-5', max_tokens: maxTokens, system, messages })
+  });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+  const data = await res.json();
+  return data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
 }

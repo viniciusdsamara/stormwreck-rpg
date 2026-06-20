@@ -105,6 +105,13 @@
   .pf-grid{ display:grid; gap:10px; } .pf span{ display:block; font-size:0.72rem; color:var(--stone-300); margin-bottom:4px; }
   .pf textarea{ width:100%; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:0.86rem; resize:vertical; }
   .creation-missing{ font-size:0.8rem; color:var(--ember); text-align:right; max-width:55%; line-height:1.35; } .creation-missing.ok{ color:var(--myco); }
+  .btn.ok{ background:linear-gradient(180deg,#5a8f6b,#487257); color:#0e1a12; }
+  .cc-chat{ max-height:48vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .cc-msg{ padding:9px 12px; border-radius:10px; font-size:0.88rem; line-height:1.45; max-width:88%; }
+  .cc-msg.dm{ background:var(--basalt-900); border:1px solid var(--basalt-600); align-self:flex-start; }
+  .cc-msg.player{ background:rgba(232,132,60,0.12); border:1px solid var(--ember); align-self:flex-end; }
+  .cc-input-row{ display:flex; gap:8px; }
+  .cc-input-row textarea{ flex:1; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch); border-radius:9px; padding:9px 11px; font-family:inherit; font-size:0.9rem; resize:vertical; }
 </style>
 </head>
 <body>
@@ -220,6 +227,35 @@
       <label class="chk" style="margin-bottom:14px"><input type="checkbox" id="admGm"> <span>Modo Mestre (edição manual de fichas)</span></label>
       <button class="btn block" id="startBtn" disabled>Iniciar a partida</button>
       <p class="note" id="startNote"></p>
+    </div>
+  </section>
+
+  <!-- CRIAÇÃO: ESCOLHA DE MODO -->
+  <section id="screen-cmode" class="screen">
+    <div class="topline"><div><div class="eyebrow">Seu aventureiro</div><h1>Como criar?</h1></div></div>
+    <div class="panel">
+      <div class="row">
+        <button class="btn block" id="cmGuided">🧭 Guiada (botões)</button>
+        <button class="btn block ghost" id="cmChat">💬 Conversando com o Mestre (IA)</button>
+      </div>
+      <p class="note">Na guiada você escolhe tudo nos botões. Na conversa, o Mestre (IA) conduz num chat e monta a ficha pra você.</p>
+      <button class="btn ghost" id="cmBack" style="margin-top:16px">← Voltar à sala</button>
+    </div>
+  </section>
+
+  <!-- CRIAÇÃO: CONVERSA COM O MESTRE -->
+  <section id="screen-cchat" class="screen">
+    <div class="topline">
+      <div><div class="eyebrow">Seu aventureiro</div><h1>Criação com o Mestre</h1></div>
+      <button class="btn ghost" id="ccBackBtn" style="padding:7px 14px;font-size:0.8rem">← Voltar</button>
+    </div>
+    <div class="panel">
+      <div id="ccChat" class="cc-chat"></div>
+      <div class="cc-input-row">
+        <textarea id="ccInput" rows="2" placeholder="Responda ao Mestre..."></textarea>
+        <button class="btn" id="ccSendBtn">Enviar</button>
+      </div>
+      <button class="btn block ok hide" id="ccFinishBtn" style="margin-top:10px">✓ Concluir personagem</button>
     </div>
   </section>
 
