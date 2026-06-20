@@ -189,6 +189,31 @@
   .pool .chip:hover { transform: translateY(-2px); border-color: var(--ember); }
   .pool .chip.used { opacity:0.25; pointer-events:none; }
 
+  /* ====== CRIAÇÃO — sub-raça, perícias, equipamento ====== */
+  .subsection { margin-top:24px; }
+  .req-note { color:var(--stone-400); font-size:0.82rem; margin:4px 0 10px; }
+  .req-note.done { color:var(--myco); }
+  .skill-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:8px; }
+  .skill-chip {
+    background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px;
+    padding:9px 12px; cursor:pointer; font-size:0.86rem; color:var(--stone-300);
+    transition:all 0.14s; user-select:none; display:flex; justify-content:space-between; align-items:center;
+  }
+  .skill-chip:hover { border-color:var(--stone-400); color:var(--parch); }
+  .skill-chip.selected { border-color:var(--ember); background:rgba(232,132,60,0.10); color:var(--parch); }
+  .skill-chip.locked { border-color:var(--myco); background:rgba(127,212,163,0.08); color:var(--parch); cursor:default; }
+  .skill-chip.disabled { opacity:0.35; pointer-events:none; }
+  .skill-chip .tag { font-family:var(--font-mono); font-size:0.58rem; letter-spacing:0.06em; color:var(--stone-400); }
+  .eq-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:560px){ .eq-grid{ grid-template-columns:1fr; } }
+  .eq-field span { display:block; font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--stone-300); margin-bottom:6px; }
+  .shield-row { display:flex; align-items:center; gap:9px; margin-top:14px; font-size:0.92rem; color:var(--parch); cursor:pointer; user-select:none; }
+  .shield-row input { width:18px; height:18px; accent-color:var(--ember); cursor:pointer; }
+  .shield-row.disabled { opacity:0.4; pointer-events:none; }
+  .ac-badge { display:inline-flex; align-items:baseline; gap:9px; margin-top:16px; padding:10px 18px; border:1px solid var(--ember); border-radius:10px; background:rgba(232,132,60,0.07); }
+  .ac-badge b { font-family:var(--font-display); font-size:1.9rem; color:var(--gold-bone); line-height:1; }
+  .ac-badge span { font-family:var(--font-mono); font-size:0.64rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--stone-300); }
+
   .player-tag { display:inline-block; font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.15em; padding:4px 10px; border-radius:6px; text-transform:uppercase; }
   .player-tag.p1 { background:rgba(232,132,60,0.15); color:var(--ember); }
   .player-tag.p2 { background:rgba(111,168,212,0.15); color:var(--azure); }
@@ -305,6 +330,69 @@
   .dice-anim { display:inline-block; animation: tumble 0.6s ease-out; }
   @keyframes tumble { 0%{transform:rotate(0) scale(0.5);opacity:0} 60%{transform:rotate(380deg) scale(1.15)} 100%{transform:rotate(360deg) scale(1);opacity:1} }
 
+  /* ====== Cursor de digitação do Mestre ====== */
+  .msg.dm .body.typing::after { content:'▍'; color:var(--ember); margin-left:1px; animation: caret 1s steps(1) infinite; }
+  @keyframes caret { 50% { opacity:0; } }
+
+  /* ====== Painel lateral de rolagens ====== */
+  .rolllog { margin-top:14px; border-top:1px solid var(--basalt-600); padding-top:14px; }
+  .rolllog-title { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--ember); margin-bottom:10px; }
+  #rollLogList { display:flex; flex-direction:column; gap:7px; }
+  .rolllog-empty { color:var(--stone-400); font-size:0.78rem; font-style:italic; }
+  .rl-entry { background:var(--basalt-900); border:1px solid var(--basalt-600); border-left:3px solid var(--stone-400); border-radius:8px; padding:7px 10px; animation: slideup 0.25s; }
+  .rl-entry.ok, .rl-entry.crit { border-left-color:var(--myco); }
+  .rl-entry.fail, .rl-entry.fumble { border-left-color:var(--blood); }
+  .rl-head { font-size:0.74rem; color:var(--stone-300); line-height:1.3; }
+  .rl-line { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-top:2px; }
+  .rl-num { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); line-height:1; }
+  .rl-entry.crit .rl-num { color:var(--myco); }
+  .rl-entry.fumble .rl-num { color:var(--blood); }
+  .rl-out { font-size:0.66rem; font-weight:700; color:var(--stone-300); text-align:right; }
+  .rl-entry.ok .rl-out, .rl-entry.crit .rl-out { color:var(--myco); }
+  .rl-entry.fail .rl-out, .rl-entry.fumble .rl-out { color:var(--blood); }
+
+  /* ====== Recursos de classe (botões na ficha) ====== */
+  .rest-bar { display:flex; gap:8px; margin-bottom:14px; }
+  .rest-btn { flex:1; background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:8px; padding:7px 6px; font-size:0.74rem; cursor:pointer; transition:all .14s; }
+  .rest-btn:hover { border-color:var(--ember); color:var(--parch); }
+  .res-block { margin-top:12px; padding-top:10px; border-top:1px solid var(--basalt-600); display:flex; flex-direction:column; gap:7px; }
+  .res-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .res-label { font-size:0.74rem; color:var(--stone-300); }
+  .res-pips { display:flex; gap:4px; }
+  .res-pip { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); cursor:pointer; transition:transform .1s, background .12s; }
+  .res-pip.full { background:var(--azure); }
+  .res-pip:hover { transform:scale(1.2); border-color:var(--ember); }
+  .res-btn { background:var(--basalt-900); border:1px solid var(--blood); color:var(--blood); border-radius:7px; padding:4px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; transition:all .14s; }
+  .res-btn:hover { background:rgba(196,72,90,0.12); }
+  .res-btn.on { background:var(--blood); color:#fff; animation: ragepulse 1.2s infinite; }
+  @keyframes ragepulse { 50% { box-shadow:0 0 10px -2px var(--blood); } }
+  .res-pool { font-size:0.78rem; color:var(--gold-bone); display:flex; align-items:center; gap:6px; }
+  .res-pool b { color:var(--myco); }
+  .res-mini { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:6px; padding:2px 7px; font-size:0.7rem; cursor:pointer; }
+  .res-mini:hover { border-color:var(--ember); color:var(--parch); }
+
+  /* ====== Condições (chips na ficha) ====== */
+  .cond-block { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .cond-add { background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:7px; padding:4px 8px; font-size:0.72rem; }
+  .cond-chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .cond-chip { background:rgba(196,72,90,0.14); border:1px solid var(--blood); color:var(--blood); border-radius:6px; padding:2px 8px; font-size:0.68rem; cursor:pointer; }
+  .cond-chip:hover { background:rgba(196,72,90,0.28); }
+
+  /* ====== Tracker de iniciativa (combate) ====== */
+  .combat-bar { background:var(--basalt-900); border-bottom:1px solid var(--blood); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .cb-round { font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--blood); white-space:nowrap; }
+  .cb-list { display:flex; gap:6px; flex-wrap:wrap; flex:1; }
+  .cb-tok { display:flex; flex-direction:column; align-items:center; min-width:58px; background:var(--basalt-700); border:1px solid var(--basalt-600); border-radius:8px; padding:4px 8px; font-size:0.72rem; text-align:center; }
+  .cb-tok.current { border-color:var(--ember); box-shadow:0 0 0 1px var(--ember); }
+  .cb-tok.enemy { background:rgba(196,72,90,0.10); }
+  .cb-tok.dead { opacity:0.4; text-decoration:line-through; }
+  .cb-tok .cb-init { font-family:var(--font-display); font-size:1.05rem; color:var(--gold-bone); line-height:1; }
+  .cb-tok .cb-hp { font-size:0.6rem; color:var(--stone-300); margin-top:2px; }
+  .cb-btns { display:flex; gap:8px; }
+  .cb-btn { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:7px; padding:6px 12px; font-size:0.78rem; cursor:pointer; white-space:nowrap; }
+  .cb-btn:hover { border-color:var(--ember); }
+  .cb-btn.end { border-color:var(--blood); color:var(--blood); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -326,8 +414,32 @@
 </head>
 <body>
 
+<!-- ============ TELA 0: LOGIN ============ -->
+<div class="screen active" id="screen-login">
+  <div class="wrap" style="max-width:520px">
+    <div class="title-block">
+      <div class="eyebrow">Acesso restrito</div>
+      <h1 style="font-size:clamp(2rem,6vw,3.2rem)">Tormenta de<br>Stormwreck</h1>
+      <p class="subtitle">Entre para mestrar sua campanha.</p>
+    </div>
+    <div class="panel">
+      <h2 id="loginTitle">Entrar</h2>
+      <p class="hint" id="loginHint">Use seu e-mail e senha.</p>
+      <label class="field"><span>E-mail</span>
+        <input type="text" id="loginEmail" placeholder="voce@exemplo.com" autocomplete="username"></label>
+      <label class="field"><span>Senha</span>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"></label>
+      <div id="loginStatus"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="loginBtn">Entrar →</button>
+        <button class="btn ghost" id="toSignupBtn">Criar conta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ TELA 1: CONFIGURAÇÃO ============ -->
-<div class="screen active" id="screen-setup">
+<div class="screen" id="screen-setup">
   <div class="wrap">
     <div class="title-block">
       <div class="eyebrow">Dungeons &amp; Dragons 5e · Mestre conduzido por IA</div>
@@ -336,24 +448,19 @@
     </div>
 
     <div class="panel">
-      <h2>Chave da API</h2>
-      <p class="hint">O Mestre é narrado pela IA da Anthropic (modelo Haiku — rápido e barato). Sua chave fica salva só neste navegador, nunca sai do seu computador.</p>
+      <h2>Pronto para jogar</h2>
+      <p class="hint">Logado como <b id="userEmail" style="color:var(--gold-bone)">—</b>. A chave da IA fica protegida no servidor — você não precisa colá-la aqui.</p>
       <label class="field">
-        <span>Anthropic API Key</span>
-        <input type="password" id="apiKey" placeholder="sk-ant-...">
-      </label>
-      <div class="row">
-        <select id="modelChoice" style="max-width:280px">
+        <span>Modelo do Mestre</span>
+        <select id="modelChoice" style="max-width:320px">
           <option value="claude-haiku-4-5">Haiku 4.5 — barato e rápido (recomendado)</option>
           <option value="claude-sonnet-4-6">Sonnet 4.6 — narração mais rica (mais caro)</option>
         </select>
-        <button class="btn ghost" id="testKeyBtn">Testar chave</button>
-      </div>
+      </label>
       <div id="keyStatus"></div>
-      <details>
-        <summary>Onde consigo uma chave?</summary>
-        <p class="hint" style="margin-top:10px">Crie uma conta em console.anthropic.com, vá em API Keys e gere uma. Você adiciona créditos pré-pagos (a partir de US$5) e cada sessão de jogo custa centavos.</p>
-      </details>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" id="logoutBtn" style="padding:9px 16px;font-size:0.85rem">Sair da conta</button>
+      </div>
     </div>
 
     <div class="row end" style="margin-top:24px">
@@ -383,6 +490,11 @@
       <label class="field"><span>Raça</span></label>
       <div class="choice-grid" id="raceGrid"></div>
 
+      <div class="subsection hide" id="subraceSection">
+        <label class="field"><span>Sub-raça</span></label>
+        <div class="choice-grid" id="subraceGrid"></div>
+      </div>
+
       <label class="field" style="margin-top:20px"><span>Classe</span></label>
       <div class="choice-grid" id="classGrid"></div>
 
@@ -394,6 +506,49 @@
         <button class="btn ghost" id="resetScoresBtn">Limpar</button>
       </div>
       <div class="ability-grid" id="abilityGrid"></div>
+
+      <div class="subsection hide" id="asiChoiceSection">
+        <label class="field"><span>Aumento de habilidade — escolha dois (+1 cada)</span></label>
+        <p class="req-note" id="asiChoiceNote"></p>
+        <div class="choice-grid" id="asiChoiceGrid"></div>
+      </div>
+
+      <div class="subsection hide" id="skillsSection">
+        <label class="field"><span>Perícias</span></label>
+        <p class="req-note" id="skillsNote"></p>
+        <div class="skill-grid" id="skillsGrid"></div>
+        <div class="hide" id="skillsExtraWrap">
+          <p class="req-note" id="skillsExtraNote" style="margin-top:14px"></p>
+          <div class="skill-grid" id="skillsExtraGrid"></div>
+        </div>
+      </div>
+
+      <div class="subsection hide" id="equipmentSection">
+        <label class="field"><span>Equipamento inicial</span></label>
+        <div class="eq-grid">
+          <label class="eq-field"><span>Armadura</span>
+            <select id="armorSelect"></select>
+          </label>
+          <label class="eq-field"><span>Arma principal</span>
+            <select id="weaponSelect"></select>
+          </label>
+        </div>
+        <label class="shield-row" id="shieldRow">
+          <input type="checkbox" id="shieldCheck"> Usar escudo (+2 CA)
+        </label>
+        <div class="ac-badge"><b id="acPreview">10</b><span>Classe de Armadura</span></div>
+      </div>
+
+      <div class="subsection hide" id="classOptionsSection">
+        <div id="fightingStyleWrap" class="hide">
+          <label class="field"><span>Estilo de Luta</span></label>
+          <div class="choice-grid" id="fightingStyleGrid"></div>
+        </div>
+        <div id="archetypeWrap" class="hide">
+          <label class="field"><span>Subclasse</span></label>
+          <div class="choice-grid" id="archetypeGrid"></div>
+        </div>
+      </div>
     </div>
 
     <div class="row end" style="margin-top:24px">
@@ -405,7 +560,13 @@
 <!-- ============ TELA 3: JOGO ============ -->
 <div class="screen" id="screen-game">
   <div class="game-layout">
-    <aside class="sidebar" id="sidebar"></aside>
+    <aside class="sidebar" id="sidebar">
+      <div id="charPanel"></div>
+      <div class="rolllog" id="rollLog">
+        <div class="rolllog-title">⚄ Rolagens</div>
+        <div id="rollLogList"><div class="rolllog-empty">Nenhuma rolagem ainda.</div></div>
+      </div>
+    </aside>
     <div class="main-col">
       <div class="topbar">
         <div class="loc">
@@ -417,6 +578,7 @@
           <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
         </div>
       </div>
+      <div class="combat-bar hide" id="combatBar"></div>
       <div class="narrative" id="narrative"></div>
       <div class="composer">
         <div class="turn-indicator" id="turnIndicator"></div>
@@ -430,10 +592,19 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ============================================================
-// rules.js — Regras de D&D 5e (Basic Rules, nível 1-3)
-// Subconjunto adequado a Stormwreck Isle.
+// rules.js — Regras de D&D 5e fiéis ao Livro do Jogador (PHB)
+// Escopo: criação de personagem nível 1-3 (Stormwreck Isle).
+//
+// FONTE: livro-jogador-referencia.md (subido pelo usuário).
+//   - Raças/sub-raças, perícias por classe, dados de vida, saves,
+//     proficiências e tabela de armaduras: extraídos do livro.
+//   - A TABELA DE ARMAS se perdeu na extração do PDF (colunas
+//     mescladas). Os valores aqui são os canônicos de D&D 5e,
+//     idênticos ao PHB; pontos confirmados no texto do livro
+//     (ex.: machado de batalha 1d8, linha 254).
 // ============================================================
 
 const RULES = {
@@ -444,115 +615,805 @@ const RULES = {
   },
   abilityEng: { FOR:'STR', DES:'DEX', CON:'CON', INT:'INT', SAB:'WIS', CAR:'CHA' },
 
-  // Raças do Basic Rules + ASI
+  // ----- PERÍCIAS (perícia → habilidade associada) -----
+  skills: {
+    'Acrobacia':'DES', 'Adestrar Animais':'SAB', 'Arcanismo':'INT',
+    'Atletismo':'FOR', 'Atuação':'CAR', 'Enganação':'CAR',
+    'Furtividade':'DES', 'História':'INT', 'Intimidação':'CAR',
+    'Intuição':'SAB', 'Investigação':'INT', 'Medicina':'SAB',
+    'Natureza':'INT', 'Percepção':'SAB', 'Persuasão':'CAR',
+    'Prestidigitação':'DES', 'Religião':'INT', 'Sobrevivência':'SAB'
+  },
+
+  // =========================================================
+  // RAÇAS (com sub-raças, ASI e traços) — PHB cap. 2
+  // Cada traço tem um 'ef' opcional = gancho mecânico que o
+  // motor de jogo lê (Fases 3-4). 'desc' é o texto narrado.
+  // =========================================================
   races: {
-    'Humano':      { asi: { FOR:1, DES:1, CON:1, INT:1, SAB:1, CAR:1 }, speed:9, traits:['Versátil'], darkvision:false },
-    'Anão':        { asi: { CON:2 }, speed:7.5, traits:['Visão no escuro','Resistência a veneno','Treino com machados'], darkvision:true },
-    'Elfo':        { asi: { DES:2 }, speed:9, traits:['Visão no escuro','Sentidos aguçados','Ancestral feérico','Transe'], darkvision:true },
-    'Halfling':    { asi: { DES:2 }, speed:7.5, traits:['Sortudo','Bravura','Agilidade halfling'], darkvision:false },
-    'Draconato':   { asi: { FOR:2, CAR:1 }, speed:9, traits:['Sopro elemental','Resistência a dano'], darkvision:false },
-    'Gnomo':       { asi: { INT:2 }, speed:7.5, traits:['Visão no escuro','Astúcia gnômica'], darkvision:true },
-    'Meio-Elfo':   { asi: { CAR:2 }, speed:9, traits:['Visão no escuro','Ancestral feérico','Versatilidade'], darkvision:true, choice2:true },
-    'Meio-Orc':    { asi: { FOR:2, CON:1 }, speed:9, traits:['Visão no escuro','Resistência implacável','Ataques selvagens'], darkvision:true },
-    'Tiefling':    { asi: { INT:1, CAR:2 }, speed:9, traits:['Visão no escuro','Resistência infernal','Legado infernal'], darkvision:true }
+    'Anão': {
+      asi: { CON:2 }, speed: 7.5, darkvision: true, size: 'Médio',
+      languages: ['Comum', 'Anão'],
+      weaponProf: ['machado de batalha','machadinha','martelo leve','martelo de guerra'],
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra (tons de cinza).', ef:{ darkvision:18 } },
+        { name:'Resiliência Anã', desc:'Vantagem em saves contra veneno e resistência a dano de veneno.', ef:{ saveAdv:['veneno'], resist:['veneno'] } },
+        { name:'Treinamento Anão em Combate', desc:'Proficiência com machados de batalha, machadinhas, martelos leves e de guerra.' },
+        { name:'Conhecimento em Pedras', desc:'Soma o dobro da proficiência em testes de História ligados a trabalhos em pedra.' }
+      ],
+      subraces: {
+        'Anão da Colina': {
+          asi: { SAB:1 }, hpPerLevel: 1,
+          traits: [ { name:'Tenacidade Anã', desc:'+1 ponto de vida máximo por nível.', ef:{ hpPerLevel:1 } } ]
+        },
+        'Anão da Montanha': {
+          asi: { FOR:2 }, armorProf: ['leve','média'],
+          traits: [ { name:'Treinamento Anão com Armaduras', desc:'Proficiência com armaduras leves e médias.' } ]
+        }
+      }
+    },
+
+    'Elfo': {
+      asi: { DES:2 }, speed: 9, darkvision: true, size: 'Médio',
+      languages: ['Comum', 'Élfico'],
+      skillProf: ['Percepção'],
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra.', ef:{ darkvision:18 } },
+        { name:'Sentidos Aguçados', desc:'Proficiência na perícia Percepção.', ef:{ skillProf:['Percepção'] } },
+        { name:'Ancestral Feérico', desc:'Vantagem em saves contra ser enfeitiçado; magia não pode colocá-lo para dormir.', ef:{ saveAdv:['enfeitiçar'], immune:['sono mágico'] } },
+        { name:'Transe', desc:'Não dorme; medita 4h e ganha o benefício de 8h de sono.' }
+      ],
+      subraces: {
+        'Alto Elfo': {
+          asi: { INT:1 },
+          weaponProf: ['espada longa','espada curta','arco longo','arco curto'],
+          cantripFrom: 'Mago', extraLanguage: 1,
+          traits: [
+            { name:'Treinamento Élfico com Armas', desc:'Proficiência com espadas longas/curtas e arcos longos/curtos.' },
+            { name:'Truque', desc:'Conhece um truque da lista de Mago (conjurado por INT).', ef:{ cantrips:1, cantripAbility:'INT' } },
+            { name:'Idioma Adicional', desc:'Você fala, lê e escreve um idioma adicional à sua escolha.' }
+          ]
+        },
+        'Elfo da Floresta': {
+          asi: { SAB:1 }, speed: 10.5,
+          weaponProf: ['espada longa','espada curta','arco longo','arco curto'],
+          traits: [
+            { name:'Treinamento Élfico com Armas', desc:'Proficiência com espadas longas/curtas e arcos longos/curtos.' },
+            { name:'Pés Ligeiros', desc:'Deslocamento base aumenta para 10,5m.', ef:{ speed:10.5 } },
+            { name:'Máscara da Natureza', desc:'Pode se esconder mesmo apenas levemente obscurecido por fenômeno natural.' }
+          ]
+        },
+        'Drow (Elfo Negro)': {
+          asi: { CAR:1 },
+          weaponProf: ['rapieira','espada curta','besta de mão'],
+          traits: [
+            { name:'Visão no Escuro Superior', desc:'Visão no escuro com alcance de 36m.', ef:{ darkvision:36 } },
+            { name:'Sensibilidade à Luz Solar', desc:'Desvantagem em ataques e Percepção (visão) sob luz solar direta.', ef:{ sunlightSensitivity:true } },
+            { name:'Magia Drow', desc:'Conhece o truque globos de luz; ao subir de nível ganha fogo das fadas e escuridão (CAR).', ef:{ cantrips:1, cantripAbility:'CAR' } },
+            { name:'Treinamento Drow com Armas', desc:'Proficiência com rapieiras, espadas curtas e bestas de mão.' }
+          ]
+        }
+      }
+    },
+
+    'Halfling': {
+      asi: { DES:2 }, speed: 7.5, darkvision: false, size: 'Pequeno',
+      languages: ['Comum', 'Halfling'],
+      traits: [
+        { name:'Sortudo', desc:'Ao tirar 1 natural em ataque, teste de habilidade ou save, rerole e use o novo resultado.', ef:{ rerollNat1:true } },
+        { name:'Bravura', desc:'Vantagem em saves contra ficar amedrontado.', ef:{ saveAdv:['amedrontar'] } },
+        { name:'Agilidade Halfling', desc:'Pode mover-se pelo espaço de criaturas de tamanho maior.' }
+      ],
+      subraces: {
+        'Pés Leves': {
+          asi: { CAR:1 },
+          traits: [ { name:'Furtividade Natural', desc:'Pode se esconder atrás de criatura ao menos um tamanho maior.' } ]
+        },
+        'Robusto': {
+          asi: { CON:1 },
+          traits: [ { name:'Resiliência dos Robustos', desc:'Vantagem em saves contra veneno e resistência a dano de veneno.', ef:{ saveAdv:['veneno'], resist:['veneno'] } } ]
+        }
+      }
+    },
+
+    'Humano': {
+      asi: { FOR:1, DES:1, CON:1, INT:1, SAB:1, CAR:1 }, speed: 9, darkvision: false, size: 'Médio',
+      languages: ['Comum'], extraLanguage: 1,
+      traits: [
+        { name:'Versatilidade', desc:'+1 em todos os atributos; um idioma adicional à escolha.' }
+      ],
+      subraces: {}
+    },
+
+    'Draconato': {
+      asi: { FOR:2, CAR:1 }, speed: 9, darkvision: false, size: 'Médio',
+      languages: ['Comum', 'Dracônico'],
+      traits: [
+        { name:'Ancestral Dracônico', desc:'Escolha um tipo de dragão; define dano e formato da arma de sopro.', ef:{ choose:'ancestralDraconico' } },
+        { name:'Arma de Sopro', desc:'Ação: exala energia (2d6, CD 8+CON+prof; 3d6 no 6º, 4d6 no 11º, 5d6 no 16º). Recarrega em descanso.', ef:{ breathWeapon:'2d6' } },
+        { name:'Resistência a Dano', desc:'Resistência ao tipo de dano do seu ancestral dracônico.', ef:{ resist:['ancestral'] } }
+      ],
+      subraces: {}
+    },
+
+    'Gnomo': {
+      asi: { INT:2 }, speed: 7.5, darkvision: true, size: 'Pequeno',
+      languages: ['Comum', 'Gnômico'],
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra.', ef:{ darkvision:18 } },
+        { name:'Astúcia Gnômica', desc:'Vantagem em saves de INT, SAB e CAR contra magia.', ef:{ saveAdvVsMagic:['INT','SAB','CAR'] } }
+      ],
+      subraces: {
+        'Gnomo da Floresta': {
+          asi: { DES:1 },
+          traits: [
+            { name:'Ilusão Menor', desc:'Conhece o truque ilusão menor (INT).', ef:{ cantrips:1, cantripAbility:'INT' } },
+            { name:'Falar com Bestas Pequenas', desc:'Comunica ideias simples a bestas Pequenas ou menores.' }
+          ]
+        },
+        'Gnomo da Rocha': {
+          asi: { CON:1 },
+          traits: [
+            { name:'Conhecimento de Artífice', desc:'Soma o dobro da proficiência em História sobre itens mágicos, alquímicos ou tecnológicos.' },
+            { name:'Engenhoqueiro', desc:'Proficiência com ferramentas de engenhoqueiro; pode construir engenhocas.' }
+          ]
+        }
+      }
+    },
+
+    'Meio-Elfo': {
+      asi: { CAR:2 }, speed: 9, darkvision: true, size: 'Médio',
+      languages: ['Comum', 'Élfico'], extraLanguage: 1,
+      asiChoice: { count: 2, amount: 1, exclude: ['CAR'] }, // +1 em dois atributos à escolha
+      skillChoiceExtra: 2, // Versatilidade em Perícia: 2 perícias quaisquer
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra.', ef:{ darkvision:18 } },
+        { name:'Ancestral Feérico', desc:'Vantagem em saves contra ser enfeitiçado; magia não pode colocá-lo para dormir.', ef:{ saveAdv:['enfeitiçar'], immune:['sono mágico'] } },
+        { name:'Versatilidade em Perícia', desc:'Proficiência em duas perícias à sua escolha.', ef:{ skillChoice:2 } }
+      ],
+      subraces: {}
+    },
+
+    'Meio-Orc': {
+      asi: { FOR:2, CON:1 }, speed: 9, darkvision: true, size: 'Médio',
+      languages: ['Comum', 'Orc'],
+      skillProf: ['Intimidação'],
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra.', ef:{ darkvision:18 } },
+        { name:'Ameaça', desc:'Proficiência na perícia Intimidação.', ef:{ skillProf:['Intimidação'] } },
+        { name:'Resistência Implacável', desc:'1×/descanso longo, ao cair a 0 HP fica com 1 HP em vez disso.', ef:{ relentless:true } },
+        { name:'Ataques Selvagens', desc:'Em acerto crítico corpo-a-corpo, rola um dado de dano da arma adicional.', ef:{ savageCrit:true } }
+      ],
+      subraces: {}
+    },
+
+    'Tiefling': {
+      asi: { INT:1, CAR:2 }, speed: 9, darkvision: true, size: 'Médio',
+      languages: ['Comum', 'Infernal'],
+      traits: [
+        { name:'Visão no Escuro', desc:'Enxerga na penumbra a 18m como luz plena e no escuro como penumbra.', ef:{ darkvision:18 } },
+        { name:'Resistência Infernal', desc:'Resistência a dano de fogo.', ef:{ resist:['fogo'] } },
+        { name:'Legado Infernal', desc:'Conhece o truque taumaturgia; ganha repreensão infernal e escuridão em níveis superiores (CAR).', ef:{ cantrips:1, cantripAbility:'CAR' } }
+      ],
+      subraces: {}
+    }
   },
 
-  // Classes do Basic Rules
+  // =========================================================
+  // ARMADURAS — PHB cap. 5 (linhas 7951-7969 do livro)
+  // base = CA base; dexCap = limite do mod de DES (null = sem limite,
+  // 0 = não soma DES). type = leve/média/pesada.
+  // =========================================================
+  armor: {
+    'Nenhuma':          { type:null,     base:null, dexCap:null },
+    'Acolchoada':       { type:'leve',   base:11,   dexCap:null },
+    'Couro':            { type:'leve',   base:11,   dexCap:null },
+    'Couro Batido':     { type:'leve',   base:12,   dexCap:null },
+    'Gibão de Peles':   { type:'média',  base:12,   dexCap:2 },
+    'Camisão de Malha': { type:'média',  base:13,   dexCap:2 },
+    'Brunea':           { type:'média',  base:14,   dexCap:2 },
+    'Peitoral':         { type:'média',  base:14,   dexCap:2 },
+    'Meia-Armadura':    { type:'média',  base:15,   dexCap:2 },
+    'Cota de Anéis':    { type:'pesada', base:14,   dexCap:0 },
+    'Cota de Malha':    { type:'pesada', base:16,   dexCap:0 },
+    'Cota de Talas':    { type:'pesada', base:17,   dexCap:0 },
+    'Placas':           { type:'pesada', base:18,   dexCap:0 }
+  },
+  shieldBonus: 2,
+
+  // =========================================================
+  // ARMAS — valores canônicos de 5e (tabela perdida na extração).
+  // cat = simples/marcial. dmg = dado de dano. type = dano.
+  // props: acuidade, leve, pesada, arremesso, duas-mãos, versátil(dado), distância, munição, recarga.
+  // =========================================================
+  weapons: {
+    // --- Simples corpo-a-corpo ---
+    'Adaga':            { cat:'simples', dmg:'1d4', type:'perfurante', props:['acuidade','leve','arremesso'], melee:true },
+    'Clava':            { cat:'simples', dmg:'1d4', type:'concussão',  props:['leve'], melee:true },
+    'Bordão':           { cat:'simples', dmg:'1d6', type:'concussão',  props:['versátil:1d8'], melee:true },
+    'Lança':            { cat:'simples', dmg:'1d6', type:'perfurante', props:['arremesso','versátil:1d8'], melee:true },
+    'Maça':             { cat:'simples', dmg:'1d6', type:'concussão',  props:[], melee:true },
+    'Machadinha':       { cat:'simples', dmg:'1d6', type:'cortante',   props:['leve','arremesso'], melee:true },
+    'Azagaia':          { cat:'simples', dmg:'1d6', type:'perfurante', props:['arremesso'], melee:true },
+    'Martelo Leve':     { cat:'simples', dmg:'1d4', type:'concussão',  props:['leve','arremesso'], melee:true },
+    // --- Simples à distância ---
+    'Besta Leve':       { cat:'simples', dmg:'1d8', type:'perfurante', props:['munição','duas-mãos','recarga'], melee:false },
+    'Dardo':            { cat:'simples', dmg:'1d4', type:'perfurante', props:['acuidade','arremesso'], melee:false },
+    'Funda':            { cat:'simples', dmg:'1d4', type:'concussão',  props:['munição'], melee:false },
+    // --- Marciais corpo-a-corpo ---
+    'Espada Curta':     { cat:'marcial', dmg:'1d6', type:'perfurante', props:['acuidade','leve'], melee:true },
+    'Espada Longa':     { cat:'marcial', dmg:'1d8', type:'cortante',   props:['versátil:1d10'], melee:true },
+    'Rapieira':         { cat:'marcial', dmg:'1d8', type:'perfurante', props:['acuidade'], melee:true },
+    'Cimitarra':        { cat:'marcial', dmg:'1d6', type:'cortante',   props:['acuidade','leve'], melee:true },
+    'Machado de Batalha':{cat:'marcial', dmg:'1d8', type:'cortante',   props:['versátil:1d10'], melee:true },
+    'Martelo de Guerra':{ cat:'marcial', dmg:'1d8', type:'concussão',  props:['versátil:1d10'], melee:true },
+    'Maça Estrela':     { cat:'marcial', dmg:'1d8', type:'perfurante', props:[], melee:true },
+    'Machado Grande':   { cat:'marcial', dmg:'1d12',type:'cortante',   props:['pesada','duas-mãos'], melee:true },
+    'Espada Grande':    { cat:'marcial', dmg:'2d6', type:'cortante',   props:['pesada','duas-mãos'], melee:true },
+    'Glaive':           { cat:'marcial', dmg:'1d10',type:'cortante',   props:['pesada','alcance','duas-mãos'], melee:true },
+    // --- Marciais à distância ---
+    'Arco Curto':       { cat:'marcial', dmg:'1d6', type:'perfurante', props:['munição','duas-mãos'], melee:false },
+    'Arco Longo':       { cat:'marcial', dmg:'1d8', type:'perfurante', props:['munição','pesada','duas-mãos'], melee:false },
+    'Besta de Mão':     { cat:'marcial', dmg:'1d6', type:'perfurante', props:['munição','leve','recarga'], melee:false }
+  },
+
+  // =========================================================
+  // CLASSES — PHB cap. 3 (dados de vida e saves conferidos no livro).
+  // armorProf: leve/média/pesada/escudo. weaponProf: 'simples' | 'marciais' | lista.
+  // skillCount + skillList: perícias do livro. spell: dados de conjuração nível 1.
+  // subclassLevel: nível em que se escolhe a subclasse.
+  // features: nomes por nível (mecânica detalhada na Fase 4).
+  // =========================================================
   classes: {
-    'Guerreiro': { hitDie:10, primary:['FOR','DES'], saves:['FOR','CON'], armor:'pesada+escudo', baseCA:16,
-                   features:['Estilo de luta','Retomar fôlego'],
-                   desc:'Mestre de armas e armaduras. Resistente e versátil.' },
-    'Mago':      { hitDie:6, primary:['INT'], saves:['INT','SAB'], armor:'nenhuma', baseCA:null,
-                   features:['Conjuração arcana','Recuperação arcana'],
-                   cantrips:3, spellsKnown:6, slots1:2,
-                   desc:'Conjurador erudito. Frágil, mas com magia versátil.' },
-    'Clérigo':   { hitDie:8, primary:['SAB'], saves:['SAB','CAR'], armor:'média+escudo', baseCA:14,
-                   features:['Conjuração divina','Domínio divino'],
-                   cantrips:3, slots1:2,
-                   desc:'Canaliza poder divino. Cura e protege aliados.' },
-    'Ladino':    { hitDie:8, primary:['DES'], saves:['DES','INT'], armor:'leve', baseCA:13,
-                   features:['Ataque furtivo','Especialização','Gíria de ladrão'],
-                   desc:'Ágil e astuto. Dano preciso e perícia incomparável.' },
-    'Patrulheiro':{ hitDie:10, primary:['DES','SAB'], saves:['FOR','DES'], armor:'média', baseCA:14,
-                   features:['Inimigo favorito','Explorador nato'],
-                   desc:'Caçador das terras selvagens. Combina arco e natureza.' },
-    'Bárbaro':   { hitDie:12, primary:['FOR'], saves:['FOR','CON'], armor:'leve', baseCA:13,
-                   features:['Fúria','Defesa sem armadura'],
-                   desc:'Guerreiro feroz movido a fúria. O mais resistente.' },
-    'Bardo':     { hitDie:8, primary:['CAR'], saves:['DES','CAR'], armor:'leve', baseCA:13,
-                   features:['Inspiração de bardo','Conjuração'],
-                   cantrips:2, slots1:2,
-                   desc:'Mestre da inspiração e da palavra. Versátil e social.' },
-    'Paladino':  { hitDie:10, primary:['FOR','CAR'], saves:['SAB','CAR'], armor:'pesada+escudo', baseCA:16,
-                   features:['Sentido divino','Imposição das mãos'],
-                   desc:'Guerreiro sagrado ligado a um juramento. Robusto.' },
-    'Feiticeiro':{ hitDie:6, primary:['CAR'], saves:['CON','CAR'], armor:'nenhuma', baseCA:null,
-                   features:['Magia inata','Origem mágica'],
-                   cantrips:4, slots1:2,
-                   desc:'Magia no sangue. Poder bruto e imprevisível.' },
-    'Bruxo':     { hitDie:8, primary:['CAR'], saves:['SAB','CAR'], armor:'leve', baseCA:13,
-                   features:['Pacto arcano','Patrono'],
-                   cantrips:2, slots1:1,
-                   desc:'Poder vindo de um pacto com uma entidade.' },
-    'Druida':    { hitDie:8, primary:['SAB'], saves:['INT','SAB'], armor:'leve', baseCA:13,
-                   features:['Conjuração','Druídico'],
-                   cantrips:2, slots1:2,
-                   desc:'Guardião da natureza. Conjura e mais tarde se transforma.' },
-    'Monge':     { hitDie:8, primary:['DES','SAB'], saves:['FOR','DES'], armor:'nenhuma', baseCA:null,
-                   features:['Defesa sem armadura','Artes marciais'],
-                   desc:'Disciplina corporal. Rápido e ágil sem armadura.' }
+    'Bárbaro': {
+      hitDie:12, primary:['FOR'], saves:['FOR','CON'],
+      armorProf:['leve','média','escudo'], weaponProf:'marciais',
+      skillCount:2, skillList:['Adestrar Animais','Atletismo','Intimidação','Natureza','Percepção','Sobrevivência'],
+      spell:null, unarmoredDefense:'CON',
+      startingEquipment:[
+        { choose:[['Machado Grande'],['qualquer arma marcial']] },
+        { choose:[['duas Machadinhas'],['qualquer arma simples']] },
+        { fixed:['Pacote de Aventureiro','quatro Azagaias'] }
+      ],
+      subclassLevel:3, subclasses:['Caminho do Berserker','Caminho do Guerreiro Totêmico'],
+      features:{ 1:['Fúria','Defesa sem Armadura'], 2:['Ataque Descuidado','Sentido de Perigo'], 3:['Caminho Primal'] },
+      desc:'Guerreiro feroz movido a fúria. O mais resistente.'
+    },
+    'Bardo': {
+      hitDie:8, primary:['CAR'], saves:['DES','CAR'],
+      armorProf:['leve'], weaponProf:['simples','besta de mão','espada longa','rapieira','espada curta'],
+      skillCount:3, skillList:'any',
+      spell:{ ability:'CAR', cantrips:2, slots1:2, spellsKnown:4 },
+      startingEquipment:[
+        { choose:[['Rapieira'],['Espada Longa'],['qualquer arma simples']] },
+        { fixed:['Armadura de Couro','Adaga'] }
+      ],
+      subclassLevel:3, subclasses:['Colégio do Conhecimento','Colégio da Bravura'],
+      features:{ 1:['Conjuração','Inspiração de Bardo (d6)'], 2:['Pau pra Toda Obra','Canção de Descanso'], 3:['Colégio de Bardo','Especialização'] },
+      desc:'Mestre da inspiração e da palavra. Versátil e social.'
+    },
+    'Bruxo': {
+      hitDie:8, primary:['CAR'], saves:['SAB','CAR'],
+      armorProf:['leve'], weaponProf:'simples',
+      skillCount:2, skillList:['Arcanismo','Enganação','História','Intimidação','Investigação','Natureza','Religião'],
+      spell:{ ability:'CAR', cantrips:2, slots1:1, spellsKnown:2, pact:true },
+      startingEquipment:[
+        { choose:[['Besta Leve','20 virotes'],['qualquer arma simples']] },
+        { fixed:['Armadura de Couro','qualquer arma simples','duas Adagas'] }
+      ],
+      subclassLevel:1, subclasses:['O Grande Antigo','O Corruptor','O Arquifada'],
+      features:{ 1:['Patrono Sobrenatural','Magia de Pacto'], 2:['Invocações Sobrenaturais'], 3:['Dádiva do Pacto'] },
+      desc:'Poder vindo de um pacto com uma entidade.'
+    },
+    'Clérigo': {
+      hitDie:8, primary:['SAB'], saves:['SAB','CAR'],
+      armorProf:['leve','média','escudo'], weaponProf:'simples',
+      skillCount:2, skillList:['História','Intuição','Medicina','Persuasão','Religião'],
+      spell:{ ability:'SAB', cantrips:3, slots1:2, prepares:true },
+      startingEquipment:[
+        { choose:[['Maça Estrela'],['Martelo de Guerra (se proficiente)']] },
+        { choose:[['Brunea'],['Armadura de Couro'],['Cota de Malha (se proficiente)']] },
+        { fixed:['Escudo','Símbolo Sagrado'] }
+      ],
+      subclassLevel:1, subclasses:['Domínio da Vida','Domínio da Luz','Domínio da Guerra'],
+      features:{ 1:['Conjuração','Domínio Divino'], 2:['Canalizar Divindade (1/descanso)'], 3:['—'] },
+      desc:'Canaliza poder divino. Cura e protege aliados.'
+    },
+    'Druida': {
+      hitDie:8, primary:['SAB'], saves:['INT','SAB'],
+      armorProf:['leve','média','escudo'], weaponProf:['clava','adaga','dardo','azagaia','maça','bordão','cimitarra','foice','funda','lança'],
+      noMetalArmor:true,
+      skillCount:2, skillList:['Arcanismo','Adestrar Animais','Intuição','Medicina','Natureza','Percepção','Religião','Sobrevivência'],
+      spell:{ ability:'SAB', cantrips:2, slots1:2, prepares:true },
+      startingEquipment:[
+        { choose:[['Escudo de Madeira'],['qualquer arma simples']] },
+        { choose:[['Cimitarra'],['qualquer arma simples corpo-a-corpo']] },
+        { fixed:['Armadura de Couro','Foco Druídico'] }
+      ],
+      subclassLevel:2, subclasses:['Círculo da Terra','Círculo da Lua'],
+      features:{ 1:['Druídico','Conjuração'], 2:['Forma Selvagem','Círculo Druídico'], 3:['—'] },
+      desc:'Guardião da natureza. Conjura e mais tarde se transforma.'
+    },
+    'Feiticeiro': {
+      hitDie:6, primary:['CAR'], saves:['CON','CAR'],
+      armorProf:[], weaponProf:['adaga','dardo','funda','bordão','besta leve'],
+      skillCount:2, skillList:['Arcanismo','Enganação','Intuição','Intimidação','Persuasão','Religião'],
+      spell:{ ability:'CAR', cantrips:4, slots1:2, spellsKnown:2 },
+      startingEquipment:[
+        { choose:[['Besta Leve','20 virotes'],['qualquer arma simples']] },
+        { choose:[['Bolsa de Componentes'],['Foco Arcano']] },
+        { fixed:['duas Adagas'] }
+      ],
+      subclassLevel:1, subclasses:['Linhagem Dracônica','Magia Selvagem'],
+      features:{ 1:['Conjuração','Origem de Feitiçaria'], 2:['Fonte de Magia'], 3:['Metamagia'] },
+      desc:'Magia no sangue. Poder bruto e imprevisível.'
+    },
+    'Guerreiro': {
+      hitDie:10, primary:['FOR','DES'], saves:['FOR','CON'],
+      armorProf:['leve','média','pesada','escudo'], weaponProf:'marciais',
+      skillCount:2, skillList:['Acrobacia','Adestrar Animais','Atletismo','História','Intuição','Intimidação','Percepção','Sobrevivência'],
+      spell:null,
+      startingEquipment:[
+        { choose:[['Cota de Malha'],['Armadura de Couro','Arco Longo','20 flechas']] },
+        { choose:[['arma marcial','Escudo'],['duas armas marciais']] },
+        { choose:[['Besta Leve','20 virotes'],['duas Machadinhas']] }
+      ],
+      subclassLevel:3, subclasses:['Campeão','Mestre de Batalha','Cavaleiro Arcano'],
+      features:{ 1:['Estilo de Luta','Retomar Fôlego'], 2:['Surto de Ação'], 3:['Arquétipo Marcial'] },
+      desc:'Mestre de armas e armaduras. Resistente e versátil.'
+    },
+    'Ladino': {
+      hitDie:8, primary:['DES'], saves:['DES','INT'],
+      armorProf:['leve'], weaponProf:['simples','besta de mão','espada longa','rapieira','espada curta'],
+      skillCount:4, skillList:['Acrobacia','Atletismo','Atuação','Enganação','Furtividade','Intimidação','Intuição','Investigação','Percepção','Persuasão','Prestidigitação'],
+      spell:null, expertise:2,
+      startingEquipment:[
+        { choose:[['Rapieira'],['Espada Curta']] },
+        { choose:[['Arco Curto','aljava com 20 flechas'],['Espada Curta']] },
+        { fixed:['Armadura de Couro','duas Adagas','Ferramentas de Ladrão'] }
+      ],
+      subclassLevel:3, subclasses:['Ladrão','Assassino','Trapaceiro Arcano'],
+      features:{ 1:['Especialização','Ataque Furtivo (1d6)','Gíria de Ladrão'], 2:['Ação Ardilosa'], 3:['Arquétipo Ladino','Ataque Furtivo (2d6)'] },
+      desc:'Ágil e astuto. Dano preciso e perícia incomparável.'
+    },
+    'Mago': {
+      hitDie:6, primary:['INT'], saves:['INT','SAB'],
+      armorProf:[], weaponProf:['adaga','dardo','funda','bordão','besta leve'],
+      skillCount:2, skillList:['Arcanismo','História','Intuição','Investigação','Medicina','Religião'],
+      spell:{ ability:'INT', cantrips:3, slots1:2, prepares:true, spellbook:6 },
+      startingEquipment:[
+        { choose:[['Bordão'],['Adaga']] },
+        { choose:[['Bolsa de Componentes'],['Foco Arcano']] },
+        { fixed:['Grimório'] }
+      ],
+      subclassLevel:2, subclasses:['Escola de Evocação','Escola de Abjuração','Escola de Adivinhação'],
+      features:{ 1:['Conjuração','Recuperação Arcana'], 2:['Tradição Arcana'], 3:['—'] },
+      desc:'Conjurador erudito. Frágil, mas com magia versátil.'
+    },
+    'Monge': {
+      hitDie:8, primary:['DES','SAB'], saves:['FOR','DES'],
+      armorProf:[], weaponProf:['simples','espada curta'],
+      skillCount:2, skillList:['Acrobacia','Atletismo','Furtividade','História','Intuição','Religião'],
+      spell:null, unarmoredDefense:'SAB',
+      startingEquipment:[
+        { choose:[['Espada Curta'],['qualquer arma simples']] },
+        { fixed:['Pacote de Aventureiro','10 Dardos'] }
+      ],
+      subclassLevel:3, subclasses:['Caminho da Mão Aberta','Caminho da Sombra','Caminho dos Quatro Elementos'],
+      features:{ 1:['Defesa sem Armadura','Artes Marciais'], 2:['Chi','Movimento sem Armadura'], 3:['Tradição Monástica','Defletir Projéteis'] },
+      desc:'Disciplina corporal. Rápido e ágil sem armadura.'
+    },
+    'Paladino': {
+      hitDie:10, primary:['FOR','CAR'], saves:['SAB','CAR'],
+      armorProf:['leve','média','pesada','escudo'], weaponProf:'marciais',
+      skillCount:2, skillList:['Atletismo','Intuição','Intimidação','Medicina','Persuasão','Religião'],
+      spell:null, // conjuração começa no nível 2
+      startingEquipment:[
+        { choose:[['arma marcial','Escudo'],['duas armas marciais']] },
+        { choose:[['cinco Azagaias'],['qualquer arma simples corpo-a-corpo']] },
+        { fixed:['Cota de Malha','Símbolo Sagrado'] }
+      ],
+      subclassLevel:3, subclasses:['Juramento de Devoção','Juramento dos Anciões','Juramento de Vingança'],
+      features:{ 1:['Sentido Divino','Imposição das Mãos'], 2:['Estilo de Luta','Conjuração','Golpe Divino'], 3:['Saúde Divina','Juramento Sagrado'] },
+      desc:'Guerreiro sagrado ligado a um juramento. Robusto.'
+    },
+    'Patrulheiro': {
+      hitDie:10, primary:['DES','SAB'], saves:['FOR','DES'],
+      armorProf:['leve','média','escudo'], weaponProf:'marciais',
+      skillCount:3, skillList:['Adestrar Animais','Atletismo','Furtividade','Intuição','Investigação','Natureza','Percepção','Sobrevivência'],
+      spell:null, // conjuração começa no nível 2
+      startingEquipment:[
+        { choose:[['Cota de Malha'],['Armadura de Couro']] },
+        { choose:[['duas Espadas Curtas'],['duas armas simples corpo-a-corpo']] },
+        { fixed:['Arco Longo','aljava com 20 flechas'] }
+      ],
+      subclassLevel:3, subclasses:['Caçador','Senhor das Feras'],
+      features:{ 1:['Inimigo Favorito','Explorador Nato'], 2:['Estilo de Luta','Conjuração'], 3:['Arquétipo de Patrulheiro','Consciência Primeva'] },
+      desc:'Caçador das terras selvagens. Combina arco e natureza.'
+    }
   },
 
-  // XP por nível (só precisamos de 1-3 para Stormwreck)
-  xpTable: { 1:0, 2:300, 3:900, 4:2700 },
+  // Condições — Apêndice A (efeitos resumidos; 'ef' = ganchos mecânicos)
+  conditions: {
+    'Agarrado':     { desc:'Deslocamento 0; acaba se o agarrador for incapacitado.', ef:{} },
+    'Amedrontado':  { desc:'Desvantagem em testes e ataques enquanto vê a fonte.', ef:{ disAttack:true, disChecks:true } },
+    'Atordoado':    { desc:'Incapacitado; falha automática em saves de FOR e DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Caído':        { desc:'Desvantagem nos próprios ataques; corpo-a-corpo contra tem vantagem, à distância desvantagem.', ef:{ disAttack:true } },
+    'Cego':         { desc:'Falha em testes que exigem visão; desvantagem nos ataques; ataques contra têm vantagem.', ef:{ disAttack:true, attackedAdv:true } },
+    'Enfeitiçado':  { desc:'Não pode atacar quem o enfeitiçou.', ef:{} },
+    'Envenenado':   { desc:'Desvantagem em ataques e testes de habilidade.', ef:{ disAttack:true, disChecks:true } },
+    'Impedido':     { desc:'Deslocamento 0; desvantagem em ataques e saves de DES; ataques contra têm vantagem.', ef:{ disAttack:true, disDexSaves:true, attackedAdv:true } },
+    'Incapacitado': { desc:'Não realiza ações nem reações.', ef:{ incapacitated:true } },
+    'Inconsciente': { desc:'Incapacitado e caído; falha auto em saves de FOR/DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Invisível':    { desc:'Vantagem nos ataques; desvantagem para quem o ataca.', ef:{ advAttack:true } },
+    'Paralisado':   { desc:'Incapacitado; falha auto em saves de FOR/DES; ataques contra têm vantagem; crit a ≤1,5m.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Petrificado':  { desc:'Incapacitado; resistência a todo dano; imune a veneno e doença.', ef:{ incapacitated:true } },
+    'Surdo':        { desc:'Falha em testes que exigem audição.', ef:{} }
+  },
 
+  // Estilos de Luta (Guerreiro nv1; Paladino/Patrulheiro nv2)
+  fightingStyles: {
+    'Arquearia':     '+2 nas jogadas de ataque com armas à distância.',
+    'Defesa':        '+1 na CA enquanto usar armadura.',
+    'Duelo':         '+2 no dano com arma de uma mão corpo-a-corpo.',
+    'Armas Grandes': 'Re-rola 1 e 2 nos dados de dano de armas de duas mãos.'
+  },
+
+  // XP por nível (Stormwreck cobre 1-3; incluímos até 4 para folga)
+  xpTable: { 1:0, 2:300, 3:900, 4:2700 },
   profByLevel: { 1:2, 2:2, 3:2, 4:2 }
 };
 
+// ============================================================
+//  FUNÇÕES AUXILIARES
+// ============================================================
 function abilityMod(score) { return Math.floor((score - 10) / 2); }
 function fmtMod(m) { return (m >= 0 ? '+' : '') + m; }
+function profBonus(level) { return RULES.profByLevel[level] || 2; }
 
-// Calcula CA conforme classe + DES
-function computeCA(cls, abilities) {
-  const c = RULES.classes[cls];
-  const dexMod = abilityMod(abilities.DES);
-  if (c.baseCA) {
-    // armaduras pesadas ignoram DES; médias limitam +2; aqui simplificamos
-    if (c.armor.startsWith('pesada')) return c.baseCA;
-    if (c.armor.startsWith('média')) return c.baseCA + Math.min(dexMod, 2);
-    if (c.armor.startsWith('leve')) return c.baseCA + dexMod;
-    return c.baseCA + dexMod;
+// Junta os bônus de ASI de raça + sub-raça + escolhas livres
+function applyASI(scores, race, subraceName, asiChoices) {
+  const r = RULES.races[race];
+  const abilities = {};
+  RULES.abilities.forEach(a => { abilities[a] = scores[a]; });
+  // raça base
+  for (const a in r.asi) abilities[a] += r.asi[a];
+  // sub-raça
+  if (subraceName && r.subraces && r.subraces[subraceName]) {
+    const sr = r.subraces[subraceName];
+    for (const a in (sr.asi || {})) abilities[a] += sr.asi[a];
   }
-  // sem armadura: classes mágicas = 10 + DES; monge/bárbaro têm cálculos próprios
-  if (cls === 'Monge') return 10 + dexMod + abilityMod(abilities.SAB);
-  if (cls === 'Bárbaro') return 10 + dexMod + abilityMod(abilities.CON);
-  return 10 + dexMod;
+  // escolhas livres (Meio-Elfo: +1 em dois atributos; Humano não usa isto)
+  if (r.asiChoice && asiChoices) {
+    asiChoices.forEach(a => { if (abilities[a] !== undefined) abilities[a] += r.asiChoice.amount; });
+  }
+  return abilities;
 }
 
-// Cria um personagem completo a partir das escolhas
-function buildCharacter({ name, player, slot, race, cls, scores }) {
+// Coleta os ganchos mecânicos ('ef') de todos os traços de raça + sub-raça
+function collectRacialEffects(race, subraceName) {
+  const r = RULES.races[race];
+  const out = { darkvision: r.darkvision ? 18 : 0, speed: r.speed, resist:[], saveAdv:[], saveAdvVsMagic:[], skillProf:[], cantrips:0, flags:{} };
+  const absorb = (traits=[]) => traits.forEach(t => {
+    if (!t.ef) return;
+    if (t.ef.darkvision) out.darkvision = Math.max(out.darkvision, t.ef.darkvision);
+    if (t.ef.speed) out.speed = t.ef.speed;
+    if (t.ef.resist) out.resist.push(...t.ef.resist);
+    if (t.ef.saveAdv) out.saveAdv.push(...t.ef.saveAdv);
+    if (t.ef.saveAdvVsMagic) out.saveAdvVsMagic.push(...t.ef.saveAdvVsMagic);
+    if (t.ef.skillProf) out.skillProf.push(...t.ef.skillProf);
+    if (t.ef.cantrips) out.cantrips += t.ef.cantrips;
+    ['rerollNat1','relentless','savageCrit','sunlightSensitivity','hpPerLevel'].forEach(f => {
+      if (t.ef[f]) out.flags[f] = t.ef[f];
+    });
+  });
+  absorb(r.traits);
+  if (subraceName && r.subraces && r.subraces[subraceName]) absorb(r.subraces[subraceName].traits);
+  return out;
+}
+
+// Calcula a CA a partir da armadura/escudo escolhidos (PHB cap. 5)
+// Sem armadura: usa defesa sem armadura da classe (Bárbaro CON, Monge SAB) ou 10+DES.
+function computeAC(cls, abilities, armorName, hasShield) {
+  const c = RULES.classes[cls];
+  const dex = abilityMod(abilities.DES);
+  const armor = RULES.armor[armorName] || RULES.armor['Nenhuma'];
+  let ac;
+  if (!armor.base) {
+    if (c.unarmoredDefense) ac = 10 + dex + abilityMod(abilities[c.unarmoredDefense]);
+    else ac = 10 + dex;
+  } else {
+    const cap = armor.dexCap === null ? dex : Math.min(dex, armor.dexCap);
+    ac = armor.base + cap;
+  }
+  if (hasShield) ac += RULES.shieldBonus;
+  return ac;
+}
+
+// Compat: assinatura antiga usada por código legado. Sem armadura.
+function computeCA(cls, abilities) { return computeAC(cls, abilities, 'Nenhuma', false); }
+
+// ----- OPÇÕES DISPONÍVEIS (proficiências) — usado pela tela de criação -----
+
+// Junta as proficiências de armadura de classe + sub-raça (ex.: Anão da Montanha)
+function armorProfFor(cls, race, subrace) {
+  const set = new Set(RULES.classes[cls].armorProf || []);
+  const sr = race && subrace && RULES.races[race].subraces[subrace];
+  if (sr && sr.armorProf) sr.armorProf.forEach(p => set.add(p));
+  return set;
+}
+
+// Armaduras que o personagem pode vestir (inclui 'Nenhuma'); exclui metálicas p/ Druida
+function availableArmors(cls, race, subrace) {
+  const prof = armorProfFor(cls, race, subrace);
+  const noMetal = !!RULES.classes[cls].noMetalArmor;
+  const metalArmors = new Set(['Camisão de Malha','Cota de Anéis','Cota de Malha','Cota de Talas','Placas','Meia-Armadura']);
+  const out = ['Nenhuma'];
+  for (const name in RULES.armor) {
+    const a = RULES.armor[name];
+    if (!a.type) continue;                       // 'Nenhuma' já incluída
+    if (!prof.has(a.type)) continue;             // sem proficiência no tipo
+    if (noMetal && metalArmors.has(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+function canUseShield(cls, race, subrace) {
+  return armorProfFor(cls, race, subrace).has('escudo');
+}
+
+// Armas com as quais o personagem é proficiente (classe + raça + sub-raça)
+function availableWeapons(cls, race, subrace) {
+  const tokens = [];
+  const add = p => { if (typeof p === 'string') tokens.push(p.toLowerCase()); else if (Array.isArray(p)) p.forEach(x => tokens.push(String(x).toLowerCase())); };
+  add(RULES.classes[cls].weaponProf);
+  if (race && RULES.races[race].weaponProf) add(RULES.races[race].weaponProf);
+  const sr = race && subrace && RULES.races[race].subraces[subrace];
+  if (sr && sr.weaponProf) add(sr.weaponProf);
+
+  const allow = new Set();
+  for (const name in RULES.weapons) {
+    const cat = RULES.weapons[name].cat;         // 'simples' | 'marcial'
+    const lname = name.toLowerCase();
+    for (const t of tokens) {
+      if (t === 'marciais' || t === 'marcial') { allow.add(name); break; }   // simples + marciais
+      if ((t === 'simples' || t === 'simple') && cat === 'simples') { allow.add(name); break; }
+      if (t === lname) { allow.add(name); break; }                            // arma específica
+    }
+  }
+  return Array.from(allow);
+}
+
+// Pool de perícias da classe ('any' => todas as 18)
+function skillOptionsFor(cls) {
+  const list = RULES.classes[cls].skillList;
+  return list === 'any' ? Object.keys(RULES.skills) : list.slice();
+}
+
+// Perícias concedidas de graça pela raça/sub-raça (ex.: Elfo Percepção, Meio-Orc Intimidação)
+function fixedRacialSkills(race, subrace) {
+  const out = [];
+  const r = RULES.races[race];
+  if (r.skillProf) out.push(...r.skillProf);
+  (r.traits || []).forEach(t => { if (t.ef && t.ef.skillProf) out.push(...t.ef.skillProf); });
+  return Array.from(new Set(out));
+}
+
+// ============================================================
+//  RESOLUÇÃO DE ROLAGENS (lógica pura, testável) — Fase 3
+//  A RNG (d20, dados de dano) fica no motor (game.js); aqui só a decisão.
+// ============================================================
+
+// O personagem é proficiente nesta perícia? (compara sem diferenciar caixa)
+function skillProficient(c, skillName) {
+  if (!skillName || !c.skills) return false;
+  const key = Object.keys(RULES.skills).find(s => s.toLowerCase() === String(skillName).toLowerCase());
+  return !!key && c.skills.includes(key);
+}
+
+// Decide modificador, proficiência e vantagem/desvantagem de uma rolagem.
+// tipo: 'save' | 'ataque' | <nome de perícia> | <atributo livre>
+// abr: 'FOR'..'CAR'.  tag: ameaça/situação opcional (veneno, enfeitiçar, magia, sol...).
+function rollModifiers(c, tipo, abr, tag) {
+  const t = String(tipo || '').toLowerCase();
+  const tg = String(tag || '').toLowerCase();
+  const fx = c.racialEffects || {};
+  let mod = abilityMod(c.abilities[abr] || 10);
+  let prof = false, adv = false, dis = false;
+
+  if (t === 'save') {
+    if (c.saves.includes(abr)) { mod += c.prof; prof = true; }
+    // vantagem por traço racial: a ameaça casa com saveAdv (veneno, enfeitiçar, amedrontar...)
+    if (tg && (fx.saveAdv || []).some(s => tg.includes(s.toLowerCase()) || s.toLowerCase().includes(tg))) adv = true;
+    // Astúcia Gnômica: vantagem em saves de INT/SAB/CAR contra magia
+    if ((fx.saveAdvVsMagic || []).includes(abr) && (tg.includes('magia') || tg.includes('magic'))) adv = true;
+    // Fúria: vantagem em saves de Força
+    if (c.raging && abr === 'FOR') adv = true;
+  } else if (t === 'ataque' || t === 'attack') {
+    mod += c.prof; prof = true;
+    // Estilo de Luta — Arquearia: +2 em ataques à distância
+    const w0 = RULES.weapons[(c.weapons && c.weapons[0])];
+    if (c.fightingStyle === 'Arquearia' && w0 && !w0.melee) mod += 2;
+  } else {
+    // teste de perícia: proficiência só se o personagem realmente a tem
+    if (skillProficient(c, tipo)) { mod += c.prof; prof = true; }
+    // Fúria: vantagem em testes de Força (ex.: Atletismo)
+    if (c.raging && abr === 'FOR') adv = true;
+  }
+
+  // Sensibilidade à Luz Solar (Drow): desvantagem em ataques e Percepção sob sol direto
+  if (fx.flags && fx.flags.sunlightSensitivity && (tg.includes('sol') || tg.includes('luz solar'))) {
+    if (t === 'ataque' || t.includes('percep')) dis = true;
+  }
+
+  // Condições (Apêndice A) que afetam quem rola
+  const ce = conditionEffects(c);
+  let autoFail = false;
+  if (t === 'ataque' || t === 'attack') {
+    if (ce.disAttack) dis = true;
+    if (ce.advAttack) adv = true;
+  } else if (t === 'save') {
+    if ((abr === 'FOR' || abr === 'DES') && ce.autoFailStrDex) autoFail = true;
+    if (abr === 'DES' && ce.disDexSaves) dis = true;
+  } else {
+    if (ce.disChecks) dis = true;
+  }
+
+  // Vantagem e desvantagem se anulam (uma de cada = rolagem normal)
+  if (adv && dis) { adv = false; dis = false; }
+  return { mod, prof, adv, dis, autoFail };
+}
+
+// Especificação do dano da arma equipada (sem rolar). 'savage' = Ataques Selvagens (Meio-Orc).
+function weaponDamageSpec(c, abr) {
+  const wname = (c.weapons && c.weapons[0]) || null;
+  const w = wname && RULES.weapons[wname];
+  const savage = !!(c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.savageCrit);
+  if (!w) return { name: 'desarmado', dmg: null, flat: 1, bonus: 0, type: 'concussão', savage };
+  return { name: wname, dmg: w.dmg, bonus: abilityMod(c.abilities[abr] || 10), type: w.type, savage };
+}
+
+// ----- FEATURES DE CLASSE (Fase 4) -----
+function sneakAttackDice(level) { return Math.ceil(level / 2); }   // 1d6 nv1-2, 2d6 nv3-4
+function ragesByLevel(level)    { return level >= 3 ? 3 : 2; }     // 2 usos nv1-2, 3 nv3-5
+function rageDamage(level)      { return 2; }                      // +2 de dano até nv8
+function fightingStyleLevel(cls){ return cls === 'Guerreiro' ? 1 : (cls === 'Paladino' || cls === 'Patrulheiro') ? 2 : null; }
+
+// Perfil de dano de um ATAQUE, com features (Duelo, Fúria, Ataque Furtivo, Armas Grandes).
+// hadAdvantage = se a jogada de ataque teve vantagem (gatilho do Ataque Furtivo).
+function attackProfile(c, abr, hadAdvantage) {
+  const wname = (c.weapons && c.weapons[0]) || null;
+  const w = wname && RULES.weapons[wname];
+  const fs = c.fightingStyle;
+  const props = (w && w.props) || [];
+  const twoH = props.includes('duas-mãos');
+  const oneHandMelee = w && w.melee && !twoH;
+  const finesseOrRanged = w && (!w.melee || props.includes('acuidade'));
+  const savage = !!(c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.savageCrit);
+
+  let bonus = abilityMod(c.abilities[abr] || 10);
+  if (fs === 'Duelo' && oneHandMelee) bonus += 2;                        // Estilo: Duelo
+  if (c.raging && w && w.melee && abr === 'FOR') bonus += rageDamage(c.level); // Fúria
+
+  let sneak = 0;                                                          // Ataque Furtivo
+  if (c.cls === 'Ladino' && hadAdvantage && finesseOrRanged) sneak = sneakAttackDice(c.level);
+
+  const gwf = fs === 'Armas Grandes' && twoH;                            // Estilo: Armas Grandes
+  return { name: wname || 'desarmado', dmg: w ? w.dmg : null, flat: w ? 0 : 1,
+           bonus, type: w ? w.type : 'concussão', savage, sneak, gwf };
+}
+
+// Recursos rastreáveis da classe no nível atual (slots, Fúria, etc.).
+// kind: 'slots' | 'toggle' (Fúria) | 'counter' | 'pool'. recharge: 'short' | 'long'.
+function classResources(c) {
+  const out = [], L = c.level;
+  if (c.spellSlots) out.push({ key:'slot1', label: c.spellSlots.pact ? 'Slots de Pacto' : 'Slots de magia (nv1)', kind:'slots', max: c.spellSlots.max, recharge: c.spellSlots.pact ? 'short' : 'long' });
+  switch (c.cls) {
+    case 'Bárbaro':    out.push({ key:'rage', label:'Fúria', kind:'toggle', max: ragesByLevel(L), recharge:'long' }); break;
+    case 'Guerreiro':  out.push({ key:'secondwind', label:'Retomar Fôlego', kind:'counter', max:1, recharge:'short' });
+                       if (L >= 2) out.push({ key:'actionsurge', label:'Surto de Ação', kind:'counter', max:1, recharge:'short' }); break;
+    case 'Clérigo':    if (L >= 2) out.push({ key:'channel', label:'Canalizar Divindade', kind:'counter', max:1, recharge:'short' }); break;
+    case 'Monge':      if (L >= 2) out.push({ key:'ki', label:'Pontos de Ki', kind:'counter', max:L, recharge:'short' }); break;
+    case 'Bardo':      out.push({ key:'bardic', label:'Inspiração de Bardo', kind:'counter', max: Math.max(1, abilityMod(c.abilities.CAR)), recharge:'long' }); break;
+    case 'Paladino':   out.push({ key:'layon', label:'Imposição das Mãos (HP)', kind:'pool', max: L*5, recharge:'long' }); break;
+    case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
+  }
+  return out;
+}
+
+// Agrega os efeitos das condições ativas que afetam quem rola (Fase 5).
+function conditionEffects(c) {
+  const out = { disAttack:false, advAttack:false, disChecks:false, disDexSaves:false, autoFailStrDex:false, incapacitated:false };
+  (c.conditions || []).forEach(name => {
+    const cd = RULES.conditions[name];
+    if (cd && cd.ef) for (const k in cd.ef) if (out[k] !== undefined) out[k] = out[k] || cd.ef[k];
+  });
+  return out;
+}
+
+// ============================================================
+//  buildCharacter — monta a ficha fiel ao PHB
+//  opts: { name, player, slot, race, subrace, cls, scores,
+//          asiChoices?, skills?, armor?, shield?, weapons? }
+//  Campos opcionais ausentes => ficha parcial (preenchida na Fase 2).
+// ============================================================
+function buildCharacter(opts) {
+  const { name, player, slot, race, cls, scores } = opts;
+  const subrace   = opts.subrace || null;
+  const asiChoices= opts.asiChoices || null;
   const r = RULES.races[race];
   const c = RULES.classes[cls];
-  // aplica ASI racial
-  const abilities = {};
-  RULES.abilities.forEach(a => { abilities[a] = scores[a] + (r.asi[a] || 0); });
 
+  const abilities = applyASI(scores, race, subrace, asiChoices);
+  const fx = collectRacialEffects(race, subrace);
+
+  const level = 1, prof = profBonus(level);
   const conMod = abilityMod(abilities.CON);
-  const maxHp = c.hitDie + conMod;
-  const ca = computeCA(cls, abilities);
+  const hpPerLevelBonus = fx.flags.hpPerLevel || 0;     // Anão da Colina
+  const maxHp = c.hitDie + conMod + hpPerLevelBonus;
+
+  // perícias proficientes: raciais fixas + escolhidas
+  const racialSkills = (r.skillProf || []).concat(fx.skillProf);
+  const chosenSkills = opts.skills || [];
+  const skills = Array.from(new Set(racialSkills.concat(chosenSkills)));
+
+  // equipamento/CA
+  const armorName = opts.armor || 'Nenhuma';
+  const hasShield = !!opts.shield;
+  const fightingStyle = opts.fightingStyle || null;
+  let ca = computeAC(cls, abilities, armorName, hasShield);
+  if (fightingStyle === 'Defesa' && armorName !== 'Nenhuma') ca += 1;   // Estilo de Luta: Defesa
+  const weapons = opts.weapons || [];
+
+  // proficiências de armadura/arma (raça pode adicionar — Anão da Montanha)
+  let armorProf = (c.armorProf || []).slice();
+  if (subrace && r.subraces[subrace] && r.subraces[subrace].armorProf) {
+    armorProf = Array.from(new Set(armorProf.concat(r.subraces[subrace].armorProf)));
+  }
+
+  // conjuração nível 1
+  let spellSlots = null, cantripsKnown = c.spell ? c.spell.cantrips : 0;
+  if (c.spell && c.spell.slots1) spellSlots = { max: c.spell.slots1, used: 0, ability: c.spell.ability, pact: !!c.spell.pact };
+  cantripsKnown += fx.cantrips; // truques raciais (Alto Elfo, Tiefling, etc.)
+  const spellDC = c.spell ? 8 + prof + abilityMod(abilities[c.spell.ability]) : null;
+
+  // idiomas
+  let languages = (r.languages || []).slice();
+
+  // traços narráveis (raça + sub-raça)
+  const traits = (r.traits || []).map(t => t.name)
+    .concat(subrace && r.subraces[subrace] ? (r.subraces[subrace].traits || []).map(t => t.name) : []);
+  const features = (c.features && c.features[1]) ? c.features[1].slice() : [];
 
   return {
-    name, player, slot, race, cls,
-    level: 1, xp: 0, prof: 2,
+    name, player, slot, race, subrace, cls,
+    level, xp: 0, prof,
     abilities,
     maxHp, hp: maxHp,
-    ca,
-    speed: r.speed,
-    darkvision: r.darkvision,
-    saves: c.saves,
-    traits: r.traits,
-    features: c.features,
-    spellSlots: c.slots1 ? { max: c.slots1, used: 0 } : null,
+    ca, armor: armorName, shield: hasShield,
+    speed: fx.speed,
+    darkvision: fx.darkvision > 0,
+    darkvisionRange: fx.darkvision,
+    size: r.size,
+    saves: c.saves.slice(),
+    skills,
+    weapons,
+    armorProf,
+    weaponProf: c.weaponProf,
+    languages,
+    traits,
+    features,
+    racialEffects: fx,                // ganchos mecânicos p/ Fases 3-4
+    spellSlots,
+    cantripsKnown,
+    spellAbility: c.spell ? c.spell.ability : null,
+    spellDC,
+    subclassPending: c.subclassLevel === 1 ? c.subclasses : null,
+    fightingStyle,
+    archetype: opts.archetype || null,
+    raging: false,
+    resUsed: {},                       // contagem de usos por recurso (Fase 4)
     conditions: [],
     inventory: ['Equipamento inicial de ' + cls]
   };
@@ -787,8 +1648,14 @@ const CAMPAIGN = {
 // dados (justa, no código), e comunicação com a IA (Haiku).
 // ============================================================
 
+// ---------- CONFIG SUPABASE (chaves públicas, protegidas por RLS) ----------
+const SUPA_URL = 'https://qyqvnokqkukhecnpykds.supabase.co';
+const SUPA_KEY = 'sb_publishable_7Pnila08_CO32ae28pIM5g_3WACbxV1';
+let supa = null;
+
 // ---------- ESTADO GLOBAL ----------
 const STATE = {
+  user: null,
   apiKey: '',
   model: 'claude-haiku-4-5',
   characters: [],       // [{...}, {...}]
@@ -801,7 +1668,8 @@ const STATE = {
 };
 
 // rascunho de criação do personagem atual
-let DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+let DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+              skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null };
 
 // ---------- UTIL DOM ----------
 const $ = sel => document.querySelector(sel);
@@ -840,41 +1708,131 @@ function rollExpr(expr) {
   return { total, rolls, bonus: bonus?+bonus:0 };
 }
 
+// d20 com o traço Sortudo do Halfling: re-rola um 1 natural uma vez.
+function d20ForChar(c, mod=0, opts={}) {
+  const r = d20(mod, opts);
+  const lucky = c && c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.rerollNat1;
+  if (lucky && r.nat === 1) { const r2 = d20(mod, {}); r2.lucky = true; return r2; }
+  return r;
+}
+
+// rola o dano de uma arma; dobra os DADOS no crítico; Ataques Selvagens soma 1 dado no crit.
+function rollDamage(spec, crit) {
+  if (!spec.dmg) {
+    const total = (spec.flat || 1) + (spec.bonus || 0);
+    return { total, detail: `${spec.flat||1}${spec.bonus?fmtMod(spec.bonus):''}` };
+  }
+  const m = spec.dmg.match(/(\d+)d(\d+)/);
+  let nDice = +m[1]; const sides = +m[2];
+  if (crit) nDice *= 2;
+  if (crit && spec.savage) nDice += 1;   // Ataques Selvagens: 1 dado extra da arma
+  const rolls = rollDiceArr(nDice, sides);
+  const total = rolls.reduce((a,b)=>a+b,0) + (spec.bonus || 0);
+  return { total, detail: `${nDice}d${sides}${spec.bonus?fmtMod(spec.bonus):''} (${rolls.join(',')})` };
+}
+
+// rola o dano de um ATAQUE com features (Armas Grandes re-rola 1/2, Ataque Furtivo, crit dobra tudo).
+function rollAttackDamage(ap, crit) {
+  let total = 0; const parts = [];
+  if (ap.dmg) {
+    const m = ap.dmg.match(/(\d+)d(\d+)/);
+    let n = +m[1]; const sides = +m[2];
+    if (crit) n *= 2;
+    if (crit && ap.savage) n += 1;                       // Ataques Selvagens (Meio-Orc)
+    const r = [];
+    for (let k=0;k<n;k++){ let v=rollDie(sides); if (ap.gwf && (v===1||v===2)) v=rollDie(sides); r.push(v); }
+    total += r.reduce((a,b)=>a+b,0); parts.push(`${n}d${sides}(${r.join(',')})`);
+  } else { total += (ap.flat||1); parts.push(`${ap.flat||1}`); }
+  if (ap.sneak) {                                         // Ataque Furtivo (Ladino)
+    let n = ap.sneak; if (crit) n *= 2;
+    const r = []; for (let k=0;k<n;k++) r.push(rollDie(6));
+    total += r.reduce((a,b)=>a+b,0); parts.push(`Furtivo ${n}d6(${r.join(',')})`);
+  }
+  if (ap.bonus) { total += ap.bonus; parts.push(fmtMod(ap.bonus)); }
+  return { total, detail: parts.join(' + ') };
+}
+
 // =====================================================
 //  TELA 1 — SETUP
 // =====================================================
-function initSetup() {
-  // recupera chave e save salvos no navegador
-  const savedKey = localStorage.getItem('sw_apikey');
-  if (savedKey) { $('#apiKey').value = savedKey; STATE.apiKey = savedKey; }
-  if (localStorage.getItem('sw_save')) $('#loadSaveBtn').style.display = 'inline-flex';
+// =====================================================
+//  AUTENTICAÇÃO (Supabase) — porta de entrada
+// =====================================================
+let signupMode = false;
 
-  $('#testKeyBtn').onclick = testApiKey;
-  $('#toCreationBtn').onclick = () => {
-    const k = $('#apiKey').value.trim();
-    if (!k) { showKeyStatus('Cole sua chave da API antes de continuar.', false); return; }
-    STATE.apiKey = k;
-    STATE.model = $('#modelChoice').value;
-    localStorage.setItem('sw_apikey', k);
-    startCreation();
-  };
+async function initAuth() {
+  supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  $('#loginBtn').onclick = doAuth;
+  $('#toSignupBtn').onclick = () => { signupMode = !signupMode; updateLoginMode(); $('#loginStatus').innerHTML = ''; };
+  $('#loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAuth(); } });
+  $('#loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#loginPass').focus(); } });
+
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) enterApp(session); else showScreen('screen-login');
+}
+
+function updateLoginMode() {
+  $('#loginTitle').textContent  = signupMode ? 'Criar conta' : 'Entrar';
+  $('#loginBtn').textContent    = signupMode ? 'Criar conta →' : 'Entrar →';
+  $('#toSignupBtn').textContent = signupMode ? 'Já tenho conta' : 'Criar conta';
+  $('#loginHint').textContent   = signupMode ? 'Crie sua conta de acesso (uma vez).' : 'Use seu e-mail e senha.';
+}
+
+function loginStatus(msg, ok) { $('#loginStatus').innerHTML = `<div class="${ok?'ok':'err'}">${msg}</div>`; }
+
+async function doAuth() {
+  const email = $('#loginEmail').value.trim();
+  const pass = $('#loginPass').value;
+  if (!email || !pass) { loginStatus('Preencha e-mail e senha.', false); return; }
+  loginStatus(signupMode ? 'Criando conta…' : 'Entrando…', true);
+  try {
+    const { data, error } = signupMode
+      ? await supa.auth.signUp({ email, password: pass })
+      : await supa.auth.signInWithPassword({ email, password: pass });
+    if (error) { loginStatus('Erro: ' + error.message, false); return; }
+    if (signupMode && !data.session) {
+      loginStatus('Conta criada. Confirme pelo e-mail (se solicitado) e então entre.', true);
+      signupMode = false; updateLoginMode(); return;
+    }
+    const { data: { session } } = await supa.auth.getSession();
+    if (session) enterApp(session); else loginStatus('Não foi possível iniciar a sessão.', false);
+  } catch (e) { loginStatus('Erro: ' + e.message, false); }
+}
+
+async function doLogout() {
+  try { await supa.auth.signOut(); } catch (e) {}
+  STATE.user = null; STATE.characters = []; STATE.history = [];
+  $('#loginPass').value = '';
+  showScreen('screen-login');
+}
+
+function enterApp(session) {
+  STATE.user = session.user;
+  if ($('#userEmail')) $('#userEmail').textContent = session.user.email;
+  initSetup();
+}
+
+// =====================================================
+//  TELA 1 — SETUP (pós-login)
+// =====================================================
+async function initSetup() {
+  showScreen('screen-setup');
+  STATE.model = $('#modelChoice').value;
+  $('#modelChoice').onchange = () => { STATE.model = $('#modelChoice').value; };
+  $('#toCreationBtn').onclick = () => { STATE.model = $('#modelChoice').value; startCreation(); };
   $('#loadSaveBtn').onclick = loadGame;
+  $('#logoutBtn').onclick = doLogout;
+
+  // há jogo salvo no servidor?
+  try {
+    const { data } = await supa.from('saves').select('slot').eq('user_id', STATE.user.id).limit(1);
+    $('#loadSaveBtn').style.display = (data && data.length) ? 'inline-flex' : 'none';
+  } catch (e) {}
 }
 
 function showKeyStatus(msg, ok) {
   $('#keyStatus').innerHTML = `<div class="${ok?'ok':'err'}">${msg}</div>`;
-}
-
-async function testApiKey() {
-  const k = $('#apiKey').value.trim();
-  if (!k) { showKeyStatus('Cole uma chave primeiro.', false); return; }
-  showKeyStatus('Testando...', true);
-  try {
-    const r = await callClaude([{role:'user', content:'Responda apenas: OK'}], 'Você é um teste. Responda OK.', 20, k, $('#modelChoice').value);
-    if (r) showKeyStatus('Chave válida. Pronto para jogar.', true);
-  } catch(e) {
-    showKeyStatus('Erro: ' + e.message, false);
-  }
 }
 
 // =====================================================
@@ -888,7 +1846,9 @@ function startCreation() {
 }
 
 function renderCreation() {
-  DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+  DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+            skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
+            fightingStyle:null, archetype:null };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
   $('#playerName').value = '';
@@ -896,19 +1856,25 @@ function renderCreation() {
   // raças
   $('#raceGrid').innerHTML = Object.entries(RULES.races).map(([name, r]) => {
     const asi = Object.entries(r.asi).map(([k,v])=>`${k}+${v}`).join(' ');
+    const extra = r.asiChoice ? ` +1×${r.asiChoice.count}` : '';
+    const sub = (r.subraces && Object.keys(r.subraces).length) ? ' · sub-raças' : '';
     return `<div class="choice" data-race="${name}">
       <div class="name">${name}</div>
-      <div class="meta">${asi}${r.darkvision?' · darkvision':''}</div>
+      <div class="meta">${asi}${extra}${r.darkvision?' · darkvision':''}${sub}</div>
     </div>`;
   }).join('');
 
   // classes
   $('#classGrid').innerHTML = Object.entries(RULES.classes).map(([name, c]) => {
+    const sk = c.spell ? ` · conjura ${c.spell.ability}` : '';
     return `<div class="choice" data-class="${name}">
       <div class="name">${name}</div>
-      <div class="meta">d${c.hitDie} · ${c.primary.join('/')}</div>
+      <div class="meta">d${c.hitDie} · ${c.primary.join('/')}${sk}</div>
     </div>`;
   }).join('');
+
+  // seções dependentes começam ocultas
+  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection','#classOptionsSection'].forEach(s=>$(s).classList.add('hide'));
 
   // atributos vazios
   renderScorePool();
@@ -917,17 +1883,191 @@ function renderCreation() {
   // eventos
   $$('#raceGrid .choice').forEach(el => el.onclick = () => {
     $$('#raceGrid .choice').forEach(c=>c.classList.remove('selected'));
-    el.classList.add('selected'); DRAFT.race = el.dataset.race; checkCreationReady();
+    el.classList.add('selected');
+    DRAFT.race = el.dataset.race; DRAFT.subrace = null;
+    DRAFT.skills = []; DRAFT.skillsExtra = []; DRAFT.asiChoices = [];
+    renderSubraces(); renderAsiChoice(); renderSkills(); renderEquipment();
+    renderAbilityGrid(); checkCreationReady();
   });
   $$('#classGrid .choice').forEach(el => el.onclick = () => {
     $$('#classGrid .choice').forEach(c=>c.classList.remove('selected'));
-    el.classList.add('selected'); DRAFT.cls = el.dataset.class; checkCreationReady();
+    el.classList.add('selected');
+    DRAFT.cls = el.dataset.class; DRAFT.skills = [];
+    DRAFT.armor = null; DRAFT.weapon = null;   // recalcula equipamento padrão p/ a nova classe
+    DRAFT.fightingStyle = null; DRAFT.archetype = null;
+    renderSkills(); renderEquipment(); renderClassOptions(); checkCreationReady();
   });
   $('#rollScoresBtn').onclick = doRollScores;
-  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); checkCreationReady(); };
+  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
   $('#charNextBtn').onclick = commitCharacter;
+}
+
+// ---- Sub-raça ----
+function renderSubraces() {
+  const sec = $('#subraceSection'), grid = $('#subraceGrid');
+  const subs = DRAFT.race ? RULES.races[DRAFT.race].subraces : null;
+  if (!subs || !Object.keys(subs).length) { sec.classList.add('hide'); grid.innerHTML=''; return; }
+  sec.classList.remove('hide');
+  grid.innerHTML = Object.entries(subs).map(([name, sr]) => {
+    const asi = Object.entries(sr.asi||{}).map(([k,v])=>`${k}+${v}`).join(' ');
+    return `<div class="choice" data-subrace="${name}">
+      <div class="name">${name}</div><div class="meta">${asi||'—'}</div></div>`;
+  }).join('');
+  $$('#subraceGrid .choice').forEach(el => el.onclick = () => {
+    $$('#subraceGrid .choice').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    DRAFT.subrace = el.dataset.subrace;
+    renderSkills(); renderEquipment(); renderAbilityGrid(); checkCreationReady();
+  });
+}
+
+// ---- Escolha de ASI (Meio-Elfo: +1 em dois) ----
+function renderAsiChoice() {
+  const sec = $('#asiChoiceSection'), grid = $('#asiChoiceGrid');
+  const rc = DRAFT.race ? RULES.races[DRAFT.race].asiChoice : null;
+  if (!rc) { sec.classList.add('hide'); grid.innerHTML=''; return; }
+  sec.classList.remove('hide');
+  const exclude = rc.exclude || [];
+  $('#asiChoiceNote').textContent = `Escolhidos ${DRAFT.asiChoices.length}/${rc.count}`;
+  $('#asiChoiceNote').classList.toggle('done', DRAFT.asiChoices.length===rc.count);
+  grid.innerHTML = RULES.abilities.map(ab => {
+    const off = exclude.includes(ab);
+    const sel = DRAFT.asiChoices.includes(ab);
+    return `<div class="choice ${sel?'selected':''} ${off?'':''}" data-asi="${ab}" style="${off?'opacity:.35;pointer-events:none':''}">
+      <div class="name">${ab}</div><div class="meta">${RULES.abilityNames[ab]}${off?' (já +2)':' +1'}</div></div>`;
+  }).join('');
+  $$('#asiChoiceGrid .choice').forEach(el => el.onclick = () => {
+    const ab = el.dataset.asi;
+    const i = DRAFT.asiChoices.indexOf(ab);
+    if (i>=0) DRAFT.asiChoices.splice(i,1);
+    else if (DRAFT.asiChoices.length < rc.count) DRAFT.asiChoices.push(ab);
+    renderAsiChoice(); renderAbilityGrid(); updateAC(); checkCreationReady();
+  });
+}
+
+// ---- Perícias (classe + extra racial) ----
+function renderSkills() {
+  const sec = $('#skillsSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+  const need = RULES.classes[DRAFT.cls].skillCount;
+  const pool = skillOptionsFor(DRAFT.cls);
+  const fixed = DRAFT.race ? fixedRacialSkills(DRAFT.race, DRAFT.subrace) : [];
+  // remove de DRAFT.skills qualquer que tenha virado fixa ou saído do pool
+  DRAFT.skills = DRAFT.skills.filter(s => pool.includes(s) && !fixed.includes(s));
+
+  $('#skillsNote').textContent = `Escolha ${need} (de ${DRAFT.cls}). Selecionadas: ${DRAFT.skills.length}/${need}`;
+  $('#skillsNote').classList.toggle('done', DRAFT.skills.length===need);
+  const atMax = DRAFT.skills.length >= need;
+  $('#skillsGrid').innerHTML = pool.map(s => {
+    if (fixed.includes(s)) return `<div class="skill-chip locked">${s}<span class="tag">raça</span></div>`;
+    const sel = DRAFT.skills.includes(s);
+    const dis = !sel && atMax;
+    return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-skill="${s}">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+  }).join('');
+  $$('#skillsGrid .skill-chip[data-skill]').forEach(el => el.onclick = () => {
+    const s = el.dataset.skill; const i = DRAFT.skills.indexOf(s);
+    if (i>=0) DRAFT.skills.splice(i,1);
+    else if (DRAFT.skills.length < need) DRAFT.skills.push(s);
+    renderSkills(); checkCreationReady();
+  });
+
+  // extra racial (Meio-Elfo: 2 quaisquer)
+  const extraN = DRAFT.race ? (RULES.races[DRAFT.race].skillChoiceExtra||0) : 0;
+  const wrap = $('#skillsExtraWrap');
+  if (!extraN) { wrap.classList.add('hide'); DRAFT.skillsExtra=[]; return; }
+  wrap.classList.remove('hide');
+  const taken = new Set([...DRAFT.skills, ...fixed]);
+  DRAFT.skillsExtra = DRAFT.skillsExtra.filter(s => !taken.has(s));
+  $('#skillsExtraNote').textContent = `Versatilidade em Perícia — escolha ${extraN} quaisquer: ${DRAFT.skillsExtra.length}/${extraN}`;
+  $('#skillsExtraNote').classList.toggle('done', DRAFT.skillsExtra.length===extraN);
+  const extraMax = DRAFT.skillsExtra.length >= extraN;
+  $('#skillsExtraGrid').innerHTML = Object.keys(RULES.skills).map(s => {
+    if (taken.has(s)) return `<div class="skill-chip disabled">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+    const sel = DRAFT.skillsExtra.includes(s);
+    const dis = !sel && extraMax;
+    return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-xskill="${s}">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+  }).join('');
+  $$('#skillsExtraGrid .skill-chip[data-xskill]').forEach(el => el.onclick = () => {
+    const s = el.dataset.xskill; const i = DRAFT.skillsExtra.indexOf(s);
+    if (i>=0) DRAFT.skillsExtra.splice(i,1);
+    else if (DRAFT.skillsExtra.length < extraN) DRAFT.skillsExtra.push(s);
+    renderSkills(); checkCreationReady();
+  });
+}
+
+// ---- Equipamento (armadura, escudo, arma) ----
+function defaultArmor(cls, race, subrace) {
+  if (RULES.classes[cls].unarmoredDefense) return 'Nenhuma';
+  const av = availableArmors(cls, race, subrace);
+  for (const pref of ['Cota de Malha','Brunea','Couro Batido']) if (av.includes(pref)) return pref;
+  return 'Nenhuma';
+}
+function renderEquipment() {
+  const sec = $('#equipmentSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+  const armors = availableArmors(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  if (!armors.includes(DRAFT.armor)) DRAFT.armor = defaultArmor(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  $('#armorSelect').innerHTML = armors.map(a=>`<option value="${a}" ${a===DRAFT.armor?'selected':''}>${a}${a==='Nenhuma'?'':` (${RULES.armor[a].base}${RULES.armor[a].dexCap===0?'':'+DES'})`}</option>`).join('');
+  $('#armorSelect').onchange = e => { DRAFT.armor = e.target.value; updateAC(); checkCreationReady(); };
+
+  const weapons = availableWeapons(DRAFT.cls, DRAFT.race, DRAFT.subrace).sort();
+  if (!weapons.includes(DRAFT.weapon)) DRAFT.weapon = weapons[0] || null;
+  $('#weaponSelect').innerHTML = weapons.map(w=>`<option value="${w}" ${w===DRAFT.weapon?'selected':''}>${w} (${RULES.weapons[w].dmg} ${RULES.weapons[w].type})</option>`).join('');
+  $('#weaponSelect').onchange = e => { DRAFT.weapon = e.target.value; checkCreationReady(); };
+
+  const canShield = canUseShield(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  const row = $('#shieldRow'); row.classList.toggle('disabled', !canShield);
+  if (!canShield) DRAFT.shield = false;
+  $('#shieldCheck').checked = DRAFT.shield;
+  $('#shieldCheck').onchange = e => { DRAFT.shield = e.target.checked; updateAC(); };
+  updateAC();
+}
+
+// abilities atuais do rascunho (scores atribuídos + ASI racial/escolha; fallback 10)
+function draftAbilities() {
+  const base = {};
+  RULES.abilities.forEach(a => {
+    const idx = DRAFT.assigned[a];
+    base[a] = (DRAFT.scores && idx!==undefined) ? DRAFT.scores[idx] : 10;
+  });
+  return DRAFT.race ? applyASI(base, DRAFT.race, DRAFT.subrace, DRAFT.asiChoices) : base;
+}
+function updateAC() {
+  if (!DRAFT.cls) return;
+  let ac = computeAC(DRAFT.cls, draftAbilities(), DRAFT.armor, DRAFT.shield);
+  if (DRAFT.fightingStyle === 'Defesa' && DRAFT.armor && DRAFT.armor !== 'Nenhuma') ac += 1;
+  const el = $('#acPreview'); if (el) el.textContent = ac;
+}
+
+// ---- Opções de classe: Estilo de Luta (Guerreiro nv1) e Subclasse (nv1) ----
+function renderClassOptions() {
+  const sec = $('#classOptionsSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  const cls = DRAFT.cls;
+  const hasStyle = fightingStyleLevel(cls) === 1;                 // no nível 1, só Guerreiro
+  const subAtL1 = RULES.classes[cls].subclassLevel === 1;         // Bruxo, Clérigo, Feiticeiro
+  if (!hasStyle && !subAtL1) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+
+  const fw = $('#fightingStyleWrap');
+  if (hasStyle) {
+    fw.classList.remove('hide');
+    $('#fightingStyleGrid').innerHTML = Object.entries(RULES.fightingStyles).map(([name,desc])=>
+      `<div class="choice ${DRAFT.fightingStyle===name?'selected':''}" data-fs="${name}"><div class="name">${name}</div><div class="meta">${desc}</div></div>`).join('');
+    $$('#fightingStyleGrid .choice').forEach(el=>el.onclick=()=>{ DRAFT.fightingStyle=el.dataset.fs; renderClassOptions(); updateAC(); checkCreationReady(); });
+  } else { fw.classList.add('hide'); DRAFT.fightingStyle=null; }
+
+  const aw = $('#archetypeWrap');
+  if (subAtL1) {
+    aw.classList.remove('hide');
+    $('#archetypeGrid').innerHTML = (RULES.classes[cls].subclasses||[]).map(name=>
+      `<div class="choice ${DRAFT.archetype===name?'selected':''}" data-arch="${name}"><div class="name">${name}</div></div>`).join('');
+    $$('#archetypeGrid .choice').forEach(el=>el.onclick=()=>{ DRAFT.archetype=el.dataset.arch; renderClassOptions(); checkCreationReady(); });
+  } else { aw.classList.add('hide'); DRAFT.archetype=null; }
 }
 
 function doRollScores() {
@@ -955,11 +2095,19 @@ function renderScorePool() {
   });
 }
 
+function abilityRaceBonus(ab) {
+  if (!DRAFT.race) return 0;
+  const r = RULES.races[DRAFT.race];
+  let b = r.asi[ab] || 0;
+  if (DRAFT.subrace && r.subraces[DRAFT.subrace]) b += (r.subraces[DRAFT.subrace].asi || {})[ab] || 0;
+  if (r.asiChoice && DRAFT.asiChoices.includes(ab)) b += r.asiChoice.amount;
+  return b;
+}
 function renderAbilityGrid() {
   $('#abilityGrid').innerHTML = RULES.abilities.map(ab => {
     const idx = DRAFT.assigned[ab];
     const score = idx!==undefined ? DRAFT.scores[idx] : null;
-    const raceBonus = DRAFT.race ? (RULES.races[DRAFT.race].asi[ab]||0) : 0;
+    const raceBonus = abilityRaceBonus(ab);
     const finalScore = score!==null ? score + raceBonus : null;
     const mod = finalScore!==null ? abilityMod(finalScore) : null;
     return `<div class="ability-box ${score!==null?'assigned':''}" data-ab="${ab}">
@@ -975,18 +2123,27 @@ function renderAbilityGrid() {
       for (const k in DRAFT.assigned) if (DRAFT.assigned[k]===pendingScore) delete DRAFT.assigned[k];
       DRAFT.assigned[ab] = pendingScore;
       pendingScore = null;
-      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
     } else if (DRAFT.assigned[ab] !== undefined) {
       // clicar num atribuído remove
       delete DRAFT.assigned[ab];
-      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
     }
   });
 }
 
 function checkCreationReady() {
+  const r = DRAFT.race ? RULES.races[DRAFT.race] : null;
   const allAssigned = DRAFT.scores && Object.keys(DRAFT.assigned).length === 6;
-  const ready = DRAFT.race && DRAFT.cls && allAssigned && $('#charName').value.trim() && $('#playerName').value.trim();
+  const subOk = !r || !Object.keys(r.subraces||{}).length || DRAFT.subrace;
+  const asiOk = !r || !r.asiChoice || DRAFT.asiChoices.length === r.asiChoice.count;
+  const skillsOk = DRAFT.cls && DRAFT.skills.length === RULES.classes[DRAFT.cls].skillCount;
+  const extraN = r ? (r.skillChoiceExtra||0) : 0;
+  const extraOk = DRAFT.skillsExtra.length === extraN;
+  const styleOk = !DRAFT.cls || fightingStyleLevel(DRAFT.cls) !== 1 || DRAFT.fightingStyle;
+  const archOk  = !DRAFT.cls || RULES.classes[DRAFT.cls].subclassLevel !== 1 || DRAFT.archetype;
+  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && allAssigned && skillsOk && extraOk && styleOk && archOk
+    && $('#charName').value.trim() && $('#playerName').value.trim();
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
 }
@@ -998,7 +2155,12 @@ function commitCharacter() {
     name: $('#charName').value.trim(),
     player: $('#playerName').value.trim(),
     slot: STATE.creationSlot,
-    race: DRAFT.race, cls: DRAFT.cls, scores
+    race: DRAFT.race, subrace: DRAFT.subrace, cls: DRAFT.cls, scores,
+    asiChoices: DRAFT.asiChoices,
+    skills: [...DRAFT.skills, ...DRAFT.skillsExtra],
+    armor: DRAFT.armor, shield: DRAFT.shield,
+    weapons: DRAFT.weapon ? [DRAFT.weapon] : [],
+    fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype
   });
   STATE.characters.push(char);
 
@@ -1020,6 +2182,7 @@ function startGame() {
   STATE.activeChar = 0;
   STATE.history = [];
   renderSidebar();
+  $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
   $('#sendBtn').onclick = submitAction;
@@ -1031,24 +2194,126 @@ function startGame() {
 }
 
 function renderSidebar() {
-  const sb = $('#sidebar');
-  sb.innerHTML = STATE.characters.map((c, i) => {
+  const sb = $('#charPanel');
+  const restBar = `<div class="rest-bar"><button class="rest-btn" id="shortRestBtn">☕ Descanso Curto</button><button class="rest-btn" id="longRestBtn">🌙 Descanso Longo</button></div>`;
+  sb.innerHTML = restBar + STATE.characters.map((c, i) => {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
-    const slots = c.spellSlots ? `<div class="spell-slots">${
-      Array.from({length:c.spellSlots.max}, (_,k)=>`<div class="slot ${k < c.spellSlots.max - c.spellSlots.used ? 'full':''}"></div>`).join('')
-    }</div>` : '';
+    const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
       <div class="cc-name">${c.name}</div>
-      <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${c.race} ${c.cls} Nv${c.level}</div>
+      <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${sub}</div>
       <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
       <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
       <div class="stat-row"><span>XP <b>${c.xp}/${RULES.xpTable[c.level+1]||'max'}</b></span></div>
       <div class="mini-abilities">${RULES.abilities.map(ab=>`
         <div class="mini-ab"><div class="l">${ab}</div><div class="v">${c.abilities[ab]} <span style="color:var(--stone-400);font-size:0.7rem">${fmtMod(abilityMod(c.abilities[ab]))}</span></div></div>
       `).join('')}</div>
-      ${slots}
+      ${resourcesHtml(c, i)}
+      ${conditionsHtml(c, i)}
     </div>`;
   }).join('');
+  $('#shortRestBtn').onclick = () => doRest('short');
+  $('#longRestBtn').onclick = () => doRest('long');
+  attachResourceHandlers();
+}
+
+// HTML dos recursos clicáveis da ficha (slots, Fúria, contadores, pool).
+function resourcesHtml(c, i) {
+  const res = classResources(c);
+  if (!res.length) return '';
+  const rows = res.map(r => {
+    if (r.kind === 'slots') {
+      const left = r.max - (c.spellSlots ? c.spellSlots.used : 0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="slot" data-idx="${k}"></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
+    }
+    if (r.kind === 'toggle') {   // Fúria
+      const left = r.max - (c.resUsed[r.key]||0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}"></span>`).join('');
+      return `<div class="res-row"><button class="res-btn ${c.raging?'on':''}" data-ci="${i}" data-rk="rage">${c.raging?'Fúria ATIVA ●':'Fúria'}</button><span class="res-pips" title="usos">${pips}</span></div>`;
+    }
+    if (r.kind === 'counter') {
+      const left = r.max - (c.resUsed[r.key]||0);
+      const pips = Array.from({length:r.max},(_,k)=>`<span class="res-pip ${k<left?'full':''}" data-ci="${i}" data-rk="ctr" data-key="${r.key}" data-idx="${k}"></span>`).join('');
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pips">${pips}</span></div>`;
+    }
+    if (r.kind === 'pool') {
+      const left = r.max - (c.resUsed[r.key]||0);
+      return `<div class="res-row"><span class="res-label">${r.label}</span><span class="res-pool"><button class="res-mini" data-ci="${i}" data-rk="pool-" data-key="${r.key}">−5</button><b>${left}</b>/${r.max}<button class="res-mini" data-ci="${i}" data-rk="poolr" data-key="${r.key}">↺</button></span></div>`;
+    }
+    return '';
+  }).join('');
+  return `<div class="res-block">${rows}</div>`;
+}
+
+function attachResourceHandlers() {
+  $$('#charPanel [data-rk]').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    const rk = el.dataset.rk;
+    if (rk === 'slot') {
+      const idx = +el.dataset.idx, left = c.spellSlots.max - c.spellSlots.used;
+      c.spellSlots.used += (idx < left) ? 1 : -1;          // pip cheio gasta; vazio recupera
+      c.spellSlots.used = Math.max(0, Math.min(c.spellSlots.max, c.spellSlots.used));
+    } else if (rk === 'ctr') {
+      const key = el.dataset.key, idx = +el.dataset.idx;
+      const r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = Math.max(0, Math.min(r.max, (c.resUsed[key]||0) + ((idx < left) ? 1 : -1)));
+    } else if (rk === 'rage') {
+      if (c.raging) { c.raging = false; }                  // desligar não devolve o uso
+      else { const left = ragesByLevel(c.level) - (c.resUsed.rage||0);
+             if (left > 0) { c.raging = true; c.resUsed.rage = (c.resUsed.rage||0)+1; }
+             else toast('Sem usos de Fúria. Descanse.'); }
+    } else if (rk === 'pool-') {
+      const key = el.dataset.key, r = classResources(c).find(x=>x.key===key);
+      const left = r.max - (c.resUsed[key]||0);
+      c.resUsed[key] = (c.resUsed[key]||0) + Math.min(5, left);
+    } else if (rk === 'poolr') {
+      c.resUsed[el.dataset.key] = 0;
+    }
+    renderSidebar();
+  });
+  // condições: adicionar (select) e remover (chip)
+  $$('#charPanel .cond-add').forEach(sel => sel.onchange = () => {
+    const c = STATE.characters[+sel.dataset.ci], v = sel.value;
+    if (v && !(c.conditions||[]).includes(v)) c.conditions = (c.conditions||[]).concat(v);
+    renderSidebar();
+  });
+  $$('#charPanel .cond-chip').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    c.conditions = (c.conditions||[]).filter(n => n !== el.dataset.cn);
+    renderSidebar();
+  });
+}
+
+// Chips de condição (Apêndice A) na ficha — clicáveis para adicionar/remover.
+function conditionsHtml(c, i) {
+  const opts = Object.keys(RULES.conditions).map(n=>`<option value="${n}">${n}</option>`).join('');
+  const chips = (c.conditions||[]).map(n=>`<span class="cond-chip" data-ci="${i}" data-cn="${n}" title="${RULES.conditions[n].desc}">${n} ✕</span>`).join('');
+  return `<div class="cond-block">
+    <select class="cond-add" data-ci="${i}"><option value="">+ condição</option>${opts}</select>
+    <div class="cond-chips">${chips}</div>
+  </div>`;
+}
+
+// Descanso: curto restaura recursos 'short' (e Pacto do Bruxo); longo restaura tudo + HP.
+function doRest(kind) {
+  STATE.characters.forEach(c => {
+    const res = classResources(c);
+    if (kind === 'long') {
+      c.hp = c.maxHp; c.raging = false; c.resUsed = {};
+      if (c.spellSlots) c.spellSlots.used = 0;
+    } else {
+      res.forEach(r => {
+        if (r.recharge === 'short') {
+          if (r.kind === 'slots' && c.spellSlots) c.spellSlots.used = 0;  // Bruxo (Pacto)
+          else c.resUsed[r.key] = 0;
+        }
+      });
+    }
+  });
+  renderSidebar();
+  toast(kind === 'long' ? 'Descanso longo: HP e recursos restaurados.' : 'Descanso curto: recursos de descanso curto restaurados.');
 }
 
 // ---------- NARRATIVA / MENSAGENS ----------
@@ -1060,6 +2325,40 @@ function addMsg(role, html, who) {
   n.appendChild(div);
   n.scrollTop = n.scrollHeight;
   return div;
+}
+
+// Mensagem do Mestre revelada progressivamente (efeito de digitação).
+// rawText é o texto cru (com *itálico*); markers já removidos. Clique pula.
+function addMsgTyped(role, rawText, who) {
+  const n = $('#narrative');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = (who?`<div class="who">${who}</div>`:'') + `<div class="body typing"></div>`;
+  n.appendChild(div);
+  const body = div.querySelector('.body');
+  const tokens = rawText.split(/(\s+)/);      // palavras + espaços
+  return new Promise(resolve => {
+    let i = 0, done = false;
+    function finish() {
+      if (done) return; done = true;
+      body.classList.remove('typing');
+      body.innerHTML = formatNarration(rawText);
+      n.scrollTop = n.scrollHeight;
+      div.onclick = null;
+      resolve();
+    }
+    div.onclick = finish;                      // clicar pula a animação
+    function step() {
+      if (done) return;
+      i++;
+      const partial = tokens.slice(0, i).join('');
+      body.innerHTML = formatNarration(partial).replace(/\*(?=[^*]*$)/, '');
+      n.scrollTop = n.scrollHeight;
+      if (i >= tokens.length) { finish(); return; }
+      setTimeout(step, 16);
+    }
+    step();
+  });
 }
 function addThinking() {
   const n = $('#narrative');
@@ -1085,6 +2384,27 @@ function showRollCard(label, result, dc) {
     <div class="rbreak">d20 [${diceStr}] ${result.mod>=0?'+':''}${result.mod}${result.crit?' · CRÍTICO!':''}${result.fumble?' · FALHA CRÍTICA':''}</div>
     ${outcome}`;
   n.appendChild(div); n.scrollTop = n.scrollHeight;
+  logRoll(label, result, dc);   // registra no painel lateral persistente
+}
+
+// Acrescenta a rolagem ao painel lateral (mais recente no topo).
+function logRoll(label, result, dc) {
+  const list = $('#rollLogList'); if (!list) return;
+  const empty = list.querySelector('.rolllog-empty'); if (empty) empty.remove();
+  let cls = result.crit ? 'crit' : result.fumble ? 'fumble' : '';
+  let out = '';
+  if (dc != null) {
+    const ok = result.total >= dc;
+    if (!cls) cls = ok ? 'ok' : 'fail';
+    out = `${ok ? '✓' : '✗'} CD ${dc}`;
+  }
+  if (result.crit) out = 'CRÍTICO! ' + out;
+  if (result.fumble) out = 'FALHA CRÍTICA ' + out;
+  const e = document.createElement('div');
+  e.className = 'rl-entry ' + cls;
+  e.innerHTML = `<div class="rl-head">${label}</div>
+    <div class="rl-line"><span class="rl-num">${result.total}</span><span class="rl-out">${out.trim()}</span></div>`;
+  list.insertBefore(e, list.firstChild);
 }
 
 // ---------- FLUXO DE CENA ----------
@@ -1117,8 +2437,8 @@ async function beginScene(sceneId, isFirst) {
   // level up automático se a cena exige
   if (sc.levelUp) applyLevelUp(sc.levelUp);
 
-  // mostra o texto de leitura da cena imediatamente (vem do roteiro, não da IA — economiza tokens)
-  addMsg('dm', formatNarration(sc.readAloud));
+  // mostra o texto de leitura da cena (vem do roteiro, não da IA — economiza tokens)
+  await addMsgTyped('dm', sc.readAloud);
 
   // pede à IA para continuar/ambientar a cena e abrir para ação
   const kickoff = isFirst
@@ -1175,11 +2495,14 @@ function buildSystemPrompt() {
   const enc = sc.combat ? CAMPAIGN.encounters[sc.combat] : null;
 
   const charSheets = STATE.characters.map(c =>
-    `- ${c.name} (jogador ${c.player}): ${c.race} ${c.cls} Nv${c.level}. ` +
+    `- ${c.name} (jogador ${c.player}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.archetype?` [${c.archetype}]`:''} Nv${c.level}${c.raging?' — EM FÚRIA':''}. ` +
     `HP ${c.hp}/${c.maxHp}, AC ${c.ca}. ` +
     `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}. ` +
-    `Saves proficientes: ${c.saves.join(', ')}. Perícia bônus +${c.prof}.` +
-    (c.spellSlots?` Spell slots: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}.`:'')
+    `Saves proficientes: ${c.saves.join(', ')}. Perícias proficientes: ${(c.skills||[]).join(', ')||'nenhuma'}. Bônus de proficiência +${c.prof}.` +
+    (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
+    (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
+    (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'') +
+    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'')
   ).join('\n');
 
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';
@@ -1191,6 +2514,13 @@ function buildSystemPrompt() {
       `\nTática: ${enc.tactics}` +
       (enc.negotiable?`\nEste combate é NEGOCIÁVEL — os jogadores podem evitar a luta com bons testes sociais.`:'');
   }
+  if (STATE.inCombat && STATE.combat) {
+    const cb = STATE.combat;
+    combatInfo += `\n\n## ESTADO DO COMBATE (rodada ${cb.round})\n` +
+      `Ordem de iniciativa: ${cb.order.map((o,k)=>`${k===cb.turn?'▶ ':''}${o.name}(${o.init})`).join(' > ')}\n` +
+      `HP atual dos inimigos: ${cb.enemies.map(e=>`${e.name}[id:${e.id}] ${e.curHp}/${e.hp}`).join(', ')}\n` +
+      `IMPORTANTE: quando um inimigo sofrer dano, emita [HIT:id:quantidade] (ex.: [HIT:${cb.enemies[0]?cb.enemies[0].id:'z1'}:8]) para o sistema baixar o HP. Respeite a ordem de iniciativa.`;
+  }
 
   return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 
@@ -1200,8 +2530,9 @@ ${CAMPAIGN.premise}
 ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 
 ## MARCADORES DE SISTEMA (use quando aplicável, em linha própria)
-- Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12] ou [ROLL:save:DES:14] ou [ROLL:ataque:DES:0]. Depois do marcador, PARE e espere o resultado.
+- Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12], [ROLL:save:DES:14], [ROLL:ataque:DES:0]. Em saves, acrescente a AMEAÇA como 5º campo para ativar vantagens de traço (veneno, enfeitiçar, amedrontar, magia, sol): ex. [ROLL:save:CON:12:veneno], [ROLL:save:SAB:13:amedrontar], [ROLL:save:INT:14:magia]. O sistema aplica proficiência, vantagem/desvantagem e o dano da arma automaticamente — você só narra. Depois do marcador, PARE e espere o resultado.
 - Para iniciar combate: [COMBAT_START:${sc.combat||'id'}]
+- Em combate, ao causar dano a um inimigo: [HIT:id_do_inimigo:dano] (o sistema baixa o HP e respeita a iniciativa)
 - Quando a cena termina: [SCENE_COMPLETE]
 
 ## CENA ATUAL: ${sc.chapter} — ${sc.location}
@@ -1244,7 +2575,7 @@ async function askDM(userMsg, isSceneKickoff) {
 // processa marcadores [ROLL], [COMBAT_START], [SCENE_COMPLETE]
 async function processDMReply(reply) {
   // separa marcadores do texto
-  const rollMatch = reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)\]/);
+  const rollMatch = reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)(?::([^:\]]+))?\]/);
   const combatMatch = reply.match(/\[COMBAT_START:([^\]]+)\]/);
   const sceneComplete = reply.includes('[SCENE_COMPLETE]');
 
@@ -1252,30 +2583,50 @@ async function processDMReply(reply) {
   const clean = reply
     .replace(/\[ROLL:[^\]]+\]/g,'')
     .replace(/\[COMBAT_START:[^\]]+\]/g,'')
+    .replace(/\[HIT:[^\]]+\]/g,'')
     .replace(/\[SCENE_COMPLETE\]/g,'')
     .trim();
 
-  if (clean) addMsg('dm', formatNarration(clean));
+  if (clean) await addMsgTyped('dm', clean);
+
+  // dano em inimigos durante o combate: [HIT:id:dano] → o código baixa o HP
+  const hits = [...reply.matchAll(/\[HIT:([^:\]]+):(-?\d+)\]/g)];
+  if (hits.length && STATE.combat) {
+    hits.forEach(h => {
+      const e = STATE.combat.enemies.find(x => x.id === h[1] || x.name.toLowerCase() === h[1].toLowerCase());
+      if (e) e.curHp = Math.max(0, e.curHp - Math.abs(+h[2]));
+    });
+    renderCombatBar();
+  }
 
   // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
   if (rollMatch) {
-    const [, tipo, atr, cd] = rollMatch;
+    const [, tipo, atr, cd, tag] = rollMatch;
     const c = STATE.characters[STATE.activeChar];
     const abr = atr.toUpperCase().slice(0,3);
-    let mod = abilityMod(c.abilities[abr] || 10);
-    // adiciona proficiência se for save proficiente
-    if (tipo.toLowerCase()==='save' && c.saves.includes(abr)) mod += c.prof;
-    // perícias: adiciona proficiência por padrão (simplificação)
-    else if (tipo.toLowerCase()!=='save' && tipo.toLowerCase()!=='ataque') mod += c.prof;
-    else if (tipo.toLowerCase()==='ataque') mod += c.prof;
 
-    const result = d20(mod);
+    // decisão (proficiência, vantagem/desvantagem, condições) na lógica pura da rules.js
+    const rm = rollModifiers(c, tipo, abr, tag);
+    const { adv, dis, prof } = rm;
     const cdNum = +cd > 0 ? +cd : null;
-    showRollCard(`${c.name} · ${tipo} (${abr})`, result, cdNum);
+    const result = rm.autoFail
+      ? { nat:'—', total:0, mod:rm.mod, dice:[], crit:false, fumble:true }   // condição: falha automática
+      : d20ForChar(c, rm.mod, { adv, dis });
 
-    // devolve o resultado para a IA narrar a consequência
-    const outcome = cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado';
-    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr}): d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}${result.crit?' (CRÍTICO!)':''}${result.fumble?' (FALHA CRÍTICA!)':''}. Narre a consequência e continue.`, false);
+    const advNote = adv && !dis ? ' · vantagem' : dis && !adv ? ' · desvantagem' : '';
+    const condNote = rm.autoFail ? ' · falha automática' : '';
+    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}${condNote}`, result, cdNum);
+
+    // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
+    let dmgNote = '';
+    if (tipo.toLowerCase() === 'ataque' && !rm.autoFail) {
+      const ap = attackProfile(c, abr, adv && !dis);
+      const dmg = rollAttackDamage(ap, result.crit);
+      dmgNote = ` Dano se acertar: ${dmg.total} [${ap.type}] (${ap.name}: ${dmg.detail}${result.crit?' — CRÍTICO':''}${ap.sneak?' · Ataque Furtivo!':''}${c.raging?' · Fúria':''}).`;
+    }
+
+    const outcome = rm.autoFail ? 'FALHA AUTOMÁTICA (condição)' : (cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado');
+    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: ${rm.autoFail?'FALHA AUTOMÁTICA por condição':`d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}`}${result.crit?' (CRÍTICO!)':''}${result.fumble&&!rm.autoFail?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
     return;
   }
 
@@ -1309,26 +2660,75 @@ function startCombat(encId) {
   const enc = CAMPAIGN.encounters[encId];
   if (!enc) return;
   STATE.inCombat = true;
-  STATE.combat = {
-    enc: encId,
-    enemies: enc.enemies.map(e => ({...e, curHp: e.hp})),
-  };
+  STATE.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({...e, curHp: e.hp})), order: [], turn: 0, round: 1 };
+  rollInitiative();
   addMsg('dm', `<div style="text-align:center;color:var(--blood);font-family:var(--font-mono);font-size:0.82rem;letter-spacing:0.18em;margin:10px 0">⚔ COMBATE: ${enc.name.toUpperCase()} ⚔</div>`);
-  toast('Combate iniciado! Role iniciativa.');
-  // a IA conduz o combate via narração; o código continua rolando dados quando ela pede [ROLL]
+  renderCombatBar();
+  toast('Combate iniciado! Iniciativa rolada.');
+}
+
+// Rola iniciativa (PCs: d20+DES; inimigos: d20+bônus) e ordena.
+function rollInitiative() {
+  const order = [];
+  STATE.characters.forEach((c, idx) => order.push({ kind:'pc', idx, name:c.name, init: d20(abilityMod(c.abilities.DES)).total }));
+  STATE.combat.enemies.forEach((e, idx) => order.push({ kind:'enemy', idx, name:e.name, init: d20(e.mod || 0).total }));
+  order.sort((a,b) => b.init - a.init);
+  STATE.combat.order = order; STATE.combat.turn = 0; STATE.combat.round = 1;
+}
+
+function renderCombatBar() {
+  const bar = $('#combatBar');
+  if (!bar) return;
+  if (!STATE.inCombat || !STATE.combat) { bar.classList.add('hide'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hide');
+  const cb = STATE.combat;
+  const toks = cb.order.map((o, k) => {
+    let hp, dead;
+    if (o.kind === 'enemy') { const e = cb.enemies[o.idx]; hp = `${e.curHp}/${e.hp} HP`; dead = e.curHp <= 0; }
+    else { const c = STATE.characters[o.idx]; hp = `${c.hp}/${c.maxHp} HP`; dead = c.hp <= 0; }
+    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}"><div class="cb-init">${o.init}</div><div>${o.name}</div><div class="cb-hp">${hp}</div></div>`;
+  }).join('');
+  bar.innerHTML = `<span class="cb-round">Rodada ${cb.round}</span><div class="cb-list">${toks}</div>
+    <div class="cb-btns"><button class="cb-btn" id="nextTurnBtn">Próximo turno →</button><button class="cb-btn end" id="endCombatBtn">Encerrar</button></div>`;
+  $('#nextTurnBtn').onclick = advanceTurn;
+  $('#endCombatBtn').onclick = endCombat;
+}
+
+function advanceTurn() {
+  const cb = STATE.combat; if (!cb || !cb.order.length) return;
+  let guard = 0;
+  do {
+    cb.turn++;
+    if (cb.turn >= cb.order.length) { cb.turn = 0; cb.round++; }
+    const o = cb.order[cb.turn];
+    const dead = o.kind === 'enemy' ? cb.enemies[o.idx].curHp <= 0 : STATE.characters[o.idx].hp <= 0;
+    if (!dead) break;
+  } while (++guard < cb.order.length * 2);
+  const cur = cb.order[cb.turn];
+  if (cur.kind === 'pc') { STATE.activeChar = cur.idx; updateTurnIndicator(); }
+  renderSidebar(); renderCombatBar();
+}
+
+function endCombat() {
+  STATE.inCombat = false; STATE.combat = null;
+  renderCombatBar();
+  addMsg('dm', `<div style="text-align:center;color:var(--myco);font-family:var(--font-mono);font-size:0.8rem;letter-spacing:0.15em;margin:10px 0">— fim do combate —</div>`);
 }
 
 // =====================================================
 //  CHAMADA À API ANTHROPIC
 // =====================================================
-async function callClaude(messages, system, maxTokens, key, model) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+// Chama a Edge Function 'dm' (proxy seguro). A chave da Anthropic fica no
+// servidor; aqui só vai o JWT da sessão do usuário logado.
+async function callClaude(messages, system, maxTokens, _key, model) {
+  const { data: { session } } = await supa.auth.getSession();
+  if (!session) { showScreen('screen-login'); throw new Error('Sessão expirada. Entre novamente.'); }
+  const res = await fetch(`${SUPA_URL}/functions/v1/dm`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPA_KEY
     },
     body: JSON.stringify({ model, max_tokens: maxTokens, system, messages })
   });
@@ -1343,7 +2743,7 @@ async function callClaude(messages, system, maxTokens, key, model) {
 // =====================================================
 //  SALVAR / CARREGAR
 // =====================================================
-function saveGame() {
+async function saveGame() {
   const save = {
     characters: STATE.characters,
     activeChar: STATE.activeChar,
@@ -1351,15 +2751,25 @@ function saveGame() {
     history: STATE.history,
     model: STATE.model
   };
-  localStorage.setItem('sw_save', JSON.stringify(save));
-  toast('Jogo salvo neste navegador.');
+  try {
+    const { error } = await supa.from('saves').upsert({
+      user_id: STATE.user.id, slot: 'default', data: save, updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    toast('Jogo salvo na sua conta.');
+  } catch (e) { toast('Erro ao salvar: ' + e.message); }
 }
 
-function loadGame() {
-  const raw = localStorage.getItem('sw_save');
-  if (!raw) return;
-  const save = JSON.parse(raw);
-  STATE.apiKey = $('#apiKey').value.trim() || localStorage.getItem('sw_apikey');
+async function loadGame() {
+  let save;
+  try {
+    const { data, error } = await supa.from('saves')
+      .select('data').eq('user_id', STATE.user.id).eq('slot', 'default').maybeSingle();
+    if (error) throw error;
+    if (!data) { toast('Nenhum jogo salvo.'); return; }
+    save = data.data;
+  } catch (e) { toast('Erro ao carregar: ' + e.message); return; }
+
   STATE.characters = save.characters;
   STATE.activeChar = save.activeChar;
   STATE.sceneId = save.sceneId;
@@ -1391,7 +2801,7 @@ function loadGame() {
 }
 
 // ---------- INIT ----------
-initSetup();
+initAuth();
 
 </script>
 </body>
