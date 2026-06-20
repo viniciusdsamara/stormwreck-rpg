@@ -209,6 +209,19 @@ async function initSetup() {
   $('#loadSaveBtn').onclick = loadGame;
   $('#logoutBtn').onclick = doLogout;
 
+  // controle de acesso: a conta precisa estar autorizada para jogar
+  try {
+    const { data: allowed } = await supa.rpc('am_i_allowed');
+    const { data: isAdmin } = await supa.rpc('is_app_admin');
+    if (isAdmin && $('#adminLink')) $('#adminLink').style.display = 'block';
+    if (!allowed) {
+      $('#accessNote').innerHTML = `<div class="err" style="margin-top:14px;line-height:1.5">⏳ Sua conta ainda não foi autorizada pelo mestre. Avise o administrador e recarregue depois que ele liberar.</div>`;
+      $('#toCreationBtn').disabled = true;
+      $('#loadSaveBtn').style.display = 'none';
+      return;
+    }
+  } catch (e) {}
+
   // há jogo salvo no servidor?
   try {
     const { data } = await supa.from('saves').select('slot').eq('user_id', STATE.user.id).limit(1);

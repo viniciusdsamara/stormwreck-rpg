@@ -84,11 +84,27 @@
     </div>
   </section>
 
+  <!-- AGUARDANDO AUTORIZAÇÃO -->
+  <section id="screen-pending" class="screen">
+    <div class="eyebrow">Multiplayer</div>
+    <h1>Conta aguardando autorização</h1>
+    <p class="sub">Sua conta foi criada, mas o mestre ainda precisa liberar seu acesso para jogar.</p>
+    <div class="panel">
+      <p class="note" style="margin-top:0">Avise o administrador da campanha. Assim que ele autorizar, é só recarregar esta página.</p>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" id="pendReload">Recarregar</button>
+        <button class="btn ghost" id="pendLogout">Sair</button>
+      </div>
+    </div>
+  </section>
+
   <!-- HUB -->
   <section id="screen-hub" class="screen">
     <div class="topline">
       <div><div class="eyebrow">Multiplayer</div><h1>Salas</h1></div>
-      <div style="text-align:right"><small id="hubEmail"></small><br><button class="btn ghost" id="hubLogout" style="margin-top:6px;padding:6px 12px;font-size:0.78rem">Sair</button></div>
+      <div style="text-align:right"><small id="hubEmail"></small><br>
+        <a id="hubAdmin" href="../admin.html" style="display:none;color:var(--ember);font-size:0.78rem;text-decoration:none;margin-right:10px">🛡️ Painel</a>
+        <button class="btn ghost" id="hubLogout" style="margin-top:6px;padding:6px 12px;font-size:0.78rem">Sair</button></div>
     </div>
 
     <div class="panel">

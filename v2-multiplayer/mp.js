@@ -32,10 +32,17 @@ async function initAuth(){
   const { data:{ session } } = await supa.auth.getSession();
   if (session){ ME = session.user; afterAuth(); } else { show('screen-login'); }
 }
-// depois de autenticado: se veio por link de convite, entra direto na sala
+// depois de autenticado: 1) checa autorização da conta; 2) entra por link ou hub
 async function afterAuth(){
+  const { data: allowed } = await supa.rpc('am_i_allowed');
+  if (!allowed){ showPending(); return; }
   if (PENDING_CODE){ const code = PENDING_CODE; PENDING_CODE = null; clearUrlCode(); await joinByCode(code, true); }
   else enterHub();
+}
+function showPending(){
+  show('screen-pending');
+  $('#pendReload').onclick = ()=> location.reload();
+  $('#pendLogout').onclick = doLogout;
 }
 async function doLogin(){
   const email = $('#loginEmail').value.trim(), pass = $('#loginPass').value;
@@ -53,9 +60,10 @@ async function doLogout(){
 }
 
 // ---------------- HUB (criar / entrar) ----------------
-function enterHub(){
+async function enterHub(){
   show('screen-hub');
   $('#hubEmail').textContent = ME.email;
+  supa.rpc('is_app_admin').then(({data})=>{ if (data) $('#hubAdmin').style.display='inline'; });
   $('#roomName').value = `Mesa de ${nameFromEmail(ME.email)}`;
   $('#createBtn').onclick = createRoom;
   $('#joinBtn').onclick = joinRoom;

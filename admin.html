@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tormenta de Stormwreck — Painel do Mestre</title>
+<style>
+  :root{
+    --basalt-900:#0e0b12; --basalt-800:#15111a; --basalt-700:#1e1925; --basalt-600:#2c2536;
+    --ember:#e8843c; --ember-d:#c4682e; --parch:#ece3d4; --stone-400:#9a8fa3; --stone-300:#c4bccb;
+    --myco:#5a8f6b; --blood:#c4485a; --gold:#d9c48a;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; background:radial-gradient(1200px 600px at 50% -10%, #1c1726, #0e0b12 60%);
+        color:var(--parch); font-family:'Segoe UI',system-ui,sans-serif; padding:24px 16px; display:flex; justify-content:center; }
+  .wrap{ width:100%; max-width:680px; }
+  .screen{ display:none; } .screen.active{ display:block; }
+  .eyebrow{ font-family:ui-monospace,monospace; font-size:0.66rem; letter-spacing:0.22em; text-transform:uppercase; color:var(--ember); }
+  h1{ font-size:1.5rem; margin:2px 0 4px; }
+  .sub{ color:var(--stone-400); font-size:0.86rem; margin:2px 0 20px; }
+  .panel{ background:linear-gradient(180deg,var(--basalt-700),var(--basalt-800)); border:1px solid var(--basalt-600);
+          border-radius:16px; padding:20px; margin-bottom:16px; }
+  label.field{ display:block; margin-bottom:14px; }
+  label.field>span{ display:block; font-size:0.74rem; color:var(--stone-300); margin-bottom:5px; }
+  input{ width:100%; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch);
+         border-radius:9px; padding:10px 12px; font-size:0.92rem; }
+  input:focus{ outline:none; border-color:var(--ember); }
+  .btn{ background:linear-gradient(180deg,var(--ember),var(--ember-d)); color:#1a1018; border:none; border-radius:9px;
+        padding:9px 14px; font-weight:700; font-size:0.84rem; cursor:pointer; }
+  .btn:hover{ filter:brightness(1.08); } .btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  .btn.ghost{ background:var(--basalt-700); color:var(--parch); border:1px solid var(--basalt-600); }
+  .btn.ok{ background:linear-gradient(180deg,#5a8f6b,#487257); color:#0e1a12; }
+  .btn.danger{ background:var(--basalt-700); color:var(--blood); border:1px solid var(--blood); }
+  .btn.block{ width:100%; }
+  .topline{ display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .topline small{ color:var(--stone-400); font-size:0.78rem; }
+  .err{ color:var(--blood); font-size:0.82rem; min-height:1.1em; }
+  .urow{ display:flex; align-items:center; gap:10px; justify-content:space-between;
+         background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .urow.pending{ border-color:var(--gold); }
+  .uemail{ font-weight:600; font-size:0.9rem; word-break:break-all; }
+  .umeta{ display:flex; gap:6px; margin-top:3px; }
+  .tag{ font-size:0.6rem; letter-spacing:0.05em; text-transform:uppercase; padding:2px 7px; border-radius:20px;
+        background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); }
+  .tag.allowed{ color:var(--myco); border-color:var(--myco); } .tag.pending{ color:var(--gold); border-color:var(--gold); }
+  .tag.admin{ color:var(--ember); border-color:var(--ember); }
+  .uacts{ display:flex; gap:6px; flex-shrink:0; }
+  .count{ color:var(--stone-400); font-size:0.78rem; }
+  .links a{ color:var(--ember); font-size:0.82rem; text-decoration:none; }
+  .toast{ position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--basalt-600);
+          border:1px solid var(--ember); padding:10px 18px; border-radius:10px; font-size:0.86rem; z-index:99; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section id="screen-login" class="screen active">
+    <div class="eyebrow">Painel do Mestre</div>
+    <h1>Acesso do administrador</h1>
+    <p class="sub">Entre com a conta de mestre para gerenciar quem pode jogar.</p>
+    <div class="panel">
+      <label class="field"><span>E-mail</span><input id="email" type="email" autocomplete="email"></label>
+      <label class="field"><span>Senha</span><input id="pass" type="password" autocomplete="current-password"></label>
+      <button class="btn block" id="loginBtn">Entrar</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </section>
+
+  <section id="screen-denied" class="screen">
+    <div class="eyebrow">Painel do Mestre</div>
+    <h1>Acesso restrito</h1>
+    <p class="sub">Esta área é só para o administrador da campanha.</p>
+    <div class="panel"><button class="btn ghost" id="denyLogout">Sair</button></div>
+  </section>
+
+  <section id="screen-admin" class="screen">
+    <div class="topline">
+      <div><div class="eyebrow">Painel do Mestre</div><h1>Autorizações</h1></div>
+      <div style="text-align:right"><small id="meEmail"></small><br><button class="btn ghost" id="logoutBtn" style="margin-top:6px;padding:5px 10px;font-size:0.76rem">Sair</button></div>
+    </div>
+
+    <div class="panel">
+      <div class="topline" style="margin-bottom:12px">
+        <h1 style="font-size:1rem;margin:0">Contas <span class="count" id="userCount"></span></h1>
+        <button class="btn ghost" id="refreshBtn" style="padding:6px 12px;font-size:0.78rem">↻ Atualizar</button>
+      </div>
+      <p class="sub" style="margin-top:0">Autorize quem pode jogar e gastar os créditos da IA. Pendentes ficam destacados.</p>
+      <div id="userList"></div>
+    </div>
+
+    <div class="links"><a href="index.html">← Voltar ao jogo</a></div>
+  </section>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = 'https://qyqvnokqkukhecnpykds.supabase.co';
+const SUPA_KEY = 'sb_publishable_7Pnila08_CO32ae28pIM5g_3WACbxV1';
+let supa, ME = null;
+const $ = s => document.querySelector(s);
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $('#'+id).classList.add('active'); }
+function toast(m){ const t=document.createElement('div'); t.className='toast'; t.textContent=m; document.body.appendChild(t); setTimeout(()=>t.remove(),3000); }
+
+async function init(){
+  supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  $('#loginBtn').onclick = doLogin;
+  $('#pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+  $('#logoutBtn').onclick = $('#denyLogout').onclick = doLogout;
+  $('#refreshBtn').onclick = loadUsers;
+  const { data:{ session } } = await supa.auth.getSession();
+  if (session){ ME = session.user; gateAdmin(); } else show('screen-login');
+}
+async function doLogin(){
+  const email=$('#email').value.trim(), pass=$('#pass').value;
+  if(!email||!pass){ $('#loginErr').textContent='Preencha e-mail e senha.'; return; }
+  $('#loginBtn').disabled=true;
+  const { data, error } = await supa.auth.signInWithPassword({ email, password:pass });
+  $('#loginBtn').disabled=false;
+  if(error){ $('#loginErr').textContent='Falha: '+error.message; return; }
+  ME = data.user; $('#loginErr').textContent=''; gateAdmin();
+}
+async function doLogout(){ try{ await supa.auth.signOut(); }catch(e){} ME=null; show('screen-login'); }
+
+async function gateAdmin(){
+  const { data: isAdmin } = await supa.rpc('is_app_admin');
+  if (!isAdmin){ show('screen-denied'); return; }
+  $('#meEmail').textContent = ME.email;
+  show('screen-admin');
+  loadUsers();
+}
+async function loadUsers(){
+  const { data, error } = await supa.from('access').select('*').order('allowed').order('created_at');
+  if (error){ toast('Erro: '+error.message); return; }
+  const pend = data.filter(u=>!u.allowed).length;
+  $('#userCount').textContent = `· ${data.length} no total · ${pend} pendente(s)`;
+  $('#userList').innerHTML = data.map(u=>{
+    const isMe = u.user_id===ME.id;
+    const statusTag = u.allowed ? '<span class="tag allowed">autorizado</span>' : '<span class="tag pending">pendente</span>';
+    const adminTag = u.is_admin ? '<span class="tag admin">admin</span>' : '';
+    const allowBtn = u.allowed
+      ? `<button class="btn danger" data-act="block" data-id="${u.user_id}" ${isMe?'disabled title="Você não pode se bloquear"':''}>Bloquear</button>`
+      : `<button class="btn ok" data-act="allow" data-id="${u.user_id}">Autorizar</button>`;
+    const adminBtn = u.is_admin
+      ? `<button class="btn ghost" data-act="unadmin" data-id="${u.user_id}" ${isMe?'disabled':''}>− admin</button>`
+      : `<button class="btn ghost" data-act="admin" data-id="${u.user_id}">+ admin</button>`;
+    return `<div class="urow ${u.allowed?'':'pending'}">
+      <div><div class="uemail">${u.email||'(sem e-mail)'}${isMe?' · você':''}</div><div class="umeta">${statusTag}${adminTag}</div></div>
+      <div class="uacts">${allowBtn}${adminBtn}</div>
+    </div>`;
+  }).join('') || '<p class="sub">Nenhuma conta ainda.</p>';
+  document.querySelectorAll('#userList [data-act]').forEach(b=> b.onclick = ()=> act(b.dataset.act, b.dataset.id));
+}
+async function act(action, uid){
+  const patch = { allow:{allowed:true}, block:{allowed:false}, admin:{is_admin:true}, unadmin:{is_admin:false} }[action];
+  if (action==='admin' && !confirm('Tornar esta conta um administrador? Ela poderá gerenciar acessos.')) return;
+  const { error } = await supa.from('access').update(patch).eq('user_id', uid);
+  if (error){ toast('Erro: '+error.message); return; }
+  toast('Atualizado.');
+  loadUsers();
+}
+init();
+</script>
+</body>
+</html>
