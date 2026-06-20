@@ -4,8 +4,14 @@
 // dados (justa, no código), e comunicação com a IA (Haiku).
 // ============================================================
 
+// ---------- CONFIG SUPABASE (chaves públicas, protegidas por RLS) ----------
+const SUPA_URL = 'https://qyqvnokqkukhecnpykds.supabase.co';
+const SUPA_KEY = 'sb_publishable_7Pnila08_CO32ae28pIM5g_3WACbxV1';
+let supa = null;
+
 // ---------- ESTADO GLOBAL ----------
 const STATE = {
+  user: null,
   apiKey: '',
   model: 'claude-haiku-4-5',
   characters: [],       // [{...}, {...}]
@@ -61,38 +67,84 @@ function rollExpr(expr) {
 // =====================================================
 //  TELA 1 — SETUP
 // =====================================================
-function initSetup() {
-  // recupera chave e save salvos no navegador
-  const savedKey = localStorage.getItem('sw_apikey');
-  if (savedKey) { $('#apiKey').value = savedKey; STATE.apiKey = savedKey; }
-  if (localStorage.getItem('sw_save')) $('#loadSaveBtn').style.display = 'inline-flex';
+// =====================================================
+//  AUTENTICAÇÃO (Supabase) — porta de entrada
+// =====================================================
+let signupMode = false;
 
-  $('#testKeyBtn').onclick = testApiKey;
-  $('#toCreationBtn').onclick = () => {
-    const k = $('#apiKey').value.trim();
-    if (!k) { showKeyStatus('Cole sua chave da API antes de continuar.', false); return; }
-    STATE.apiKey = k;
-    STATE.model = $('#modelChoice').value;
-    localStorage.setItem('sw_apikey', k);
-    startCreation();
-  };
+async function initAuth() {
+  supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  $('#loginBtn').onclick = doAuth;
+  $('#toSignupBtn').onclick = () => { signupMode = !signupMode; updateLoginMode(); $('#loginStatus').innerHTML = ''; };
+  $('#loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAuth(); } });
+  $('#loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#loginPass').focus(); } });
+
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) enterApp(session); else showScreen('screen-login');
+}
+
+function updateLoginMode() {
+  $('#loginTitle').textContent  = signupMode ? 'Criar conta' : 'Entrar';
+  $('#loginBtn').textContent    = signupMode ? 'Criar conta →' : 'Entrar →';
+  $('#toSignupBtn').textContent = signupMode ? 'Já tenho conta' : 'Criar conta';
+  $('#loginHint').textContent   = signupMode ? 'Crie sua conta de acesso (uma vez).' : 'Use seu e-mail e senha.';
+}
+
+function loginStatus(msg, ok) { $('#loginStatus').innerHTML = `<div class="${ok?'ok':'err'}">${msg}</div>`; }
+
+async function doAuth() {
+  const email = $('#loginEmail').value.trim();
+  const pass = $('#loginPass').value;
+  if (!email || !pass) { loginStatus('Preencha e-mail e senha.', false); return; }
+  loginStatus(signupMode ? 'Criando conta…' : 'Entrando…', true);
+  try {
+    const { data, error } = signupMode
+      ? await supa.auth.signUp({ email, password: pass })
+      : await supa.auth.signInWithPassword({ email, password: pass });
+    if (error) { loginStatus('Erro: ' + error.message, false); return; }
+    if (signupMode && !data.session) {
+      loginStatus('Conta criada. Confirme pelo e-mail (se solicitado) e então entre.', true);
+      signupMode = false; updateLoginMode(); return;
+    }
+    const { data: { session } } = await supa.auth.getSession();
+    if (session) enterApp(session); else loginStatus('Não foi possível iniciar a sessão.', false);
+  } catch (e) { loginStatus('Erro: ' + e.message, false); }
+}
+
+async function doLogout() {
+  try { await supa.auth.signOut(); } catch (e) {}
+  STATE.user = null; STATE.characters = []; STATE.history = [];
+  $('#loginPass').value = '';
+  showScreen('screen-login');
+}
+
+function enterApp(session) {
+  STATE.user = session.user;
+  if ($('#userEmail')) $('#userEmail').textContent = session.user.email;
+  initSetup();
+}
+
+// =====================================================
+//  TELA 1 — SETUP (pós-login)
+// =====================================================
+async function initSetup() {
+  showScreen('screen-setup');
+  STATE.model = $('#modelChoice').value;
+  $('#modelChoice').onchange = () => { STATE.model = $('#modelChoice').value; };
+  $('#toCreationBtn').onclick = () => { STATE.model = $('#modelChoice').value; startCreation(); };
   $('#loadSaveBtn').onclick = loadGame;
+  $('#logoutBtn').onclick = doLogout;
+
+  // há jogo salvo no servidor?
+  try {
+    const { data } = await supa.from('saves').select('slot').eq('user_id', STATE.user.id).limit(1);
+    $('#loadSaveBtn').style.display = (data && data.length) ? 'inline-flex' : 'none';
+  } catch (e) {}
 }
 
 function showKeyStatus(msg, ok) {
   $('#keyStatus').innerHTML = `<div class="${ok?'ok':'err'}">${msg}</div>`;
-}
-
-async function testApiKey() {
-  const k = $('#apiKey').value.trim();
-  if (!k) { showKeyStatus('Cole uma chave primeiro.', false); return; }
-  showKeyStatus('Testando...', true);
-  try {
-    const r = await callClaude([{role:'user', content:'Responda apenas: OK'}], 'Você é um teste. Responda OK.', 20, k, $('#modelChoice').value);
-    if (r) showKeyStatus('Chave válida. Pronto para jogar.', true);
-  } catch(e) {
-    showKeyStatus('Erro: ' + e.message, false);
-  }
 }
 
 // =====================================================
@@ -710,14 +762,17 @@ function startCombat(encId) {
 // =====================================================
 //  CHAMADA À API ANTHROPIC
 // =====================================================
-async function callClaude(messages, system, maxTokens, key, model) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+// Chama a Edge Function 'dm' (proxy seguro). A chave da Anthropic fica no
+// servidor; aqui só vai o JWT da sessão do usuário logado.
+async function callClaude(messages, system, maxTokens, _key, model) {
+  const { data: { session } } = await supa.auth.getSession();
+  if (!session) { showScreen('screen-login'); throw new Error('Sessão expirada. Entre novamente.'); }
+  const res = await fetch(`${SUPA_URL}/functions/v1/dm`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': SUPA_KEY
     },
     body: JSON.stringify({ model, max_tokens: maxTokens, system, messages })
   });
@@ -732,7 +787,7 @@ async function callClaude(messages, system, maxTokens, key, model) {
 // =====================================================
 //  SALVAR / CARREGAR
 // =====================================================
-function saveGame() {
+async function saveGame() {
   const save = {
     characters: STATE.characters,
     activeChar: STATE.activeChar,
@@ -740,15 +795,25 @@ function saveGame() {
     history: STATE.history,
     model: STATE.model
   };
-  localStorage.setItem('sw_save', JSON.stringify(save));
-  toast('Jogo salvo neste navegador.');
+  try {
+    const { error } = await supa.from('saves').upsert({
+      user_id: STATE.user.id, slot: 'default', data: save, updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    toast('Jogo salvo na sua conta.');
+  } catch (e) { toast('Erro ao salvar: ' + e.message); }
 }
 
-function loadGame() {
-  const raw = localStorage.getItem('sw_save');
-  if (!raw) return;
-  const save = JSON.parse(raw);
-  STATE.apiKey = $('#apiKey').value.trim() || localStorage.getItem('sw_apikey');
+async function loadGame() {
+  let save;
+  try {
+    const { data, error } = await supa.from('saves')
+      .select('data').eq('user_id', STATE.user.id).eq('slot', 'default').maybeSingle();
+    if (error) throw error;
+    if (!data) { toast('Nenhum jogo salvo.'); return; }
+    save = data.data;
+  } catch (e) { toast('Erro ao carregar: ' + e.message); return; }
+
   STATE.characters = save.characters;
   STATE.activeChar = save.activeChar;
   STATE.sceneId = save.sceneId;
@@ -780,4 +845,4 @@ function loadGame() {
 }
 
 // ---------- INIT ----------
-initSetup();
+initAuth();

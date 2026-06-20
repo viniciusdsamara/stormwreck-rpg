@@ -11,14 +11,22 @@ como Mestre (DM)**. Campanha inicial: *Dragons of Stormwreck Isle*.
 
 ## Como jogar
 
-1. Abra **`stormwreck-standalone.html`** (basta dar dois cliques — é um arquivo
-   único, funciona offline).
-2. Cole sua **chave da API da Anthropic** (`console.anthropic.com` → API Keys).
-   Ela fica salva só no seu navegador, nunca sai do seu computador.
-3. Crie dois aventureiros e comece a aventura.
+O jogo é hospedado (GitHub Pages) e protegido por login. Acesse a URL do projeto,
+**entre com sua conta** e jogue — inclusive pelo celular.
 
-> O modo recomendado é o **Haiku 4.5** (rápido e barato). A chave e o save ficam
-> no `localStorage` do navegador.
+1. Abra a página do jogo e faça **login** (e-mail + senha).
+2. Crie dois aventureiros e comece a aventura.
+
+> O modo recomendado é o **Haiku 4.5** (rápido e barato). Os saves ficam na sua
+> conta (banco de dados), isolados por usuário.
+
+### Segurança
+
+A chave da API da Anthropic **não fica no navegador**: ela é um segredo no
+servidor (Supabase Edge Function `dm`), que só responde a um usuário autenticado
+e autorizado. O navegador conversa com a função usando o token da sessão; a chave
+nunca é exposta. As chaves do Supabase no código-fonte são **públicas por design**
+(protegidas por RLS).
 
 ## Arquitetura
 

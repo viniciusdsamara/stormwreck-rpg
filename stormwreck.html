@@ -351,8 +351,32 @@
 </head>
 <body>
 
+<!-- ============ TELA 0: LOGIN ============ -->
+<div class="screen active" id="screen-login">
+  <div class="wrap" style="max-width:520px">
+    <div class="title-block">
+      <div class="eyebrow">Acesso restrito</div>
+      <h1 style="font-size:clamp(2rem,6vw,3.2rem)">Tormenta de<br>Stormwreck</h1>
+      <p class="subtitle">Entre para mestrar sua campanha.</p>
+    </div>
+    <div class="panel">
+      <h2 id="loginTitle">Entrar</h2>
+      <p class="hint" id="loginHint">Use seu e-mail e senha.</p>
+      <label class="field"><span>E-mail</span>
+        <input type="text" id="loginEmail" placeholder="voce@exemplo.com" autocomplete="username"></label>
+      <label class="field"><span>Senha</span>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password"></label>
+      <div id="loginStatus"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="loginBtn">Entrar →</button>
+        <button class="btn ghost" id="toSignupBtn">Criar conta</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ TELA 1: CONFIGURAÇÃO ============ -->
-<div class="screen active" id="screen-setup">
+<div class="screen" id="screen-setup">
   <div class="wrap">
     <div class="title-block">
       <div class="eyebrow">Dungeons &amp; Dragons 5e · Mestre conduzido por IA</div>
@@ -361,24 +385,19 @@
     </div>
 
     <div class="panel">
-      <h2>Chave da API</h2>
-      <p class="hint">O Mestre é narrado pela IA da Anthropic (modelo Haiku — rápido e barato). Sua chave fica salva só neste navegador, nunca sai do seu computador.</p>
+      <h2>Pronto para jogar</h2>
+      <p class="hint">Logado como <b id="userEmail" style="color:var(--gold-bone)">—</b>. A chave da IA fica protegida no servidor — você não precisa colá-la aqui.</p>
       <label class="field">
-        <span>Anthropic API Key</span>
-        <input type="password" id="apiKey" placeholder="sk-ant-...">
-      </label>
-      <div class="row">
-        <select id="modelChoice" style="max-width:280px">
+        <span>Modelo do Mestre</span>
+        <select id="modelChoice" style="max-width:320px">
           <option value="claude-haiku-4-5">Haiku 4.5 — barato e rápido (recomendado)</option>
           <option value="claude-sonnet-4-6">Sonnet 4.6 — narração mais rica (mais caro)</option>
         </select>
-        <button class="btn ghost" id="testKeyBtn">Testar chave</button>
-      </div>
+      </label>
       <div id="keyStatus"></div>
-      <details>
-        <summary>Onde consigo uma chave?</summary>
-        <p class="hint" style="margin-top:10px">Crie uma conta em console.anthropic.com, vá em API Keys e gere uma. Você adiciona créditos pré-pagos (a partir de US$5) e cada sessão de jogo custa centavos.</p>
-      </details>
+      <div class="row" style="margin-top:6px">
+        <button class="btn ghost" id="logoutBtn" style="padding:9px 16px;font-size:0.85rem">Sair da conta</button>
+      </div>
     </div>
 
     <div class="row end" style="margin-top:24px">
@@ -492,6 +511,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="rules.js"></script>
 <script src="campaign.js"></script>
 <script src="game.js"></script>
