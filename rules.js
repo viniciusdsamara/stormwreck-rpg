@@ -848,6 +848,27 @@ function conditionEffects(c) {
 //          asiChoices?, skills?, armor?, shield?, weapons? }
 //  Campos opcionais ausentes => ficha parcial (preenchida na Fase 2).
 // ============================================================
+// Itens iniciais por classe — achata startingEquipment para exibição na criação.
+function startingKitDisplay(cls) {
+  const c = RULES.classes[cls];
+  if (!c || !c.startingEquipment) return [];
+  const out = [];
+  c.startingEquipment.forEach(g => {
+    if (g.fixed) g.fixed.forEach(x => out.push(x));
+    else if (g.choose) out.push(g.choose.map(opt => opt.join(' + ')).join(' ou '));
+  });
+  out.push('Pacote de Aventureiro');
+  return out;
+}
+// Itens fixos (sempre recebidos) que entram no inventário real.
+function startingFixedItems(cls) {
+  const c = RULES.classes[cls];
+  if (!c || !c.startingEquipment) return [];
+  const out = [];
+  c.startingEquipment.forEach(g => { if (g.fixed) g.fixed.forEach(x => out.push(x)); });
+  return out;
+}
+
 function buildCharacter(opts) {
   const { name, player, slot, race, cls, scores } = opts;
   const subrace   = opts.subrace || null;
@@ -896,16 +917,20 @@ function buildCharacter(opts) {
     .concat(subrace && r.subraces[subrace] ? (r.subraces[subrace].traits || []).map(t => t.name) : []);
   const features = (c.features && c.features[1]) ? c.features[1].slice() : [];
 
-  // inventário inicial montado a partir do equipamento escolhido
-  const inventory = [];
-  if (armorName !== 'Nenhuma') inventory.push(armorName);
-  if (hasShield) inventory.push('Escudo');
-  weapons.forEach(w => inventory.push(w));
-  inventory.push('Pacote de Aventureiro');
-  if (c.spell) inventory.push(c.spell.ability === 'INT' ? 'Foco arcano' : 'Foco de conjuração');
-  if (cls === 'Mago') inventory.push('Grimório');
-  if (cls === 'Ladino') inventory.push('Ferramentas de Ladrão');
-  if (cls === 'Clérigo' || cls === 'Paladino') inventory.push('Símbolo Sagrado');
+  // inventário inicial: armadura/arma escolhidas + kit fixo da classe (achatado)
+  const armorKeys = new Set(Object.keys(RULES.armor || {}));
+  const raw = [];
+  if (armorName !== 'Nenhuma') raw.push(armorName);
+  if (hasShield) raw.push('Escudo');
+  weapons.forEach(w => raw.push(w));
+  // itens fixos do kit da classe (pacotes, munição, ferramentas, focos, etc.)
+  startingFixedItems(cls).forEach(it => { if (!armorKeys.has(it)) raw.push(it); });
+  raw.push('Pacote de Aventureiro');
+  if (c.spell && !raw.some(x => /foco|bolsa de componentes/i.test(x)))
+    raw.push(c.spell.ability === 'INT' ? 'Foco arcano' : 'Foco de conjuração');
+  // remove duplicatas (sem diferenciar maiúsculas)
+  const seenInv = new Set();
+  const inventory = raw.filter(x => { const k = x.toLowerCase().trim(); if (seenInv.has(k)) return false; seenInv.add(k); return true; });
 
   return {
     name, player, slot, race, subrace, cls,

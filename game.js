@@ -453,6 +453,7 @@ function renderCreation() {
   $('#aiHelpBtn').onclick = askMestreForProfile;
 
   $('#charNextBtn').onclick = commitCharacter;
+  $('#charBackBtn').onclick = showCreationModePick;
 }
 
 // Pede ao Mestre (IA) para sugerir o perfil do personagem com base nas escolhas.
@@ -587,18 +588,36 @@ function renderEquipment() {
   const armors = availableArmors(DRAFT.cls, DRAFT.race, DRAFT.subrace);
   if (!armors.includes(DRAFT.armor)) DRAFT.armor = defaultArmor(DRAFT.cls, DRAFT.race, DRAFT.subrace);
   $('#armorSelect').innerHTML = armors.map(a=>`<option value="${a}" ${a===DRAFT.armor?'selected':''}>${a}${a==='Nenhuma'?'':` (${RULES.armor[a].base}${RULES.armor[a].dexCap===0?'':'+DES'})`}</option>`).join('');
-  $('#armorSelect').onchange = e => { DRAFT.armor = e.target.value; updateAC(); checkCreationReady(); };
+  $('#armorSelect').onchange = e => { DRAFT.armor = e.target.value; updateAC(); renderEquipment(); checkCreationReady(); };
 
   const weapons = availableWeapons(DRAFT.cls, DRAFT.race, DRAFT.subrace).sort();
   if (!weapons.includes(DRAFT.weapon)) DRAFT.weapon = weapons[0] || null;
   $('#weaponSelect').innerHTML = weapons.map(w=>`<option value="${w}" ${w===DRAFT.weapon?'selected':''}>${w} (${RULES.weapons[w].dmg} ${RULES.weapons[w].type})</option>`).join('');
-  $('#weaponSelect').onchange = e => { DRAFT.weapon = e.target.value; checkCreationReady(); };
+  $('#weaponSelect').onchange = e => { DRAFT.weapon = e.target.value; renderEquipment(); checkCreationReady(); };
 
   const canShield = canUseShield(DRAFT.cls, DRAFT.race, DRAFT.subrace);
   const row = $('#shieldRow'); row.classList.toggle('disabled', !canShield);
   if (!canShield) DRAFT.shield = false;
   $('#shieldCheck').checked = DRAFT.shield;
-  $('#shieldCheck').onchange = e => { DRAFT.shield = e.target.checked; updateAC(); };
+  $('#shieldCheck').onchange = e => { DRAFT.shield = e.target.checked; updateAC(); renderEquipment(); };
+
+  // prévia de itens iniciais (armadura/arma escolhidas + kit fixo da classe)
+  const kitEl = $('#startKitList');
+  if (kitEl) {
+    const items = [];
+    if (DRAFT.armor && DRAFT.armor !== 'Nenhuma') items.push(DRAFT.armor);
+    if (DRAFT.shield) items.push('Escudo');
+    if (DRAFT.weapon) items.push(DRAFT.weapon);
+    const armorKeys = new Set(Object.keys(RULES.armor || {}));
+    startingFixedItems(DRAFT.cls).forEach(it => { if (!armorKeys.has(it) && it !== 'Escudo') items.push(it); });
+    items.push('Pacote de Aventureiro');
+    const cspell = RULES.classes[DRAFT.cls].spell;
+    if (cspell && !items.some(x => /foco|bolsa de componentes/i.test(x)))
+      items.push(cspell.ability === 'INT' ? 'Foco arcano' : 'Foco de conjuração');
+    const seen = new Set();
+    const uniq = items.filter(x => { const k = x.toLowerCase().trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+    kitEl.innerHTML = uniq.map(x => `<li>${x}</li>`).join('');
+  }
   updateAC();
 }
 
