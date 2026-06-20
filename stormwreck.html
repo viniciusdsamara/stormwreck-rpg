@@ -371,6 +371,28 @@
   .res-mini { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:6px; padding:2px 7px; font-size:0.7rem; cursor:pointer; }
   .res-mini:hover { border-color:var(--ember); color:var(--parch); }
 
+  /* ====== Condições (chips na ficha) ====== */
+  .cond-block { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .cond-add { background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:7px; padding:4px 8px; font-size:0.72rem; }
+  .cond-chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .cond-chip { background:rgba(196,72,90,0.14); border:1px solid var(--blood); color:var(--blood); border-radius:6px; padding:2px 8px; font-size:0.68rem; cursor:pointer; }
+  .cond-chip:hover { background:rgba(196,72,90,0.28); }
+
+  /* ====== Tracker de iniciativa (combate) ====== */
+  .combat-bar { background:var(--basalt-900); border-bottom:1px solid var(--blood); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .cb-round { font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--blood); white-space:nowrap; }
+  .cb-list { display:flex; gap:6px; flex-wrap:wrap; flex:1; }
+  .cb-tok { display:flex; flex-direction:column; align-items:center; min-width:58px; background:var(--basalt-700); border:1px solid var(--basalt-600); border-radius:8px; padding:4px 8px; font-size:0.72rem; text-align:center; }
+  .cb-tok.current { border-color:var(--ember); box-shadow:0 0 0 1px var(--ember); }
+  .cb-tok.enemy { background:rgba(196,72,90,0.10); }
+  .cb-tok.dead { opacity:0.4; text-decoration:line-through; }
+  .cb-tok .cb-init { font-family:var(--font-display); font-size:1.05rem; color:var(--gold-bone); line-height:1; }
+  .cb-tok .cb-hp { font-size:0.6rem; color:var(--stone-300); margin-top:2px; }
+  .cb-btns { display:flex; gap:8px; }
+  .cb-btn { background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:7px; padding:6px 12px; font-size:0.78rem; cursor:pointer; white-space:nowrap; }
+  .cb-btn:hover { border-color:var(--ember); }
+  .cb-btn.end { border-color:var(--blood); color:var(--blood); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -556,6 +578,7 @@
           <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
         </div>
       </div>
+      <div class="combat-bar hide" id="combatBar"></div>
       <div class="narrative" id="narrative"></div>
       <div class="composer">
         <div class="turn-indicator" id="turnIndicator"></div>

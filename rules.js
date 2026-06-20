@@ -437,6 +437,24 @@ const RULES = {
     }
   },
 
+  // Condições — Apêndice A (efeitos resumidos; 'ef' = ganchos mecânicos)
+  conditions: {
+    'Agarrado':     { desc:'Deslocamento 0; acaba se o agarrador for incapacitado.', ef:{} },
+    'Amedrontado':  { desc:'Desvantagem em testes e ataques enquanto vê a fonte.', ef:{ disAttack:true, disChecks:true } },
+    'Atordoado':    { desc:'Incapacitado; falha automática em saves de FOR e DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Caído':        { desc:'Desvantagem nos próprios ataques; corpo-a-corpo contra tem vantagem, à distância desvantagem.', ef:{ disAttack:true } },
+    'Cego':         { desc:'Falha em testes que exigem visão; desvantagem nos ataques; ataques contra têm vantagem.', ef:{ disAttack:true, attackedAdv:true } },
+    'Enfeitiçado':  { desc:'Não pode atacar quem o enfeitiçou.', ef:{} },
+    'Envenenado':   { desc:'Desvantagem em ataques e testes de habilidade.', ef:{ disAttack:true, disChecks:true } },
+    'Impedido':     { desc:'Deslocamento 0; desvantagem em ataques e saves de DES; ataques contra têm vantagem.', ef:{ disAttack:true, disDexSaves:true, attackedAdv:true } },
+    'Incapacitado': { desc:'Não realiza ações nem reações.', ef:{ incapacitated:true } },
+    'Inconsciente': { desc:'Incapacitado e caído; falha auto em saves de FOR/DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Invisível':    { desc:'Vantagem nos ataques; desvantagem para quem o ataca.', ef:{ advAttack:true } },
+    'Paralisado':   { desc:'Incapacitado; falha auto em saves de FOR/DES; ataques contra têm vantagem; crit a ≤1,5m.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
+    'Petrificado':  { desc:'Incapacitado; resistência a todo dano; imune a veneno e doença.', ef:{ incapacitated:true } },
+    'Surdo':        { desc:'Falha em testes que exigem audição.', ef:{} }
+  },
+
   // Estilos de Luta (Guerreiro nv1; Paladino/Patrulheiro nv2)
   fightingStyles: {
     'Arquearia':     '+2 nas jogadas de ataque com armas à distância.',
@@ -632,7 +650,23 @@ function rollModifiers(c, tipo, abr, tag) {
   if (fx.flags && fx.flags.sunlightSensitivity && (tg.includes('sol') || tg.includes('luz solar'))) {
     if (t === 'ataque' || t.includes('percep')) dis = true;
   }
-  return { mod, prof, adv, dis };
+
+  // Condições (Apêndice A) que afetam quem rola
+  const ce = conditionEffects(c);
+  let autoFail = false;
+  if (t === 'ataque' || t === 'attack') {
+    if (ce.disAttack) dis = true;
+    if (ce.advAttack) adv = true;
+  } else if (t === 'save') {
+    if ((abr === 'FOR' || abr === 'DES') && ce.autoFailStrDex) autoFail = true;
+    if (abr === 'DES' && ce.disDexSaves) dis = true;
+  } else {
+    if (ce.disChecks) dis = true;
+  }
+
+  // Vantagem e desvantagem se anulam (uma de cada = rolagem normal)
+  if (adv && dis) { adv = false; dis = false; }
+  return { mod, prof, adv, dis, autoFail };
 }
 
 // Especificação do dano da arma equipada (sem rolar). 'savage' = Ataques Selvagens (Meio-Orc).
@@ -689,6 +723,16 @@ function classResources(c) {
     case 'Paladino':   out.push({ key:'layon', label:'Imposição das Mãos (HP)', kind:'pool', max: L*5, recharge:'long' }); break;
     case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
   }
+  return out;
+}
+
+// Agrega os efeitos das condições ativas que afetam quem rola (Fase 5).
+function conditionEffects(c) {
+  const out = { disAttack:false, advAttack:false, disChecks:false, disDexSaves:false, autoFailStrDex:false, incapacitated:false };
+  (c.conditions || []).forEach(name => {
+    const cd = RULES.conditions[name];
+    if (cd && cd.ef) for (const k in cd.ef) if (out[k] !== undefined) out[k] = out[k] || cd.ef[k];
+  });
   return out;
 }
 

@@ -565,6 +565,7 @@ function renderSidebar() {
         <div class="mini-ab"><div class="l">${ab}</div><div class="v">${c.abilities[ab]} <span style="color:var(--stone-400);font-size:0.7rem">${fmtMod(abilityMod(c.abilities[ab]))}</span></div></div>
       `).join('')}</div>
       ${resourcesHtml(c, i)}
+      ${conditionsHtml(c, i)}
     </div>`;
   }).join('');
   $('#shortRestBtn').onclick = () => doRest('short');
@@ -628,6 +629,27 @@ function attachResourceHandlers() {
     }
     renderSidebar();
   });
+  // condições: adicionar (select) e remover (chip)
+  $$('#charPanel .cond-add').forEach(sel => sel.onchange = () => {
+    const c = STATE.characters[+sel.dataset.ci], v = sel.value;
+    if (v && !(c.conditions||[]).includes(v)) c.conditions = (c.conditions||[]).concat(v);
+    renderSidebar();
+  });
+  $$('#charPanel .cond-chip').forEach(el => el.onclick = () => {
+    const c = STATE.characters[+el.dataset.ci];
+    c.conditions = (c.conditions||[]).filter(n => n !== el.dataset.cn);
+    renderSidebar();
+  });
+}
+
+// Chips de condição (Apêndice A) na ficha — clicáveis para adicionar/remover.
+function conditionsHtml(c, i) {
+  const opts = Object.keys(RULES.conditions).map(n=>`<option value="${n}">${n}</option>`).join('');
+  const chips = (c.conditions||[]).map(n=>`<span class="cond-chip" data-ci="${i}" data-cn="${n}" title="${RULES.conditions[n].desc}">${n} ✕</span>`).join('');
+  return `<div class="cond-block">
+    <select class="cond-add" data-ci="${i}"><option value="">+ condição</option>${opts}</select>
+    <div class="cond-chips">${chips}</div>
+  </div>`;
 }
 
 // Descanso: curto restaura recursos 'short' (e Pacto do Bruxo); longo restaura tudo + HP.
@@ -835,7 +857,8 @@ function buildSystemPrompt() {
     `Saves proficientes: ${c.saves.join(', ')}. Perícias proficientes: ${(c.skills||[]).join(', ')||'nenhuma'}. Bônus de proficiência +${c.prof}.` +
     (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
     (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
-    (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'')
+    (c.spellSlots?` Spell slots nv1: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).`:'') +
+    (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'')
   ).join('\n');
 
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo nesta cena.';
@@ -846,6 +869,13 @@ function buildSystemPrompt() {
       enc.enemies.map(e=>`- ${e.name}: HP ${e.hp}, AC ${e.ca}, ataque +${e.mod} (${e.dmg})${e.traits?'. '+e.traits:''}`).join('\n') +
       `\nTática: ${enc.tactics}` +
       (enc.negotiable?`\nEste combate é NEGOCIÁVEL — os jogadores podem evitar a luta com bons testes sociais.`:'');
+  }
+  if (STATE.inCombat && STATE.combat) {
+    const cb = STATE.combat;
+    combatInfo += `\n\n## ESTADO DO COMBATE (rodada ${cb.round})\n` +
+      `Ordem de iniciativa: ${cb.order.map((o,k)=>`${k===cb.turn?'▶ ':''}${o.name}(${o.init})`).join(' > ')}\n` +
+      `HP atual dos inimigos: ${cb.enemies.map(e=>`${e.name}[id:${e.id}] ${e.curHp}/${e.hp}`).join(', ')}\n` +
+      `IMPORTANTE: quando um inimigo sofrer dano, emita [HIT:id:quantidade] (ex.: [HIT:${cb.enemies[0]?cb.enemies[0].id:'z1'}:8]) para o sistema baixar o HP. Respeite a ordem de iniciativa.`;
   }
 
   return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
@@ -858,6 +888,7 @@ ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 ## MARCADORES DE SISTEMA (use quando aplicável, em linha própria)
 - Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12], [ROLL:save:DES:14], [ROLL:ataque:DES:0]. Em saves, acrescente a AMEAÇA como 5º campo para ativar vantagens de traço (veneno, enfeitiçar, amedrontar, magia, sol): ex. [ROLL:save:CON:12:veneno], [ROLL:save:SAB:13:amedrontar], [ROLL:save:INT:14:magia]. O sistema aplica proficiência, vantagem/desvantagem e o dano da arma automaticamente — você só narra. Depois do marcador, PARE e espere o resultado.
 - Para iniciar combate: [COMBAT_START:${sc.combat||'id'}]
+- Em combate, ao causar dano a um inimigo: [HIT:id_do_inimigo:dano] (o sistema baixa o HP e respeita a iniciativa)
 - Quando a cena termina: [SCENE_COMPLETE]
 
 ## CENA ATUAL: ${sc.chapter} — ${sc.location}
@@ -908,10 +939,21 @@ async function processDMReply(reply) {
   const clean = reply
     .replace(/\[ROLL:[^\]]+\]/g,'')
     .replace(/\[COMBAT_START:[^\]]+\]/g,'')
+    .replace(/\[HIT:[^\]]+\]/g,'')
     .replace(/\[SCENE_COMPLETE\]/g,'')
     .trim();
 
   if (clean) await addMsgTyped('dm', clean);
+
+  // dano em inimigos durante o combate: [HIT:id:dano] → o código baixa o HP
+  const hits = [...reply.matchAll(/\[HIT:([^:\]]+):(-?\d+)\]/g)];
+  if (hits.length && STATE.combat) {
+    hits.forEach(h => {
+      const e = STATE.combat.enemies.find(x => x.id === h[1] || x.name.toLowerCase() === h[1].toLowerCase());
+      if (e) e.curHp = Math.max(0, e.curHp - Math.abs(+h[2]));
+    });
+    renderCombatBar();
+  }
 
   // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
   if (rollMatch) {
@@ -919,24 +961,28 @@ async function processDMReply(reply) {
     const c = STATE.characters[STATE.activeChar];
     const abr = atr.toUpperCase().slice(0,3);
 
-    // decisão (proficiência, vantagem/desvantagem de traços) na lógica pura da rules.js
-    const { mod, prof, adv, dis } = rollModifiers(c, tipo, abr, tag);
-    const result = d20ForChar(c, mod, { adv, dis });
+    // decisão (proficiência, vantagem/desvantagem, condições) na lógica pura da rules.js
+    const rm = rollModifiers(c, tipo, abr, tag);
+    const { adv, dis, prof } = rm;
     const cdNum = +cd > 0 ? +cd : null;
+    const result = rm.autoFail
+      ? { nat:'—', total:0, mod:rm.mod, dice:[], crit:false, fumble:true }   // condição: falha automática
+      : d20ForChar(c, rm.mod, { adv, dis });
 
     const advNote = adv && !dis ? ' · vantagem' : dis && !adv ? ' · desvantagem' : '';
-    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}`, result, cdNum);
+    const condNote = rm.autoFail ? ' · falha automática' : '';
+    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}${condNote}`, result, cdNum);
 
     // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
     let dmgNote = '';
-    if (tipo.toLowerCase() === 'ataque') {
+    if (tipo.toLowerCase() === 'ataque' && !rm.autoFail) {
       const ap = attackProfile(c, abr, adv && !dis);
       const dmg = rollAttackDamage(ap, result.crit);
       dmgNote = ` Dano se acertar: ${dmg.total} [${ap.type}] (${ap.name}: ${dmg.detail}${result.crit?' — CRÍTICO':''}${ap.sneak?' · Ataque Furtivo!':''}${c.raging?' · Fúria':''}).`;
     }
 
-    const outcome = cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado';
-    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}${result.crit?' (CRÍTICO!)':''}${result.fumble?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
+    const outcome = rm.autoFail ? 'FALHA AUTOMÁTICA (condição)' : (cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado');
+    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: ${rm.autoFail?'FALHA AUTOMÁTICA por condição':`d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}`}${result.crit?' (CRÍTICO!)':''}${result.fumble&&!rm.autoFail?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
     return;
   }
 
@@ -970,13 +1016,59 @@ function startCombat(encId) {
   const enc = CAMPAIGN.encounters[encId];
   if (!enc) return;
   STATE.inCombat = true;
-  STATE.combat = {
-    enc: encId,
-    enemies: enc.enemies.map(e => ({...e, curHp: e.hp})),
-  };
+  STATE.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({...e, curHp: e.hp})), order: [], turn: 0, round: 1 };
+  rollInitiative();
   addMsg('dm', `<div style="text-align:center;color:var(--blood);font-family:var(--font-mono);font-size:0.82rem;letter-spacing:0.18em;margin:10px 0">⚔ COMBATE: ${enc.name.toUpperCase()} ⚔</div>`);
-  toast('Combate iniciado! Role iniciativa.');
-  // a IA conduz o combate via narração; o código continua rolando dados quando ela pede [ROLL]
+  renderCombatBar();
+  toast('Combate iniciado! Iniciativa rolada.');
+}
+
+// Rola iniciativa (PCs: d20+DES; inimigos: d20+bônus) e ordena.
+function rollInitiative() {
+  const order = [];
+  STATE.characters.forEach((c, idx) => order.push({ kind:'pc', idx, name:c.name, init: d20(abilityMod(c.abilities.DES)).total }));
+  STATE.combat.enemies.forEach((e, idx) => order.push({ kind:'enemy', idx, name:e.name, init: d20(e.mod || 0).total }));
+  order.sort((a,b) => b.init - a.init);
+  STATE.combat.order = order; STATE.combat.turn = 0; STATE.combat.round = 1;
+}
+
+function renderCombatBar() {
+  const bar = $('#combatBar');
+  if (!bar) return;
+  if (!STATE.inCombat || !STATE.combat) { bar.classList.add('hide'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hide');
+  const cb = STATE.combat;
+  const toks = cb.order.map((o, k) => {
+    let hp, dead;
+    if (o.kind === 'enemy') { const e = cb.enemies[o.idx]; hp = `${e.curHp}/${e.hp} HP`; dead = e.curHp <= 0; }
+    else { const c = STATE.characters[o.idx]; hp = `${c.hp}/${c.maxHp} HP`; dead = c.hp <= 0; }
+    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}"><div class="cb-init">${o.init}</div><div>${o.name}</div><div class="cb-hp">${hp}</div></div>`;
+  }).join('');
+  bar.innerHTML = `<span class="cb-round">Rodada ${cb.round}</span><div class="cb-list">${toks}</div>
+    <div class="cb-btns"><button class="cb-btn" id="nextTurnBtn">Próximo turno →</button><button class="cb-btn end" id="endCombatBtn">Encerrar</button></div>`;
+  $('#nextTurnBtn').onclick = advanceTurn;
+  $('#endCombatBtn').onclick = endCombat;
+}
+
+function advanceTurn() {
+  const cb = STATE.combat; if (!cb || !cb.order.length) return;
+  let guard = 0;
+  do {
+    cb.turn++;
+    if (cb.turn >= cb.order.length) { cb.turn = 0; cb.round++; }
+    const o = cb.order[cb.turn];
+    const dead = o.kind === 'enemy' ? cb.enemies[o.idx].curHp <= 0 : STATE.characters[o.idx].hp <= 0;
+    if (!dead) break;
+  } while (++guard < cb.order.length * 2);
+  const cur = cb.order[cb.turn];
+  if (cur.kind === 'pc') { STATE.activeChar = cur.idx; updateTurnIndicator(); }
+  renderSidebar(); renderCombatBar();
+}
+
+function endCombat() {
+  STATE.inCombat = false; STATE.combat = null;
+  renderCombatBar();
+  addMsg('dm', `<div style="text-align:center;color:var(--myco);font-family:var(--font-mono);font-size:0.8rem;letter-spacing:0.15em;margin:10px 0">— fim do combate —</div>`);
 }
 
 // =====================================================
