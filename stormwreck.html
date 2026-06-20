@@ -378,9 +378,10 @@
   .res-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .res-label { font-size:0.74rem; color:var(--stone-300); }
   .res-pips { display:flex; gap:4px; }
-  .res-pip { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); cursor:pointer; transition:transform .1s, background .12s; }
+  .res-pip { width:14px; height:14px; border-radius:50%; border:1px solid var(--azure); transition:background .12s; }
   .res-pip.full { background:var(--azure); }
-  .res-pip:hover { transform:scale(1.2); border-color:var(--ember); }
+  .res-label.on { color:var(--ember); }
+  .res-label.on b { color:var(--ember); }
   .res-btn { background:var(--basalt-900); border:1px solid var(--blood); color:var(--blood); border-radius:7px; padding:4px 10px; font-size:0.74rem; font-weight:600; cursor:pointer; transition:all .14s; }
   .res-btn:hover { background:rgba(196,72,90,0.12); }
   .res-btn.on { background:var(--blood); color:#fff; animation: ragepulse 1.2s infinite; }
@@ -394,8 +395,8 @@
   .cond-block { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
   .cond-add { background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--stone-300); border-radius:7px; padding:4px 8px; font-size:0.72rem; }
   .cond-chips { display:flex; flex-wrap:wrap; gap:5px; }
-  .cond-chip { background:rgba(196,72,90,0.14); border:1px solid var(--blood); color:var(--blood); border-radius:6px; padding:2px 8px; font-size:0.68rem; cursor:pointer; }
-  .cond-chip:hover { background:rgba(196,72,90,0.28); }
+  .cond-chip { background:rgba(196,72,90,0.14); border:1px solid var(--blood); color:var(--blood); border-radius:6px; padding:2px 8px; font-size:0.68rem; }
+  .cond-chip.ro { cursor:default; }
 
   /* ====== Tracker de iniciativa (combate) ====== */
   .combat-bar { background:var(--basalt-900); border-bottom:1px solid var(--blood); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
