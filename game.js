@@ -24,7 +24,7 @@ const STATE = {
 };
 
 // rascunho de criação do personagem atual
-let DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+let DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
               skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null };
 
 // ---------- UTIL DOM ----------
@@ -202,7 +202,7 @@ function startCreation() {
 }
 
 function renderCreation() {
-  DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+  DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
             fightingStyle:null, archetype:null,
             profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
@@ -233,8 +233,7 @@ function renderCreation() {
   // seções dependentes começam ocultas
   ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection','#classOptionsSection'].forEach(s=>$(s).classList.add('hide'));
 
-  // atributos vazios
-  renderScorePool();
+  // atributos (point-buy)
   renderAbilityGrid();
 
   // eventos
@@ -254,8 +253,6 @@ function renderCreation() {
     DRAFT.fightingStyle = null; DRAFT.archetype = null;
     renderSkills(); renderEquipment(); renderClassOptions(); checkCreationReady();
   });
-  $('#rollScoresBtn').onclick = doRollScores;
-  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
 
@@ -419,11 +416,7 @@ function renderEquipment() {
 
 // abilities atuais do rascunho (scores atribuídos + ASI racial/escolha; fallback 10)
 function draftAbilities() {
-  const base = {};
-  RULES.abilities.forEach(a => {
-    const idx = DRAFT.assigned[a];
-    base[a] = (DRAFT.scores && idx!==undefined) ? DRAFT.scores[idx] : 10;
-  });
+  const base = { ...DRAFT.base };
   return DRAFT.race ? applyASI(base, DRAFT.race, DRAFT.subrace, DRAFT.asiChoices) : base;
 }
 function updateAC() {
@@ -493,38 +486,36 @@ function abilityRaceBonus(ab) {
   if (r.asiChoice && DRAFT.asiChoices.includes(ab)) b += r.asiChoice.amount;
   return b;
 }
+const POINT_COST = {8:0,9:1,10:2,11:3,12:4,13:5,14:7,15:9};
+const POINT_BUDGET = 27;
+function pointsSpent() { return RULES.abilities.reduce((s,a)=>s+(POINT_COST[DRAFT.base[a]]||0),0); }
+
 function renderAbilityGrid() {
+  const left = POINT_BUDGET - pointsSpent();
+  const pl = $('#pointsLeft'); if (pl) pl.textContent = left;
   $('#abilityGrid').innerHTML = RULES.abilities.map(ab => {
-    const idx = DRAFT.assigned[ab];
-    const score = idx!==undefined ? DRAFT.scores[idx] : null;
+    const base = DRAFT.base[ab];
     const raceBonus = abilityRaceBonus(ab);
-    const finalScore = score!==null ? score + raceBonus : null;
-    const mod = finalScore!==null ? abilityMod(finalScore) : null;
-    return `<div class="ability-box ${score!==null?'assigned':''}" data-ab="${ab}">
+    const finalScore = base + raceBonus;
+    const canInc = base < 15 && (POINT_COST[base+1] - POINT_COST[base]) <= left;
+    const canDec = base > 8;
+    return `<div class="ability-box assigned" data-ab="${ab}">
       <div class="ab-label">${ab}${raceBonus?` <span style="color:var(--myco)">+${raceBonus}</span>`:''}</div>
-      <div class="ab-score">${finalScore!==null?finalScore:'—'}</div>
-      <div class="ab-mod">${mod!==null?fmtMod(mod):''}</div>
+      <div class="ab-pb"><button class="pb-btn" data-pb="-" data-ab="${ab}" ${canDec?'':'disabled'}>−</button><span class="ab-base">${base}</span><button class="pb-btn" data-pb="+" data-ab="${ab}" ${canInc?'':'disabled'}>+</button></div>
+      <div class="ab-score">${finalScore}</div>
+      <div class="ab-mod">${fmtMod(abilityMod(finalScore))}</div>
     </div>`;
   }).join('');
-  $$('#abilityGrid .ability-box').forEach(el => el.onclick = () => {
-    const ab = el.dataset.ab;
-    if (pendingScore !== null) {
-      // remove esse score de qualquer atributo anterior
-      for (const k in DRAFT.assigned) if (DRAFT.assigned[k]===pendingScore) delete DRAFT.assigned[k];
-      DRAFT.assigned[ab] = pendingScore;
-      pendingScore = null;
-      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
-    } else if (DRAFT.assigned[ab] !== undefined) {
-      // clicar num atribuído remove
-      delete DRAFT.assigned[ab];
-      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
-    }
+  $$('#abilityGrid .pb-btn').forEach(b => b.onclick = () => {
+    const ab = b.dataset.ab;
+    if (b.dataset.pb === '+') DRAFT.base[ab] = Math.min(15, DRAFT.base[ab] + 1);
+    else DRAFT.base[ab] = Math.max(8, DRAFT.base[ab] - 1);
+    renderAbilityGrid(); updateAC(); checkCreationReady();
   });
 }
 
 function checkCreationReady() {
   const r = DRAFT.race ? RULES.races[DRAFT.race] : null;
-  const allAssigned = DRAFT.scores && Object.keys(DRAFT.assigned).length === 6;
   const subOk = !r || !Object.keys(r.subraces||{}).length || DRAFT.subrace;
   const asiOk = !r || !r.asiChoice || DRAFT.asiChoices.length === r.asiChoice.count;
   const skillsOk = DRAFT.cls && DRAFT.skills.length === RULES.classes[DRAFT.cls].skillCount;
@@ -532,15 +523,14 @@ function checkCreationReady() {
   const extraOk = DRAFT.skillsExtra.length === extraN;
   const styleOk = !DRAFT.cls || fightingStyleLevel(DRAFT.cls) !== 1 || DRAFT.fightingStyle;
   const archOk  = !DRAFT.cls || RULES.classes[DRAFT.cls].subclassLevel !== 1 || DRAFT.archetype;
-  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && allAssigned && skillsOk && extraOk && styleOk && archOk
+  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && skillsOk && extraOk && styleOk && archOk
     && $('#charName').value.trim() && $('#playerName').value.trim();
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
 }
 
 function commitCharacter() {
-  const scores = {};
-  RULES.abilities.forEach(ab => { scores[ab] = DRAFT.scores[DRAFT.assigned[ab]]; });
+  const scores = { ...DRAFT.base };
   const char = buildCharacter({
     name: $('#charName').value.trim(),
     player: $('#playerName').value.trim(),

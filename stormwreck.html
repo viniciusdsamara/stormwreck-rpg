@@ -172,6 +172,13 @@
   .ability-box .ab-score { font-family:var(--font-display); font-size:2rem; color:var(--gold-bone); line-height:1.1; margin-top:4px; }
   .ability-box .ab-mod { font-size:0.82rem; color:var(--ember); font-weight:600; }
   .ability-box.assigned { border-color: var(--ember); }
+  .points-bar { text-align:center; font-size:0.9rem; color:var(--stone-300); margin-bottom:14px; }
+  .points-bar b { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); }
+  .ab-pb { display:flex; align-items:center; justify-content:center; gap:8px; margin:4px 0; }
+  .pb-btn { width:24px; height:24px; border-radius:6px; background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); cursor:pointer; font-size:1rem; line-height:1; }
+  .pb-btn:hover:not(:disabled) { border-color:var(--ember); }
+  .pb-btn:disabled { opacity:0.3; cursor:not-allowed; }
+  .ab-base { font-family:var(--font-mono); font-size:0.95rem; color:var(--stone-300); min-width:18px; text-align:center; }
 
   .pool { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; justify-content:center; }
   .pool .chip {
@@ -563,13 +570,9 @@
       <label class="field" style="margin-top:20px"><span>Classe</span></label>
       <div class="choice-grid" id="classGrid"></div>
 
-      <label class="field" style="margin-top:20px"><span>Atributos — role e distribua</span></label>
-      <p class="hint" id="abilityHint">Clique em "Rolar atributos" para gerar 6 valores (4d6, descarta o menor). Depois clique num valor e num atributo para atribuir.</p>
-      <div class="pool" id="scorePool"></div>
-      <div class="row" style="justify-content:center;margin-bottom:14px">
-        <button class="btn ghost" id="rollScoresBtn">🎲 Rolar atributos</button>
-        <button class="btn ghost" id="resetScoresBtn">Limpar</button>
-      </div>
+      <label class="field" style="margin-top:20px"><span>Atributos — distribua os pontos</span></label>
+      <p class="hint" id="abilityHint">27 pontos. Cada atributo vai de 8 a 15 (custo maior nos valores altos). Use − e + para distribuir.</p>
+      <div class="points-bar">Pontos restantes: <b id="pointsLeft">27</b></div>
       <div class="ability-grid" id="abilityGrid"></div>
 
       <div class="subsection hide" id="asiChoiceSection">
