@@ -425,6 +425,35 @@
   .sh-cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
   @media (max-width:640px){ .sh-cols{ grid-template-columns:1fr;} }
   .sheet-card h4 { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--ember); margin:16px 0 8px; }
+  /* ---- MAPA DA ILHA ---- */
+  .map-card { max-width:560px; }
+  .map-head { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px; }
+  .map-head h3 { margin:0; font-size:1.15rem; }
+  .map-sub { font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--stone-400); }
+  .map-body { border-radius:14px; overflow:hidden; border:1px solid var(--basalt-600); }
+  .map-svg { display:block; width:100%; height:auto; }
+  .map-route { stroke:var(--stone-400); stroke-width:1.5; stroke-dasharray:4 5; opacity:0.25; }
+  .map-route.done { stroke:var(--ember); opacity:0.6; stroke-dasharray:none; stroke-width:2; }
+  .map-marker { cursor:pointer; outline:none; }
+  .map-marker .map-dot { stroke:#1a1318; stroke-width:2; transition:transform .15s; }
+  .map-marker.dim .map-dot { fill:#4a4048; }
+  .map-marker.dim .map-icon, .map-marker.dim .map-lbl { opacity:0.4; }
+  .map-marker.seen .map-dot { fill:#5a8f6b; }
+  .map-marker.cur .map-dot { fill:var(--ember); }
+  .map-marker:hover .map-dot, .map-marker:focus .map-dot { filter:brightness(1.25); }
+  .map-icon { font-size:11px; }
+  .map-lbl { font-family:var(--font-mono); font-size:8px; fill:var(--stone-400); letter-spacing:0.02em; }
+  .map-marker.cur .map-lbl, .map-marker.seen .map-lbl { fill:#e8dccd; }
+  .map-pulse { fill:none; stroke:var(--ember); stroke-width:2; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.8s ease-out infinite; }
+  @keyframes mapPulse { 0%{ transform:scale(0.7); opacity:0.9; } 100%{ transform:scale(1.9); opacity:0; } }
+  .map-detail { margin-top:14px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:12px 14px; min-height:64px; }
+  .map-d-head { font-size:0.98rem; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .map-d-chap { font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--ember); margin:3px 0 6px; }
+  .map-detail p { margin:0; font-size:0.86rem; color:var(--stone-300); line-height:1.45; }
+  .map-tag { font-family:var(--font-mono); font-size:0.56rem; letter-spacing:0.08em; text-transform:uppercase; padding:2px 7px; border-radius:20px; }
+  .map-tag.here { background:rgba(214,108,46,0.2); color:var(--ember); border:1px solid var(--ember); }
+  .map-tag.seen { background:rgba(90,143,107,0.18); color:#7bc497; border:1px solid #5a8f6b; }
+  .map-tag.dim { background:var(--basalt-700); color:var(--stone-400); border:1px solid var(--basalt-600); }
   .sh-abgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
   .sh-ab { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:7px 4px; text-align:center; }
   .sh-ab .l { font-family:var(--font-mono); font-size:0.58rem; color:var(--stone-400); }
@@ -708,6 +737,7 @@
           <span id="locationLabel">Dragon's Rest</span>
         </div>
         <div class="row">
+          <button class="btn ghost" id="mapBtn" style="padding:8px 12px;font-size:0.82rem" title="Mapa da ilha">🗺️</button>
           <button class="btn ghost" id="rollsToggleBtn" style="padding:8px 12px;font-size:0.82rem" title="Mostrar/esconder rolagens">⚄</button>
           <button class="btn ghost" id="saveBtn" style="padding:8px 14px;font-size:0.82rem">Salvar</button>
           <button class="btn ghost" id="menuBtn" style="padding:8px 14px;font-size:0.82rem">☰</button>
@@ -742,6 +772,11 @@
 <!-- ============ LEVEL-UP (modal) ============ -->
 <div class="sheet-modal hide" id="levelupModal">
   <div class="sheet-card" id="levelupCard"></div>
+</div>
+
+<!-- ============ MAPA DA ILHA (modal) ============ -->
+<div class="sheet-modal hide" id="mapModal">
+  <div class="sheet-card map-card" id="mapCard"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

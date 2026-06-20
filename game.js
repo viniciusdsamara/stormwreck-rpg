@@ -20,8 +20,33 @@ const STATE = {
   history: [],          // mensagens da conversa com a IA
   inCombat: false,
   combat: null,         // estado de combate ativo
-  creationSlot: 0       // 0 ou 1 durante criação
+  creationSlot: 0,      // 0 ou 1 durante criação
+  visited: []           // ids de locais do mapa já visitados
 };
+
+// ---------- MAPA INTERATIVO DA ILHA ----------
+// Coordenadas num viewBox 0 0 360 400 (arte original estilizada, não copia o mapa oficial).
+const MAP_LOCS = {
+  praia:        { x:208, y:322, label:"Praia de Dragon's Rest", chapter:'Cap. 1', icon:'⚓',
+                  summary:'Onde o naufrágio do Próspero lançou os heróis. Areia escura e destroços fumegantes.' },
+  claustro:     { x:250, y:236, label:"Claustro de Dragon's Rest", chapter:'Cap. 1', icon:'🏯',
+                  summary:'Refúgio dos monges sob a guarda da dragão de bronze Runara. Porto seguro da campanha.' },
+  cavernas:     { x:118, y:262, label:'Cavernas Seagrow', chapter:'Cap. 2', icon:'🍄',
+                  summary:'Túneis úmidos tomados por fungos myconídeos — e a tumba selada de Sharruth.' },
+  naufragio:    { x:168, y:108, label:'Naufrágio Amaldiçoado', chapter:'Cap. 3', icon:'☠️',
+                  summary:'Casco apodrecido na costa norte, assombrado por mortos-vivos e maré sombria.' },
+  observatorio: { x:236, y:64,  label:'Observatório do Penhasco', chapter:'Cap. 4', icon:'🔭',
+                  summary:'No alto do penhasco de basalto, palco do confronto final com a dragão das tempestades.' }
+};
+// mapeia cada cena do roteiro para um local no mapa
+const SCENE_LOC = {
+  chegada:'praia', praia:'praia',
+  claustro:'claustro', claustro_volta:'claustro', epilogo:'claustro',
+  cavernas:'cavernas', sharruth:'cavernas',
+  naufragio:'naufragio', observatorio:'observatorio'
+};
+// rota da jornada (ordem das pernas, para desenhar os caminhos)
+const MAP_ROUTE = ['praia','claustro','cavernas','claustro','naufragio','observatorio'];
 
 // rascunho de criação do personagem atual
 let DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
@@ -802,6 +827,7 @@ function startGame() {
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
   $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
   $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
+  $('#mapBtn').onclick = openMap;
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
@@ -927,6 +953,103 @@ function openSheet(i) {
   $$('#sheetCard [data-prof]').forEach(t => t.oninput = () => { c.profile = c.profile || {}; c.profile[t.dataset.prof] = t.value; });
 }
 function closeSheet() { $('#sheetModal').classList.add('hide'); }
+
+// ---------- MAPA INTERATIVO ----------
+function mapMarkSceneVisited() {
+  const loc = SCENE_LOC[STATE.sceneId];
+  if (loc && !STATE.visited.includes(loc)) STATE.visited.push(loc);
+}
+
+// para saves antigos sem 'visited': reconstrói pela ordem linear da campanha
+const SCENE_ORDER = ['chegada','praia','claustro','cavernas','sharruth','claustro_volta','naufragio','observatorio','epilogo'];
+function reconstructVisited(sceneId) {
+  const end = SCENE_ORDER.indexOf(sceneId);
+  const seen = [];
+  SCENE_ORDER.slice(0, (end < 0 ? SCENE_ORDER.length : end + 1)).forEach(s => {
+    const loc = SCENE_LOC[s];
+    if (loc && !seen.includes(loc)) seen.push(loc);
+  });
+  return seen;
+}
+
+function mapSvg() {
+  const cur = SCENE_LOC[STATE.sceneId];
+  // caminhos da rota: traça entre locais consecutivos já ambos visitados
+  let paths = '';
+  for (let i = 0; i < MAP_ROUTE.length - 1; i++) {
+    const a = MAP_LOCS[MAP_ROUTE[i]], b = MAP_LOCS[MAP_ROUTE[i+1]];
+    if (!a || !b) continue;
+    const done = STATE.visited.includes(MAP_ROUTE[i]) && STATE.visited.includes(MAP_ROUTE[i+1]);
+    paths += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="map-route ${done?'done':''}" />`;
+  }
+  const markers = Object.entries(MAP_LOCS).map(([id, m]) => {
+    const isCur = id === cur;
+    const visited = STATE.visited.includes(id);
+    const cls = isCur ? 'cur' : (visited ? 'seen' : 'dim');
+    return `<g class="map-marker ${cls}" data-loc="${id}" tabindex="0" role="button" aria-label="${m.label}">
+      ${isCur ? `<circle cx="${m.x}" cy="${m.y}" r="16" class="map-pulse" />` : ''}
+      <circle cx="${m.x}" cy="${m.y}" r="11" class="map-dot" />
+      <text x="${m.x}" y="${m.y+4}" class="map-icon" text-anchor="middle">${m.icon}</text>
+      <text x="${m.x}" y="${m.y+26}" class="map-lbl" text-anchor="middle">${m.label}</text>
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 360 400" xmlns="http://www.w3.org/2000/svg" class="map-svg" aria-label="Mapa de Stormwreck Isle">
+    <defs>
+      <radialGradient id="mapSea" cx="50%" cy="40%" r="75%">
+        <stop offset="0%" stop-color="#15303f"/><stop offset="100%" stop-color="#0a1822"/>
+      </radialGradient>
+      <linearGradient id="mapLand" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3a3030"/><stop offset="100%" stop-color="#241c20"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="360" height="400" fill="url(#mapSea)"/>
+    <g class="map-waves" opacity="0.18">
+      <path d="M0 350 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0" fill="none" stroke="#5fa8c7" stroke-width="1.2"/>
+      <path d="M0 372 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0" fill="none" stroke="#5fa8c7" stroke-width="1.2"/>
+    </g>
+    <path class="map-island" fill="url(#mapLand)" stroke="#52443f" stroke-width="2"
+      d="M150 40 C 200 30 250 48 268 90 C 300 110 312 150 296 188 C 318 222 300 270 262 286
+         C 256 322 214 350 178 338 C 140 356 92 332 86 292 C 52 280 70 236 96 224
+         C 82 188 104 150 138 142 C 130 96 120 56 150 40 Z"/>
+    <path class="map-island-inner" fill="none" stroke="#6b574f" stroke-width="1" opacity="0.5"
+      d="M150 70 C 188 64 228 86 232 120 C 262 150 250 196 220 210 C 224 250 190 286 158 280
+         C 124 292 104 256 116 230 C 92 206 110 168 140 166 C 132 120 130 86 150 70 Z"/>
+    ${paths}
+    ${markers}
+  </svg>`;
+}
+
+function openMap() {
+  mapMarkSceneVisited();
+  const m = MAP_LOCS[SCENE_LOC[STATE.sceneId]];
+  $('#mapCard').innerHTML = `
+    <div class="map-head">
+      <div><h3>🗺️ Stormwreck Isle</h3><span class="map-sub">A jornada até aqui</span></div>
+      <button class="rp-close" id="mapCloseBtn" title="Fechar">✕</button>
+    </div>
+    <div class="map-body">${mapSvg()}</div>
+    <div class="map-detail" id="mapDetail"></div>`;
+  $('#mapModal').classList.remove('hide');
+  $('#mapModal').onclick = e => { if (e.target.id === 'mapModal') closeMap(); };
+  $('#mapCloseBtn').onclick = closeMap;
+  const showDetail = id => {
+    const loc = MAP_LOCS[id]; if (!loc) return;
+    const here = id === SCENE_LOC[STATE.sceneId];
+    const seen = STATE.visited.includes(id);
+    const tag = here ? '<span class="map-tag here">você está aqui</span>'
+              : seen ? '<span class="map-tag seen">visitado</span>'
+              : '<span class="map-tag dim">não explorado</span>';
+    $('#mapDetail').innerHTML = `<div class="map-d-head">${loc.icon} <b>${loc.label}</b> ${tag}</div>
+      <div class="map-d-chap">${loc.chapter}</div>
+      <p>${seen||here ? loc.summary : 'Local ainda não alcançado na campanha.'}</p>`;
+  };
+  $$('#mapCard .map-marker').forEach(g => {
+    g.onclick = () => showDetail(g.dataset.loc);
+    g.onkeydown = e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); showDetail(g.dataset.loc); } };
+  });
+  showDetail(SCENE_LOC[STATE.sceneId]);
+}
+function closeMap() { $('#mapModal').classList.add('hide'); }
 
 function sheetHtml(c, i) {
   const abil = RULES.abilities.map(a => {
@@ -1124,6 +1247,7 @@ function updateTurnIndicator() {
 async function beginScene(sceneId, isFirst) {
   STATE.sceneId = sceneId;
   const sc = CAMPAIGN.scenes[sceneId];
+  mapMarkSceneVisited();
   updateTopbar(); updateQuickActions(); updateTurnIndicator();
 
   // level up interativo se a cena exige
@@ -1511,7 +1635,8 @@ async function saveGame() {
     activeChar: STATE.activeChar,
     sceneId: STATE.sceneId,
     history: STATE.history,
-    model: STATE.model
+    model: STATE.model,
+    visited: STATE.visited
   };
   try {
     const { error } = await supa.from('saves').upsert({
@@ -1535,6 +1660,10 @@ async function loadGame() {
   STATE.characters = save.characters;
   STATE.activeChar = save.activeChar;
   STATE.sceneId = save.sceneId;
+  STATE.visited = Array.isArray(save.visited) && save.visited.length
+    ? save.visited
+    : reconstructVisited(save.sceneId);
+  mapMarkSceneVisited();
   STATE.history = save.history;
   STATE.model = save.model || 'claude-haiku-4-5';
 
@@ -1545,6 +1674,7 @@ async function loadGame() {
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
   $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
   $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
+  $('#mapBtn').onclick = openMap;
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
