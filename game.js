@@ -558,7 +558,7 @@ function renderSidebar() {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
     const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
-      <div class="cc-name">${c.name}</div>
+      <div class="cc-name" data-sheet="${i}" title="Ver ficha completa">${c.name}</div>
       <div class="cc-sub"><span class="player-tag ${i===0?'p1':'p2'}">${c.player}</span> · ${sub}</div>
       <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
       <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
@@ -642,6 +642,8 @@ function attachResourceHandlers() {
     c.conditions = (c.conditions||[]).filter(n => n !== el.dataset.cn);
     renderSidebar();
   });
+  // clicar no nome abre a ficha completa
+  $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
 }
 
 // Chips de condição (Apêndice A) na ficha — clicáveis para adicionar/remover.
@@ -651,6 +653,71 @@ function conditionsHtml(c, i) {
   return `<div class="cond-block">
     <select class="cond-add" data-ci="${i}"><option value="">+ condição</option>${opts}</select>
     <div class="cond-chips">${chips}</div>
+  </div>`;
+}
+
+// ---- Ficha completa (modal) ----
+function openSheet(i) {
+  const c = STATE.characters[i]; if (!c) return;
+  $('#sheetCard').innerHTML = sheetHtml(c, i);
+  $('#sheetModal').classList.remove('hide');
+  $('#sheetModal').onclick = e => { if (e.target.id === 'sheetModal') closeSheet(); };
+  $('#sheetCloseBtn').onclick = closeSheet;
+  $$('#sheetCard [data-gold]').forEach(b => b.onclick = () => { c.gold = Math.max(0, c.gold + (b.dataset.gold==='+'?1:-1)); openSheet(i); });
+  $$('#sheetCard [data-prof]').forEach(t => t.oninput = () => { c.profile = c.profile || {}; c.profile[t.dataset.prof] = t.value; });
+}
+function closeSheet() { $('#sheetModal').classList.add('hide'); }
+
+function sheetHtml(c, i) {
+  const abil = RULES.abilities.map(a => {
+    const save = c.saves.includes(a), sm = abilityMod(c.abilities[a]) + (save?c.prof:0);
+    return `<div class="sh-ab"><div class="l">${a}</div><div class="v">${c.abilities[a]}</div><div class="m">${fmtMod(abilityMod(c.abilities[a]))}</div><div class="sv ${save?'prof':''}">save ${fmtMod(sm)}</div></div>`;
+  }).join('');
+  const skills = Object.entries(RULES.skills).map(([name,ab]) => {
+    const prof = (c.skills||[]).includes(name), m = abilityMod(c.abilities[ab]) + (prof?c.prof:0);
+    return `<div class="sh-skill ${prof?'prof':''}"><span>${prof?'●':'○'} ${name} <small>(${ab})</small></span><b>${fmtMod(m)}</b></div>`;
+  }).join('');
+  const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
+  const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
+  const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag">${t}</span>`).join('')}</div>` : '';
+  const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv1 ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
+  const inv    = (c.inventory||[]).map(it=>`<li>${it}</li>`).join('') || '<li>—</li>';
+  const p = c.profile || {};
+  const pf = (k,label) => `<label class="sh-pf"><span>${label}</span><textarea data-prof="${k}" data-ci="${i}" rows="2">${p[k]||''}</textarea></label>`;
+  return `
+  <div class="sh-top">
+    <div><div class="sh-name">${c.name}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${c.player}</div></div>
+    <button class="rp-close" id="sheetCloseBtn">✕</button>
+  </div>
+  <div class="sh-stats">
+    <div class="sh-stat"><span>CA</span><b>${c.ca}</b></div>
+    <div class="sh-stat"><span>HP</span><b>${c.hp}/${c.maxHp}</b></div>
+    <div class="sh-stat"><span>Deslocamento</span><b>${c.speed}m</b></div>
+    <div class="sh-stat"><span>Iniciativa</span><b>${fmtMod(abilityMod(c.abilities.DES))}</b></div>
+    <div class="sh-stat"><span>Proficiência</span><b>+${c.prof}</b></div>
+    <div class="sh-stat"><span>Visão escuro</span><b>${c.darkvision?c.darkvisionRange+'m':'—'}</b></div>
+  </div>
+  <div class="sh-cols">
+    <div class="sh-col">
+      <h4>Atributos &amp; Saves</h4><div class="sh-abgrid">${abil}</div>
+      <h4>Perícias</h4><div class="sh-skills">${skills}</div>
+    </div>
+    <div class="sh-col">
+      <h4>Traços raciais</h4><div class="sh-tags">${traits}</div>
+      <h4>Características de classe</h4><div class="sh-tags">${feats}</div>
+      ${spell}${conds}
+      <h4>Idiomas</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
+      <h4>Bolsa <span class="sh-gold">${c.gold} <button class="res-mini" data-gold="-" data-ci="${i}">−</button> <button class="res-mini" data-gold="+" data-ci="${i}">+</button> po</span></h4>
+      <ul class="sh-inv">${inv}</ul>
+    </div>
+  </div>
+  <h4>Perfil do personagem</h4>
+  <div class="sh-profile">
+    ${pf('appearance','Descrição física')}
+    ${pf('context','Por que está aqui')}
+    ${pf('motivation','Motivações')}
+    ${pf('flaw','Defeitos')}
+    ${pf('quality','Qualidades')}
   </div>`;
 }
 

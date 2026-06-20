@@ -404,6 +404,46 @@
   .cb-btn:hover { border-color:var(--ember); }
   .cb-btn.end { border-color:var(--blood); color:var(--blood); }
 
+  /* ====== Ficha completa (modal) ====== */
+  .sheet-modal { position:fixed; inset:0; z-index:80; background:rgba(5,4,8,0.78); display:flex; align-items:flex-start; justify-content:center; padding:30px 16px; overflow-y:auto; }
+  .sheet-card { width:100%; max-width:860px; background:linear-gradient(180deg,var(--basalt-700),var(--basalt-800)); border:1px solid var(--basalt-600); border-radius:16px; padding:24px 26px; box-shadow:0 30px 70px -25px rgba(0,0,0,0.9); }
+  .sh-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; }
+  .sh-name { font-family:var(--font-display); font-size:1.8rem; color:var(--parch); }
+  .sh-sub { color:var(--stone-300); font-size:0.86rem; margin-top:2px; }
+  .sh-stats { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:18px; }
+  @media (max-width:640px){ .sh-stats{ grid-template-columns:repeat(3,1fr);} }
+  .sh-stat { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:8px; text-align:center; }
+  .sh-stat span { display:block; font-family:var(--font-mono); font-size:0.56rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--stone-400); }
+  .sh-stat b { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); }
+  .sh-cols { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:640px){ .sh-cols{ grid-template-columns:1fr;} }
+  .sheet-card h4 { font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--ember); margin:16px 0 8px; }
+  .sh-abgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .sh-ab { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:7px 4px; text-align:center; }
+  .sh-ab .l { font-family:var(--font-mono); font-size:0.58rem; color:var(--stone-400); }
+  .sh-ab .v { font-family:var(--font-display); font-size:1.3rem; color:var(--gold-bone); line-height:1; }
+  .sh-ab .m { font-size:0.72rem; color:var(--ember); }
+  .sh-ab .sv { font-size:0.56rem; color:var(--stone-400); margin-top:2px; }
+  .sh-ab .sv.prof { color:var(--myco); }
+  .sh-skills { display:grid; grid-template-columns:1fr; gap:3px; }
+  .sh-skill { display:flex; justify-content:space-between; font-size:0.8rem; color:var(--stone-300); padding:2px 4px; border-radius:5px; }
+  .sh-skill small { color:var(--stone-400); }
+  .sh-skill.prof { color:var(--parch); background:rgba(127,212,163,0.06); }
+  .sh-skill.prof b { color:var(--myco); }
+  .sh-tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .sh-tag { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:6px; padding:3px 9px; font-size:0.74rem; color:var(--stone-300); }
+  .sh-line { font-size:0.8rem; color:var(--azure); margin-top:8px; }
+  .sh-gold { font-family:var(--font-display); color:var(--gold-bone); float:right; font-size:0.95rem; }
+  .sh-inv { margin:0; padding-left:18px; color:var(--stone-300); font-size:0.84rem; }
+  .sh-inv li { margin:2px 0; }
+  .sh-profile { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px){ .sh-profile{ grid-template-columns:1fr;} }
+  .sh-pf span { display:block; font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--stone-300); margin-bottom:5px; }
+  .sh-pf textarea { width:100%; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; color:var(--parch); padding:8px 10px; font-family:var(--font-body); font-size:0.86rem; resize:vertical; }
+  .sh-pf textarea:focus { outline:none; border-color:var(--ember); }
+  .cc-name { cursor:pointer; }
+  .cc-name:hover { color:var(--ember); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -605,6 +645,11 @@
       <div id="rollLogList"><div class="rolllog-empty">Nenhuma rolagem ainda.</div></div>
     </aside>
   </div>
+</div>
+
+<!-- ============ FICHA COMPLETA (modal) ============ -->
+<div class="sheet-modal hide" id="sheetModal">
+  <div class="sheet-card" id="sheetCard"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
