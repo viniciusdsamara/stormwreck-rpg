@@ -875,7 +875,7 @@ function startGame() {
   renderSidebar();
   $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
-  $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#menuBtn').onclick = openOptionsMenu;
   $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
   $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#mapBtn').onclick = openMap;
@@ -889,8 +889,9 @@ function startGame() {
 
 function renderSidebar() {
   const sb = $('#charPanel');
-  const restBar = `<div class="rest-bar"><button class="rest-btn" id="shortRestBtn">☕ Descanso Curto</button><button class="rest-btn" id="longRestBtn">🌙 Descanso Longo</button></div>`;
-  sb.innerHTML = restBar + STATE.characters.map((c, i) => {
+  // Descanso não é mais manual — é automático em momentos seguros do roteiro
+  // (refúgios) ou disparado pelo Mestre via [DESCANSO:...]. Evita recuperação livre.
+  sb.innerHTML = STATE.characters.map((c, i) => {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
     const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
     return `<div class="char-card ${i===STATE.activeChar?'active-turn':''}">
@@ -906,8 +907,6 @@ function renderSidebar() {
       ${conditionsHtml(c, i)}
     </div>`;
   }).join('');
-  $('#shortRestBtn').onclick = () => doRest('short');
-  $('#longRestBtn').onclick = () => doRest('long');
   attachResourceHandlers();
 }
 
@@ -1125,6 +1124,41 @@ function openMap() {
 }
 function closeMap() { $('#mapModal').classList.add('hide'); }
 
+// ---------- MENU DE OPÇÕES (botão ☰) ----------
+function openOptionsMenu() {
+  const modelLabel = STATE.model && STATE.model.includes('sonnet') ? 'Sonnet 4.6 (rico)' : 'Haiku 4.5 (rápido)';
+  $('#menuCard').innerHTML = `
+    <div class="map-head">
+      <div><h3>☰ Opções</h3><span class="map-sub">${CAMPAIGN.title}</span></div>
+      <button class="rp-close" id="menuCloseBtn" title="Fechar">✕</button>
+    </div>
+    <div class="menu-list">
+      <button class="menu-item" id="miSave"><span class="mi-ic">💾</span><span><b>Salvar jogo</b><small>Guarda o progresso na sua conta</small></span></button>
+      <button class="menu-item" id="miLoad"><span class="mi-ic">📂</span><span><b>Carregar jogo salvo</b><small>Substitui a sessão atual pelo último save</small></span></button>
+      <button class="menu-item" id="miMap"><span class="mi-ic">🗺️</span><span><b>Mapa da ilha</b><small>Locais descobertos e a jornada</small></span></button>
+      <div class="menu-item static"><span class="mi-ic">🤖</span><span style="flex:1"><b>Modelo da IA</b><small>Atual: ${modelLabel}</small></span>
+        <select id="miModel" class="menu-select">
+          <option value="claude-haiku-4-5" ${STATE.model&&STATE.model.includes('haiku')?'selected':''}>Haiku (barato)</option>
+          <option value="claude-sonnet-4-6" ${STATE.model&&STATE.model.includes('sonnet')?'selected':''}>Sonnet (rico)</option>
+        </select>
+      </div>
+      <button class="menu-item" id="miChars"><span class="mi-ic">👥</span><span><b>Ver personagens</b><small>Abre/fecha o painel de fichas</small></span></button>
+      <button class="menu-item warn" id="miRestart"><span class="mi-ic">🔄</span><span><b>Reiniciar do começo</b><small>Recomeça a aventura com os mesmos heróis</small></span></button>
+      <button class="menu-item danger" id="miLogout"><span class="mi-ic">🚪</span><span><b>Sair da conta</b><small>Faz logout e volta ao login</small></span></button>
+    </div>`;
+  $('#menuModal').classList.remove('hide');
+  $('#menuModal').onclick = e => { if (e.target.id === 'menuModal') closeOptionsMenu(); };
+  $('#menuCloseBtn').onclick = closeOptionsMenu;
+  $('#miSave').onclick = () => { closeOptionsMenu(); saveGame(); };
+  $('#miLoad').onclick = () => { if (confirm('Carregar o último jogo salvo? O progresso não salvo desta sessão será perdido.')) { closeOptionsMenu(); loadGame(); } };
+  $('#miMap').onclick = () => { closeOptionsMenu(); openMap(); };
+  $('#miModel').onchange = e => { STATE.model = e.target.value; toast('Modelo: ' + (e.target.value.includes('sonnet')?'Sonnet 4.6':'Haiku 4.5')); };
+  $('#miChars').onclick = () => { closeOptionsMenu(); $('#sidebar').classList.toggle('mobile-open'); };
+  $('#miRestart').onclick = () => { if (confirm('Reiniciar a aventura do começo? Os personagens são mantidos, mas a história recomeça.')) { closeOptionsMenu(); startGame(); } };
+  $('#miLogout').onclick = () => { if (confirm('Sair da sua conta? Salve antes se quiser manter o progresso.')) { closeOptionsMenu(); doLogout(); } };
+}
+function closeOptionsMenu() { $('#menuModal').classList.add('hide'); }
+
 // revela um local do mapa (chamado pelo marcador [REVELAR_LOCAL:id] do Mestre)
 function revealMapLocation(id) {
   if (!MAP_LOCS[id] || mapKnown(id)) return false;
@@ -1236,11 +1270,12 @@ function sheetHtml(c, i) {
 }
 
 // Descanso: curto restaura recursos 'short' (e Pacto do Bruxo); longo restaura tudo + HP.
-function doRest(kind) {
+// auto=true → disparado pelo roteiro/Mestre; anuncia na narrativa em vez de toast.
+function doRest(kind, auto) {
   STATE.characters.forEach(c => {
     const res = classResources(c);
     if (kind === 'long') {
-      c.hp = c.maxHp; c.raging = false; c.resUsed = {};
+      c.hp = c.maxHp; c.raging = false; c.resUsed = {}; c.conditions = [];
       if (c.spellSlots) c.spellSlots.used = 0;
       if (c.spellSlots2) c.spellSlots2.used = 0;
     } else {
@@ -1253,7 +1288,11 @@ function doRest(kind) {
     }
   });
   renderSidebar();
-  toast(kind === 'long' ? 'Descanso longo: HP e recursos restaurados.' : 'Descanso curto: recursos de descanso curto restaurados.');
+  const msg = kind === 'long'
+    ? '🌙 Descanso longo — HP, espaços de magia, condições e recursos restaurados.'
+    : '☕ Descanso curto — recursos de descanso curto restaurados.';
+  if (auto) addMsg('dm', `<div style="text-align:center;color:var(--myco);font-family:var(--font-mono);font-size:0.8rem;letter-spacing:0.08em;margin:10px 0">${msg}</div>`);
+  else toast(msg);
 }
 
 // ---------- NARRATIVA / MENSAGENS ----------
@@ -1383,6 +1422,9 @@ async function beginScene(sceneId, isFirst) {
 
   // mostra o texto de leitura da cena (vem do roteiro, não da IA — economiza tokens)
   await addMsgTyped('dm', sc.readAloud);
+
+  // descanso automático quando o roteiro indica um momento seguro (refúgio)
+  if (sc.rest) doRest(sc.rest, true);
 
   // pede à IA para continuar/ambientar a cena e abrir para ação
   const kickoff = isFirst
@@ -1547,6 +1589,7 @@ ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 - Quando um personagem conjura uma MAGIA de nível 1+ (não truque/cantrip): [GASTAR_SLOT:NomeDoPersonagem:nível] — ex.: [GASTAR_SLOT:Eldrin:1]. O sistema baixa o slot na ficha automaticamente. Truques NÃO gastam slot.
 - Quando um personagem fica sob uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:Garrett:Envenenado]. Quando a condição acaba: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
 - Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. Áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas.
+- Descanso SÓ em momento narrativamente seguro (acampamento protegido, refúgio, após escapar do perigo): [DESCANSO:curto] ou [DESCANSO:longo]. O sistema restaura HP/recursos automaticamente. NUNCA conceda descanso no meio de uma masmorra hostil, em combate, ou só porque os jogadores pediram — exija ficção que justifique. Refúgios do roteiro já descansam sozinhos.
 - Quando a cena termina: [SCENE_COMPLETE]
 
 ## MAPA DA ILHA (ids para [REVELAR_LOCAL])
@@ -1606,6 +1649,7 @@ async function processDMReply(reply) {
     .replace(/\[CONDICAO:[^\]]+\]/g,'')
     .replace(/\[REMOVER_CONDICAO:[^\]]+\]/g,'')
     .replace(/\[REVELAR_LOCAL:[^\]]+\]/g,'')
+    .replace(/\[DESCANSO:[^\]]+\]/g,'')
     .trim();
 
   if (clean) await addMsgTyped('dm', clean);
@@ -1638,6 +1682,12 @@ async function processDMReply(reply) {
   [...reply.matchAll(/\[REVELAR_LOCAL:([^\]]+)\]/g)].forEach(m => {
     if (revealMapLocation(m[1].trim())) notes.push('🗺️ Novo local revelado: ' + MAP_LOCS[m[1].trim()].label);
   });
+  // descanso disparado pela narrativa (momento seguro): [DESCANSO:curto|longo]
+  const restMark = reply.match(/\[DESCANSO:(curto|longo|short|long)\]/i);
+  if (restMark) {
+    const kind = /long|longo/i.test(restMark[1]) ? 'long' : 'short';
+    doRest(kind, true);
+  }
   if (sheetChanged) renderSidebar();
   notes.forEach(n => toast(n));
 
@@ -1832,7 +1882,7 @@ async function loadGame() {
   renderSidebar();
   updateTopbar(); updateQuickActions(); updateTurnIndicator();
   $('#saveBtn').onclick = saveGame;
-  $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#menuBtn').onclick = openOptionsMenu;
   $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
   $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#mapBtn').onclick = openMap;

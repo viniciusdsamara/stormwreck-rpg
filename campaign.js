@@ -59,6 +59,7 @@ const CAMPAIGN = {
       chapter: "Capítulo 1 — Dragon's Rest",
       location: "Claustro de Dragon's Rest",
       level: 1,
+      rest: 'long',   // refúgio seguro: descanso longo automático ao chegar
       summary: "Refúgio no topo dos penhascos. Conhecer Runara e moradores. Hub de missões.",
       readAloud: `Uma escadaria esculpida na rocha leva ao claustro de Dragon's Rest — um conjunto de prédios de pedra clara abraçados pela face do penhasco, com jardins de flores brancas balançando ao vento salgado. Uma mulher de cabelos cor de bronze e olhos dourados vem ao seu encontro, túnica simples, postura serena mas que carrega algo antigo. "Bem-vindos. Sou Runara. Vocês chegaram num momento difícil." Ela observa o sangue de zumbi nas suas roupas e não parece surpresa.`,
       objectives: ["Conhecer Runara e os moradores", "Descobrir os problemas da ilha", "Aceitar investigar as Cavernas Seagrow"],
@@ -112,6 +113,7 @@ const CAMPAIGN = {
       chapter: "Capítulo 2 — Interlúdio",
       location: "Claustro de Dragon's Rest",
       level: 2,
+      rest: 'long',   // interlúdio seguro: descanso longo automático
       summary: "Retorno ao claustro. Descanso, recompensa, gancho para o naufrágio amaldiçoado. SOBE PARA NÍVEL 2.",
       readAloud: `Vocês retornam ao claustro com notícias das cavernas. Runara escuta em silêncio, o rosto dourado tenso ao ouvir sobre as fendas de Sharruth. "Então a velha ferida ainda sangra", murmura ela. Ela cuida dos seus ferimentos e oferece descanso. Mas há mais. "Um navio surgiu na costa norte. Não devia estar ali — afundou há anos. E carrega uma escuridão que sinto daqui."`,
       objectives: ["Descansar e subir para o nível 2", "Receber recompensa de Runara", "Aceitar investigar o Naufrágio Amaldiçoado"],

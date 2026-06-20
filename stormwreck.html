@@ -464,6 +464,19 @@
   .map-tag.seen { background:rgba(90,143,107,0.18); color:#7bc497; border:1px solid #5a8f6b; }
   .map-tag.revealed { background:rgba(214,108,46,0.14); color:var(--ember); border:1px solid rgba(214,108,46,0.5); }
   .map-tag.dim { background:var(--basalt-700); color:var(--stone-400); border:1px solid var(--basalt-600); }
+  /* ---- MENU DE OPÇÕES ---- */
+  .menu-card { max-width:440px; }
+  .menu-list { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+  .menu-item { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:11px 14px; color:var(--parch); cursor:pointer; transition:border-color .15s, background .15s; }
+  .menu-item:hover { border-color:var(--ember); background:var(--basalt-700); }
+  .menu-item.static { cursor:default; }
+  .menu-item.static:hover { border-color:var(--basalt-600); background:var(--basalt-900); }
+  .menu-item .mi-ic { font-size:1.25rem; width:26px; text-align:center; flex:none; }
+  .menu-item b { display:block; font-size:0.92rem; }
+  .menu-item small { display:block; font-size:0.72rem; color:var(--stone-400); margin-top:2px; line-height:1.3; }
+  .menu-item.warn:hover { border-color:var(--gold-bone); }
+  .menu-item.danger:hover { border-color:var(--blood); background:rgba(120,40,50,0.2); }
+  .menu-select { background:var(--basalt-700); color:var(--parch); border:1px solid var(--basalt-600); border-radius:7px; padding:6px 8px; font-size:0.8rem; }
   .sh-abgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
   .sh-ab { background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px; padding:7px 4px; text-align:center; }
   .sh-ab .l { font-family:var(--font-mono); font-size:0.58rem; color:var(--stone-400); }
@@ -795,6 +808,11 @@
 <!-- ============ MAPA DA ILHA (modal) ============ -->
 <div class="sheet-modal hide" id="mapModal">
   <div class="sheet-card map-card" id="mapCard"></div>
+</div>
+
+<!-- ============ MENU DE OPÇÕES (modal) ============ -->
+<div class="sheet-modal hide" id="menuModal">
+  <div class="sheet-card menu-card" id="menuCard"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
