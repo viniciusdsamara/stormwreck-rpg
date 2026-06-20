@@ -129,6 +129,8 @@ async function refreshRoom(){
   if (room) ROOM = room;
   const { data: members } = await supa.from('room_members').select('*').eq('room_id', ROOM.id).order('joined_at');
   MEMBERS = members || [];
+  if (ROOM.status === 'ended'){ toast('A sala foi encerrada pelo mestre.'); await leaveRoomQuietly(); enterHub(); return; }
+  if (ROOM.status === 'playing'){ enterGame(); return; }
   renderRoom();
 }
 function subscribeRoom(){
@@ -191,11 +193,12 @@ function renderRoom(){
     $('#admModel').onchange = ()=> updateRoom({ model: $('#admModel').value });
     $('#admGm').checked = !!ROOM.gm_mode;
     $('#admGm').onchange = ()=> updateRoom({ gm_mode: $('#admGm').checked });
-    const allReady = players.length>0 && players.every(m=>m.ready);
-    $('#startBtn').disabled = true; // o início do jogo entra na Fase M3
+    const allReady = players.length>0 && players.every(m=>m.ready && m.sheet);
+    $('#startBtn').disabled = !allReady;
+    $('#startBtn').onclick = startMatch;
     $('#startNote').textContent = allReady
-      ? 'Todos prontos. (Iniciar a partida chega na próxima fase.)'
-      : 'Aguardando todos ficarem prontos.';
+      ? 'Todos prontos com personagem. Pode iniciar a aventura!'
+      : 'Aguardando todos criarem o personagem.';
   } else { ap.style.display='none'; }
 
   // link de convite (visível para todos; serve para chamar mais gente)
@@ -246,6 +249,53 @@ async function leaveRoom(){
   if (!confirm(admin ? 'Você é o admin — sair encerra a sala. Continuar?' : 'Sair desta sala?')) return;
   await leaveRoomQuietly();
   enterHub();
+}
+
+// ---------------- PARTIDA (M3: estado compartilhado) ----------------
+function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// admin inicia a partida: monta o estado a partir das fichas e grava na sala
+async function startMatch(){
+  const players = MEMBERS.filter(m => (m.role!=='admin' || ROOM.admin_plays) && m.sheet);
+  if (!players.length){ toast('Ninguém tem personagem ainda.'); return; }
+  const characters = players.map(m => ({ ...m.sheet, owner: m.user_id, ownerName: m.display_name }));
+  const sc = CAMPAIGN.scenes['chegada'];
+  const state = {
+    characters, sceneId:'chegada', turnIndex:0, visited:[], revealed:[], combat:null,
+    history:[ { role:'scene', text:`⚔ ${sc.chapter} — ${sc.location} ⚔` }, { role:'dm', text: sc.readAloud } ],
+    version:1, started_at: new Date().toISOString()
+  };
+  $('#startBtn').disabled = true;
+  const { error } = await supa.from('rooms')
+    .update({ status:'playing', scene_id:'chegada', state, turn_owner: players[0].user_id }).eq('id', ROOM.id);
+  if (error){ toast('Erro ao iniciar: '+error.message); $('#startBtn').disabled=false; return; }
+  // o Realtime leva todos para a tela de jogo
+}
+
+function enterGame(){ show('screen-game'); renderGame(); }
+
+function renderGame(){
+  const st = ROOM.state || {};
+  const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || null;
+  $('#gScene').textContent = sc ? sc.chapter : '';
+  $('#gLocation').textContent = sc ? sc.location : '—';
+  $('#gNarrative').innerHTML = (st.history||[]).map(m=>{
+    if (m.role==='scene') return `<div class="gmsg scene">${escapeHtml(m.text)}</div>`;
+    if (m.role==='player') return `<div class="gmsg player"><div class="who">${escapeHtml(m.who||'')}</div>${escapeHtml(m.text)}</div>`;
+    return `<div class="gmsg dm">${fmtNarr(escapeHtml(m.text))}</div>`;
+  }).join('') || '<div class="note">A aventura vai começar…</div>';
+  $('#gNarrative').scrollTop = $('#gNarrative').scrollHeight;
+  $('#gParty').innerHTML = (st.characters||[]).map(c=>{
+    const pct = Math.max(0, Math.round((c.hp/c.maxHp)*100));
+    return `<div class="gpc"><div class="pcn">${escapeHtml(c.name)}</div>
+      <div class="pcs">${c.ownerName?`(${escapeHtml(c.ownerName)}) · `:''}${c.race} ${c.cls} Nv${c.level}</div>
+      <div class="pchp"><i style="width:${pct}%"></i><span>${c.hp}/${c.maxHp} HP</span></div>
+      <div class="pcrow"><span>CA ${c.ca}</span><span>Prof +${c.prof}</span></div></div>`;
+  }).join('');
+  const turnChar = (st.characters||[])[st.turnIndex||0];
+  $('#gTurn').innerHTML = turnChar ? `Vez de <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>` : '';
+  $('#gFoot').textContent = 'As ações dos jogadores e a narração da IA entram na próxima fase (M4).';
+  $('#gLeave').onclick = leaveRoom;
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });

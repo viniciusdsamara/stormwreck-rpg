@@ -112,6 +112,20 @@
   .cc-msg.player{ background:rgba(232,132,60,0.12); border:1px solid var(--ember); align-self:flex-end; }
   .cc-input-row{ display:flex; gap:8px; }
   .cc-input-row textarea{ flex:1; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch); border-radius:9px; padding:9px 11px; font-family:inherit; font-size:0.9rem; resize:vertical; }
+  /* ---- partida ---- */
+  .game-grid{ display:grid; grid-template-columns:1fr 260px; gap:16px; align-items:start; }
+  @media(max-width:680px){ .game-grid{ grid-template-columns:1fr; } }
+  .gnarr{ min-height:300px; max-height:62vh; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+  .gmsg{ font-size:0.92rem; line-height:1.55; }
+  .gmsg.dm{ color:var(--parch); } .gmsg.dm em{ color:var(--gold); font-style:italic; }
+  .gmsg.player{ color:var(--azure); } .gmsg .who{ font-family:ui-monospace,monospace; font-size:0.62rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--stone-400); margin-bottom:2px; }
+  .gmsg.scene{ text-align:center; color:var(--ember); font-family:ui-monospace,monospace; font-size:0.74rem; letter-spacing:0.1em; }
+  .gpc{ background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .gpc .pcn{ font-weight:600; font-size:0.92rem; } .gpc .pcs{ font-size:0.72rem; color:var(--stone-400); margin:2px 0 6px; }
+  .gpc .pchp{ height:14px; background:var(--basalt-700); border-radius:5px; overflow:hidden; position:relative; }
+  .gpc .pchp i{ display:block; height:100%; background:linear-gradient(90deg,var(--blood),#e06b7a); }
+  .gpc .pchp span{ position:absolute; inset:0; text-align:center; font-size:0.64rem; line-height:14px; color:var(--parch); text-shadow:0 1px 1px #000; }
+  .gpc .pcrow{ display:flex; justify-content:space-between; font-size:0.72rem; color:var(--stone-300); margin-top:5px; }
 </style>
 </head>
 <body>
@@ -361,10 +375,28 @@
     </div>
   </section>
 
+  <!-- PARTIDA EM ANDAMENTO -->
+  <section id="screen-game" class="screen">
+    <div class="topline">
+      <div><div class="eyebrow" id="gScene">Capítulo 1</div><h1 id="gLocation">—</h1></div>
+      <button class="btn ghost" id="gLeave" style="padding:7px 14px;font-size:0.8rem">Sair</button>
+    </div>
+    <div class="game-grid">
+      <div class="panel gnarr" id="gNarrative"></div>
+      <aside class="panel gparty">
+        <h4 style="margin-top:0">Grupo</h4>
+        <div id="gParty"></div>
+        <p class="note" id="gTurn" style="margin-top:12px"></p>
+      </aside>
+    </div>
+    <p class="note" id="gFoot"></p>
+  </section>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="rules.js"></script>
+<script src="campaign.js"></script>
 <script src="creation-mp.js"></script>
 <script src="mp.js"></script>
 </body>
