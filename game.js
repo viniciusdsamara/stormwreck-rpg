@@ -204,7 +204,7 @@ function startCreation() {
 function renderCreation() {
   DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
-            fightingStyle:null, archetype:null,
+            fightingStyle:null, archetype:null, cantrips:[], spells:[], expertise:[],
             profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
@@ -231,7 +231,7 @@ function renderCreation() {
   }).join('');
 
   // seções dependentes começam ocultas
-  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection','#classOptionsSection'].forEach(s=>$(s).classList.add('hide'));
+  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection','#classOptionsSection','#spellSection','#expertiseSection'].forEach(s=>$(s).classList.add('hide'));
 
   // atributos (point-buy)
   renderAbilityGrid();
@@ -251,7 +251,8 @@ function renderCreation() {
     DRAFT.cls = el.dataset.class; DRAFT.skills = [];
     DRAFT.armor = null; DRAFT.weapon = null;   // recalcula equipamento padrão p/ a nova classe
     DRAFT.fightingStyle = null; DRAFT.archetype = null;
-    renderSkills(); renderEquipment(); renderClassOptions(); checkCreationReady();
+    DRAFT.cantrips = []; DRAFT.spells = []; DRAFT.expertise = [];
+    renderSkills(); renderEquipment(); renderClassOptions(); renderSpells(); renderExpertise(); checkCreationReady();
   });
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
@@ -306,7 +307,7 @@ function renderSubraces() {
     $$('#subraceGrid .choice').forEach(c=>c.classList.remove('selected'));
     el.classList.add('selected');
     DRAFT.subrace = el.dataset.subrace;
-    renderSkills(); renderEquipment(); renderAbilityGrid(); checkCreationReady();
+    renderSkills(); renderEquipment(); renderAbilityGrid(); renderSpells(); renderExpertise(); checkCreationReady();
   });
 }
 
@@ -358,7 +359,7 @@ function renderSkills() {
     const s = el.dataset.skill; const i = DRAFT.skills.indexOf(s);
     if (i>=0) DRAFT.skills.splice(i,1);
     else if (DRAFT.skills.length < need) DRAFT.skills.push(s);
-    renderSkills(); checkCreationReady();
+    renderSkills(); renderExpertise(); checkCreationReady();
   });
 
   // extra racial (Meio-Elfo: 2 quaisquer)
@@ -381,7 +382,7 @@ function renderSkills() {
     const s = el.dataset.xskill; const i = DRAFT.skillsExtra.indexOf(s);
     if (i>=0) DRAFT.skillsExtra.splice(i,1);
     else if (DRAFT.skillsExtra.length < extraN) DRAFT.skillsExtra.push(s);
-    renderSkills(); checkCreationReady();
+    renderSkills(); renderExpertise(); checkCreationReady();
   });
 }
 
@@ -453,6 +454,74 @@ function renderClassOptions() {
   } else { aw.classList.add('hide'); DRAFT.archetype=null; }
 }
 
+// ---- Seleção de truques e magias iniciais ----
+function renderSpells() {
+  const sec = $('#spellSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  const picks = spellPicks(DRAFT.cls, draftAbilities(), 1);
+  if (!picks) { sec.classList.add('hide'); DRAFT.cantrips=[]; DRAFT.spells=[]; return; }
+  sec.classList.remove('hide');
+
+  const cw = $('#cantripWrap');
+  if (picks.cantrips > 0) {
+    cw.classList.remove('hide');
+    DRAFT.cantrips = DRAFT.cantrips.filter(s => picks.cantripList.includes(s)).slice(0, picks.cantrips);
+    $('#cantripNote').textContent = `Escolha ${picks.cantrips} truque(s): ${DRAFT.cantrips.length}/${picks.cantrips}`;
+    $('#cantripNote').classList.toggle('done', DRAFT.cantrips.length===picks.cantrips);
+    const atMax = DRAFT.cantrips.length >= picks.cantrips;
+    $('#cantripGrid').innerHTML = picks.cantripList.map(s => {
+      const sel = DRAFT.cantrips.includes(s), dis = !sel && atMax;
+      return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-cantrip="${s}" title="${RULES.spells[s].desc}">${s}</div>`;
+    }).join('');
+    $$('#cantripGrid .skill-chip[data-cantrip]').forEach(el => el.onclick = () => {
+      const s=el.dataset.cantrip, i=DRAFT.cantrips.indexOf(s);
+      if (i>=0) DRAFT.cantrips.splice(i,1); else if (DRAFT.cantrips.length<picks.cantrips) DRAFT.cantrips.push(s);
+      renderSpells(); checkCreationReady();
+    });
+  } else { cw.classList.add('hide'); DRAFT.cantrips=[]; }
+
+  const sw = $('#spellWrap');
+  if (picks.spells > 0 && picks.spellList.length) {
+    sw.classList.remove('hide');
+    $('#spellWrapTitle').textContent = (picks.prepared ? 'Magias preparadas' : 'Magias conhecidas') + ' (nível 1)';
+    DRAFT.spells = DRAFT.spells.filter(s => picks.spellList.includes(s)).slice(0, picks.spells);
+    $('#spellNote').textContent = `Escolha ${picks.spells}: ${DRAFT.spells.length}/${picks.spells}`;
+    $('#spellNote').classList.toggle('done', DRAFT.spells.length===picks.spells);
+    const atMax = DRAFT.spells.length >= picks.spells;
+    $('#spellGrid').innerHTML = picks.spellList.map(s => {
+      const sel = DRAFT.spells.includes(s), dis = !sel && atMax;
+      return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-spell="${s}" title="${RULES.spells[s].desc}">${s}</div>`;
+    }).join('');
+    $$('#spellGrid .skill-chip[data-spell]').forEach(el => el.onclick = () => {
+      const s=el.dataset.spell, i=DRAFT.spells.indexOf(s);
+      if (i>=0) DRAFT.spells.splice(i,1); else if (DRAFT.spells.length<picks.spells) DRAFT.spells.push(s);
+      renderSpells(); checkCreationReady();
+    });
+  } else { sw.classList.add('hide'); DRAFT.spells=[]; }
+}
+
+// ---- Especialização do Ladino (2 perícias com proficiência dobrada) ----
+function renderExpertise() {
+  const sec = $('#expertiseSection');
+  if (DRAFT.cls !== 'Ladino') { sec.classList.add('hide'); DRAFT.expertise=[]; return; }
+  sec.classList.remove('hide');
+  const fixed = DRAFT.race ? fixedRacialSkills(DRAFT.race, DRAFT.subrace) : [];
+  const pool = Array.from(new Set([...DRAFT.skills, ...DRAFT.skillsExtra, ...fixed]));
+  DRAFT.expertise = DRAFT.expertise.filter(s => pool.includes(s)).slice(0, 2);
+  $('#expertiseNote').textContent = pool.length ? `Escolha 2 perícias proficientes: ${DRAFT.expertise.length}/2` : 'Escolha as perícias primeiro.';
+  $('#expertiseNote').classList.toggle('done', DRAFT.expertise.length===2);
+  const atMax = DRAFT.expertise.length >= 2;
+  $('#expertiseGrid').innerHTML = pool.map(s => {
+    const sel = DRAFT.expertise.includes(s), dis = !sel && atMax;
+    return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-exp="${s}">${s}</div>`;
+  }).join('');
+  $$('#expertiseGrid .skill-chip[data-exp]').forEach(el => el.onclick = () => {
+    const s=el.dataset.exp, i=DRAFT.expertise.indexOf(s);
+    if (i>=0) DRAFT.expertise.splice(i,1); else if (DRAFT.expertise.length<2) DRAFT.expertise.push(s);
+    renderExpertise(); checkCreationReady();
+  });
+}
+
 function doRollScores() {
   DRAFT.scores = Array.from({length:6}, () => rollAbility());
   DRAFT.assigned = {};
@@ -510,7 +579,7 @@ function renderAbilityGrid() {
     const ab = b.dataset.ab;
     if (b.dataset.pb === '+') DRAFT.base[ab] = Math.min(15, DRAFT.base[ab] + 1);
     else DRAFT.base[ab] = Math.max(8, DRAFT.base[ab] - 1);
-    renderAbilityGrid(); updateAC(); checkCreationReady();
+    renderAbilityGrid(); updateAC(); renderSpells(); checkCreationReady();
   });
 }
 
@@ -523,7 +592,10 @@ function checkCreationReady() {
   const extraOk = DRAFT.skillsExtra.length === extraN;
   const styleOk = !DRAFT.cls || fightingStyleLevel(DRAFT.cls) !== 1 || DRAFT.fightingStyle;
   const archOk  = !DRAFT.cls || RULES.classes[DRAFT.cls].subclassLevel !== 1 || DRAFT.archetype;
-  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && skillsOk && extraOk && styleOk && archOk
+  const picks = DRAFT.cls ? spellPicks(DRAFT.cls, draftAbilities(), 1) : null;
+  const spellsOk = !picks || (DRAFT.cantrips.length === picks.cantrips && DRAFT.spells.length === Math.min(picks.spells, picks.spellList.length));
+  const expertiseOk = DRAFT.cls !== 'Ladino' || DRAFT.expertise.length === 2;
+  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && skillsOk && extraOk && styleOk && archOk && spellsOk && expertiseOk
     && $('#charName').value.trim() && $('#playerName').value.trim();
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
@@ -541,6 +613,7 @@ function commitCharacter() {
     armor: DRAFT.armor, shield: DRAFT.shield,
     weapons: DRAFT.weapon ? [DRAFT.weapon] : [],
     fightingStyle: DRAFT.fightingStyle, archetype: DRAFT.archetype,
+    cantrips: [...DRAFT.cantrips], spells: [...DRAFT.spells], expertise: [...DRAFT.expertise],
     profile: { ...DRAFT.profile }
   });
   STATE.characters.push(char);
@@ -707,6 +780,9 @@ function sheetHtml(c, i) {
   const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${t}</span>`).join('') || '—';
   const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag">${t}</span>`).join('')}</div>` : '';
   const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv${c.spellSlots.level||1} ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.spellSlots2&&c.spellSlots2.max?`, nv2 ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}`:''}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
+  const known  = ((c.cantripsChosen&&c.cantripsChosen.length)||(c.spellsChosen&&c.spellsChosen.length))
+    ? `<h4>Magias conhecidas</h4><div class="sh-tags">${(c.cantripsChosen||[]).map(s=>`<span class="sh-tag" title="${(RULES.spells[s]||{}).desc||''}">${s} <small>(truque)</small></span>`).join('')}${(c.spellsChosen||[]).map(s=>`<span class="sh-tag" title="${(RULES.spells[s]||{}).desc||''}">${s}</span>`).join('')}</div>` : '';
+  const exp    = (c.expertise&&c.expertise.length) ? `<div class="sh-line" style="color:var(--myco)">Especialização (proficiência dobrada): ${c.expertise.join(', ')}</div>` : '';
   const inv    = (c.inventory||[]).map(it=>`<li>${it}</li>`).join('') || '<li>—</li>';
   const p = c.profile || {};
   const pf = (k,label) => `<label class="sh-pf"><span>${label}</span><textarea data-prof="${k}" data-ci="${i}" rows="2">${p[k]||''}</textarea></label>`;
@@ -731,7 +807,7 @@ function sheetHtml(c, i) {
     <div class="sh-col">
       <h4>Traços raciais</h4><div class="sh-tags">${traits}</div>
       <h4>Características de classe</h4><div class="sh-tags">${feats}</div>
-      ${spell}${conds}
+      ${spell}${exp}${conds}${known}
       <h4>Idiomas</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
       <h4>Bolsa <span class="sh-gold">${c.gold} <button class="res-mini" data-gold="-" data-ci="${i}">−</button> <button class="res-mini" data-gold="+" data-ci="${i}">+</button> po</span></h4>
       <ul class="sh-inv">${inv}</ul>
@@ -1018,6 +1094,9 @@ function buildSystemPrompt() {
     (c.fightingStyle?` Estilo de Luta: ${c.fightingStyle}.`:'') +
     (c.features&&c.features.length?` Características: ${c.features.join(', ')}.`:'') +
     (c.spellSlots?` Spell slots nv${c.spellSlots.level||1}: ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max} (CD ${c.spellDC}).${c.spellSlots2&&c.spellSlots2.max?` Nv2: ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}.`:''}`:'') +
+    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
+    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'') +
+    ((c.expertise&&c.expertise.length)?` Especialização: ${c.expertise.join(', ')}.`:'') +
     (c.conditions&&c.conditions.length?` Condições ativas: ${c.conditions.join(', ')}.`:'') +
     ((c.profile&&(c.profile.appearance||c.profile.context||c.profile.motivation||c.profile.flaw||c.profile.quality))
       ? ` Perfil — aparência: ${c.profile.appearance||'—'}; por que está aqui: ${c.profile.context||'—'}; motivações: ${c.profile.motivation||'—'}; defeitos: ${c.profile.flaw||'—'}; qualidades: ${c.profile.quality||'—'}.`

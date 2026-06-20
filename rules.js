@@ -455,6 +455,46 @@ const RULES = {
     'Surdo':        { desc:'Falha em testes que exigem audição.', ef:{} }
   },
 
+  // Magias (truques lvl 0 e magias de nível 1). Descrições mecânicas próprias,
+  // não o texto do livro. classes = quem pode aprender.
+  spells: {
+    // ---- Truques (nível 0) ----
+    'Rajada de Fogo':   { lvl:0, desc:'Ataque à distância de magia; 1d10 de fogo.', classes:['Mago','Feiticeiro'] },
+    'Raio de Gelo':     { lvl:0, desc:'Ataque à distância; 1d8 de frio e reduz o deslocamento do alvo.', classes:['Mago','Feiticeiro'] },
+    'Toque Gélido':     { lvl:0, desc:'Mão espectral; ataque, 1d8 necrótico e o alvo não pode se curar até seu próximo turno.', classes:['Mago','Feiticeiro','Bruxo'] },
+    'Mãos Mágicas':     { lvl:0, desc:'Mão espectral que manipula objetos leves a distância.', classes:['Mago','Feiticeiro','Bruxo','Bardo'] },
+    'Ilusão Menor':     { lvl:0, desc:'Cria um som OU uma imagem ilusória pequena.', classes:['Mago','Feiticeiro','Bruxo','Bardo'] },
+    'Truque':           { lvl:0, desc:'Pequenos efeitos sensoriais mágicos.', classes:['Mago','Feiticeiro','Bruxo','Bardo'] },
+    'Luz':              { lvl:0, desc:'Faz um objeto brilhar como tocha (save DES p/ alvo relutante).', classes:['Mago','Feiticeiro','Bardo','Clérigo'] },
+    'Estalo Sobrenatural': { lvl:0, desc:'Ataque à distância de magia; 1d10 de força (sobe com o nível).', classes:['Bruxo'] },
+    'Chama Sagrada':    { lvl:0, desc:'1d8 radiante num alvo visível; save de DES nega.', classes:['Clérigo'] },
+    'Orientação':       { lvl:0, desc:'+1d4 em um teste de habilidade (toque, concentração).', classes:['Clérigo','Druida'] },
+    'Resistência':      { lvl:0, desc:'+1d4 em um teste de resistência (toque, concentração).', classes:['Clérigo','Druida'] },
+    'Estabilizar':      { lvl:0, desc:'Estabiliza uma criatura caída a 0 HP (toque).', classes:['Clérigo'] },
+    'Produzir Chama':   { lvl:0, desc:'Chama na mão: ilumina ou arremessa (ataque) por 1d8 de fogo.', classes:['Druida'] },
+    'Shillelagh':       { lvl:0, desc:'Bordão/clava passa a usar SAB e causa 1d8.', classes:['Druida'] },
+    'Zombaria Cruel':   { lvl:0, desc:'Insulto mágico: 1d4 psíquico e desvantagem no próximo ataque do alvo (save SAB).', classes:['Bardo'] },
+    // ---- Magias de nível 1 ----
+    'Mísseis Mágicos':  { lvl:1, desc:'3 dardos de força, 1d4+1 cada, acerto automático.', classes:['Mago','Feiticeiro'] },
+    'Escudo Arcano':    { lvl:1, desc:'Reação: +5 de CA até o início do seu próximo turno.', classes:['Mago','Feiticeiro'] },
+    'Mãos Flamejantes': { lvl:1, desc:'Cone de 4,5m; 3d6 de fogo, save de DES pela metade.', classes:['Mago','Feiticeiro'] },
+    'Sono':             { lvl:1, desc:'Faz dormir criaturas somando 5d8 de HP, do menor HP ao maior.', classes:['Mago','Feiticeiro','Bardo'] },
+    'Enfeitiçar Pessoa':{ lvl:1, desc:'Enfeitiça um humanoide visível (save SAB nega).', classes:['Mago','Feiticeiro','Bruxo','Bardo','Druida'] },
+    'Detectar Magia':   { lvl:1, desc:'Sente a presença de magia a 9m (concentração).', classes:['Mago','Feiticeiro','Bruxo','Bardo','Clérigo','Druida','Paladino','Patrulheiro'] },
+    'Disfarçar-se':     { lvl:1, desc:'Muda sua aparência (ilusão) por 1h.', classes:['Mago','Feiticeiro','Bruxo','Bardo'] },
+    'Curar Ferimentos': { lvl:1, desc:'Toque: cura 1d8 + mod de conjuração.', classes:['Clérigo','Druida','Bardo','Paladino','Patrulheiro'] },
+    'Palavra Curativa': { lvl:1, desc:'Ação bônus à distância: cura 1d4 + mod.', classes:['Clérigo','Druida','Bardo'] },
+    'Bênção':           { lvl:1, desc:'Até 3 aliados somam 1d4 em ataques e saves (concentração).', classes:['Clérigo','Paladino'] },
+    'Perdição':         { lvl:1, desc:'Até 3 inimigos subtraem 1d4 de ataques e saves (save CAR).', classes:['Clérigo','Bardo'] },
+    'Escudo da Fé':     { lvl:1, desc:'+2 de CA num alvo (concentração).', classes:['Clérigo','Paladino'] },
+    'Santuário':        { lvl:1, desc:'Protege um alvo: atacantes fazem save SAB ou desistem.', classes:['Clérigo'] },
+    'Fada de Fogo':     { lvl:1, desc:'Ilumina os alvos numa área; ataques contra eles têm vantagem (save DES).', classes:['Bardo','Druida'] },
+    'Enredar':          { lvl:1, desc:'Plantas prendem criaturas numa área (save FOR).', classes:['Druida','Patrulheiro'] },
+    'Marca do Caçador': { lvl:1, desc:'+1d6 de dano nos seus ataques contra um alvo marcado.', classes:['Patrulheiro','Bruxo'] },
+    'Heroísmo':         { lvl:1, desc:'Imune a medo e ganha HP temporário a cada turno (concentração).', classes:['Bardo','Paladino'] },
+    'Repreensão Infernal': { lvl:1, desc:'Reação ao sofrer dano: 2d10 de fogo no agressor (save DES).', classes:['Bruxo','Feiticeiro'] }
+  },
+
   // Estilos de Luta (Guerreiro nv1; Paladino/Patrulheiro nv2)
   fightingStyles: {
     'Arquearia':     '+2 nas jogadas de ataque com armas à distância.',
@@ -641,7 +681,11 @@ function rollModifiers(c, tipo, abr, tag) {
     if (c.fightingStyle === 'Arquearia' && w0 && !w0.melee) mod += 2;
   } else {
     // teste de perícia: proficiência só se o personagem realmente a tem
-    if (skillProficient(c, tipo)) { mod += c.prof; prof = true; }
+    if (skillProficient(c, tipo)) {
+      mod += c.prof; prof = true;
+      const key = Object.keys(RULES.skills).find(s => s.toLowerCase() === String(tipo).toLowerCase());
+      if (key && (c.expertise || []).includes(key)) mod += c.prof;   // Especialização: proficiência dobrada
+    }
     // Fúria: vantagem em testes de Força (ex.: Atletismo)
     if (c.raging && abr === 'FOR') adv = true;
   }
@@ -725,6 +769,28 @@ function classResources(c) {
     case 'Mago':       out.push({ key:'arcrec', label:'Recuperação Arcana', kind:'counter', max:1, recharge:'long' }); break;
   }
   return out;
+}
+
+// ----- SELEÇÃO DE MAGIAS -----
+function cantripsFor(cls) { return Object.keys(RULES.spells).filter(n => RULES.spells[n].lvl === 0 && RULES.spells[n].classes.includes(cls)); }
+function spellsL1For(cls) { return Object.keys(RULES.spells).filter(n => RULES.spells[n].lvl === 1 && RULES.spells[n].classes.includes(cls)); }
+
+// Quantos truques e magias o personagem escolhe no nível dado (null = não conjura).
+function spellPicks(cls, abilities, level) {
+  const sp = RULES.classes[cls].spell;
+  if (!sp) {                                            // meio-conjuradores começam no nível 2
+    if ((cls === 'Paladino' || cls === 'Patrulheiro') && level >= 2) {
+      if (cls === 'Patrulheiro') return { cantrips:0, spells:2, prepared:false, cantripList:[], spellList: spellsL1For(cls) };
+      const spells = Math.max(1, abilityMod(abilities.CAR) + Math.floor(level/2));   // Paladino prepara
+      return { cantrips:0, spells, prepared:true, cantripList:[], spellList: spellsL1For(cls) };
+    }
+    return null;
+  }
+  let spells, prepared = false;
+  if (sp.spellbook) spells = sp.spellbook;              // Mago: grimório (6 no nv1)
+  else if (sp.spellsKnown) spells = sp.spellsKnown;     // Bardo/Feiticeiro/Bruxo: conhecidas
+  else { prepared = true; spells = Math.max(1, abilityMod(abilities[sp.ability]) + level); } // Clérigo/Druida: prepara
+  return { cantrips: sp.cantrips || 0, spells, prepared, cantripList: cantripsFor(cls), spellList: spellsL1For(cls) };
 }
 
 // ----- LEVEL-UP (nível 2-3) -----
@@ -870,6 +936,9 @@ function buildCharacter(opts) {
     raging: false,
     resUsed: {},                       // contagem de usos por recurso (Fase 4)
     conditions: [],
+    cantripsChosen: opts.cantrips || [],
+    spellsChosen: opts.spells || [],
+    expertise: opts.expertise || [],   // Ladino: perícias com proficiência dobrada
     gold: opts.gold != null ? opts.gold : 15,
     inventory,
     profile: opts.profile || { appearance:'', context:'', motivation:'', flaw:'', quality:'' }
