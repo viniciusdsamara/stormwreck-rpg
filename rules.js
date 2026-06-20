@@ -790,6 +790,17 @@ function buildCharacter(opts) {
     .concat(subrace && r.subraces[subrace] ? (r.subraces[subrace].traits || []).map(t => t.name) : []);
   const features = (c.features && c.features[1]) ? c.features[1].slice() : [];
 
+  // inventário inicial montado a partir do equipamento escolhido
+  const inventory = [];
+  if (armorName !== 'Nenhuma') inventory.push(armorName);
+  if (hasShield) inventory.push('Escudo');
+  weapons.forEach(w => inventory.push(w));
+  inventory.push('Pacote de Aventureiro');
+  if (c.spell) inventory.push(c.spell.ability === 'INT' ? 'Foco arcano' : 'Foco de conjuração');
+  if (cls === 'Mago') inventory.push('Grimório');
+  if (cls === 'Ladino') inventory.push('Ferramentas de Ladrão');
+  if (cls === 'Clérigo' || cls === 'Paladino') inventory.push('Símbolo Sagrado');
+
   return {
     name, player, slot, race, subrace, cls,
     level, xp: 0, prof,
@@ -819,6 +830,8 @@ function buildCharacter(opts) {
     raging: false,
     resUsed: {},                       // contagem de usos por recurso (Fase 4)
     conditions: [],
-    inventory: ['Equipamento inicial de ' + cls]
+    gold: opts.gold != null ? opts.gold : 15,
+    inventory,
+    profile: opts.profile || { appearance:'', context:'', motivation:'', flaw:'', quality:'' }
   };
 }

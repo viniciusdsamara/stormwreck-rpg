@@ -541,6 +541,8 @@ function startGame() {
   $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
+  $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
@@ -740,13 +742,14 @@ function showRollCard(label, result, dc) {
     <div class="rbreak">d20 [${diceStr}] ${result.mod>=0?'+':''}${result.mod}${result.crit?' · CRÍTICO!':''}${result.fumble?' · FALHA CRÍTICA':''}</div>
     ${outcome}`;
   n.appendChild(div); n.scrollTop = n.scrollHeight;
-  logRoll(label, result, dc);   // registra no painel lateral persistente
 }
 
-// Acrescenta a rolagem ao painel lateral (mais recente no topo).
-function logRoll(label, result, dc) {
+// Acrescenta a rolagem ao painel direito (mais recente no topo), com a quebra
+// dos dados e o dano. dmg = { total, detail, type } (opcional).
+function logRoll(label, result, dc, dmg) {
   const list = $('#rollLogList'); if (!list) return;
   const empty = list.querySelector('.rolllog-empty'); if (empty) empty.remove();
+  const auto = (!result.dice || !result.dice.length);   // falha automática por condição
   let cls = result.crit ? 'crit' : result.fumble ? 'fumble' : '';
   let out = '';
   if (dc != null) {
@@ -755,11 +758,13 @@ function logRoll(label, result, dc) {
     out = `${ok ? '✓' : '✗'} CD ${dc}`;
   }
   if (result.crit) out = 'CRÍTICO! ' + out;
-  if (result.fumble) out = 'FALHA CRÍTICA ' + out;
+  const breakLine = auto ? 'falha automática (condição)' : `d20 [${result.dice.join(', ')}] ${fmtMod(result.mod)} = ${result.total}`;
+  const dmgLine = dmg ? `<div class="rl-dmg">⚔ Dano <b>${dmg.total}</b> <span class="rl-sub">${dmg.detail} [${dmg.type}]</span></div>` : '';
   const e = document.createElement('div');
   e.className = 'rl-entry ' + cls;
   e.innerHTML = `<div class="rl-head">${label}</div>
-    <div class="rl-line"><span class="rl-num">${result.total}</span><span class="rl-out">${out.trim()}</span></div>`;
+    <div class="rl-line"><span class="rl-num">${auto?'✗':result.total}</span><span class="rl-out">${out.trim()}</span></div>
+    <div class="rl-break">${breakLine}</div>${dmgLine}`;
   list.insertBefore(e, list.firstChild);
 }
 
@@ -971,15 +976,18 @@ async function processDMReply(reply) {
 
     const advNote = adv && !dis ? ' · vantagem' : dis && !adv ? ' · desvantagem' : '';
     const condNote = rm.autoFail ? ' · falha automática' : '';
-    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}${condNote}`, result, cdNum);
+    const label = `${c.name} · ${tipo} (${abr})${advNote}${condNote}`;
+    showRollCard(label, result, cdNum);
 
     // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
-    let dmgNote = '';
+    let dmgNote = '', dmgInfo = null;
     if (tipo.toLowerCase() === 'ataque' && !rm.autoFail) {
       const ap = attackProfile(c, abr, adv && !dis);
       const dmg = rollAttackDamage(ap, result.crit);
+      dmgInfo = { total: dmg.total, detail: dmg.detail, type: ap.type };
       dmgNote = ` Dano se acertar: ${dmg.total} [${ap.type}] (${ap.name}: ${dmg.detail}${result.crit?' — CRÍTICO':''}${ap.sneak?' · Ataque Furtivo!':''}${c.raging?' · Fúria':''}).`;
     }
+    logRoll(label, result, cdNum, dmgInfo);   // registra no painel direito
 
     const outcome = rm.autoFail ? 'FALHA AUTOMÁTICA (condição)' : (cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado');
     await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: ${rm.autoFail?'FALHA AUTOMÁTICA por condição':`d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}`}${result.crit?' (CRÍTICO!)':''}${result.fumble&&!rm.autoFail?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
@@ -1137,6 +1145,8 @@ async function loadGame() {
   updateTopbar(); updateQuickActions(); updateTurnIndicator();
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
+  $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
+  $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
   $('#sendBtn').onclick = submitAction;
   $('#actionInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAction(); }
