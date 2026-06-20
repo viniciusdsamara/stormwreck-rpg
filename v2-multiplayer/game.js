@@ -195,6 +195,7 @@ async function doLogout() {
 function enterApp(session) {
   STATE.user = session.user;
   if ($('#userEmail')) $('#userEmail').textContent = session.user.email;
+  if (window.MP) { MP.enterLobby(); return; }   // multiplayer: vai para o lobby
   initSetup();
 }
 
@@ -208,6 +209,19 @@ async function initSetup() {
   $('#toCreationBtn').onclick = () => { STATE.model = $('#modelChoice').value; startCreation(); };
   $('#loadSaveBtn').onclick = loadGame;
   $('#logoutBtn').onclick = doLogout;
+
+  // controle de acesso: a conta precisa estar autorizada para jogar
+  try {
+    const { data: allowed } = await supa.rpc('am_i_allowed');
+    const { data: isAdmin } = await supa.rpc('is_app_admin');
+    if (isAdmin && $('#adminLink')) $('#adminLink').style.display = 'block';
+    if (!allowed) {
+      $('#accessNote').innerHTML = `<div class="err" style="margin-top:14px;line-height:1.5">⏳ Sua conta ainda não foi autorizada pelo mestre. Avise o administrador e recarregue depois que ele liberar.</div>`;
+      $('#toCreationBtn').disabled = true;
+      $('#loadSaveBtn').style.display = 'none';
+      return;
+    }
+  } catch (e) {}
 
   // há jogo salvo no servidor?
   try {
@@ -320,8 +334,9 @@ async function ccSend() {
 function ccFinish() {
   if (!CC.spec) { $('#ccInput').value = 'Pode finalizar minha ficha agora?'; ccSend(); return; }
   const char = buildFromSpec(CC.spec);
-  STATE.characters.push(char);
   $('#creationChat').classList.add('hide');
+  if (window.MP) { MP.onCharacter(char); return; }   // multiplayer: salva na sala
+  STATE.characters.push(char);
   if (STATE.creationSlot === 0) { STATE.creationSlot = 1; showCreationModePick(); }
   else startGame();
 }
@@ -853,6 +868,7 @@ function commitCharacter() {
     cantrips: [...DRAFT.cantrips], spells: [...DRAFT.spells], expertise: [...DRAFT.expertise],
     profile: { ...DRAFT.profile }
   });
+  if (window.MP) { MP.onCharacter(char); return; }   // multiplayer: salva na sala
   STATE.characters.push(char);
 
   if (STATE.creationSlot === 0) {
