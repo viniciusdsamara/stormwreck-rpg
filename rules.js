@@ -471,13 +471,14 @@ function applyASI(scores, race, subraceName, asiChoices) {
 // Coleta os ganchos mecânicos ('ef') de todos os traços de raça + sub-raça
 function collectRacialEffects(race, subraceName) {
   const r = RULES.races[race];
-  const out = { darkvision: r.darkvision ? 18 : 0, speed: r.speed, resist:[], saveAdv:[], skillProf:[], cantrips:0, flags:{} };
+  const out = { darkvision: r.darkvision ? 18 : 0, speed: r.speed, resist:[], saveAdv:[], saveAdvVsMagic:[], skillProf:[], cantrips:0, flags:{} };
   const absorb = (traits=[]) => traits.forEach(t => {
     if (!t.ef) return;
     if (t.ef.darkvision) out.darkvision = Math.max(out.darkvision, t.ef.darkvision);
     if (t.ef.speed) out.speed = t.ef.speed;
     if (t.ef.resist) out.resist.push(...t.ef.resist);
     if (t.ef.saveAdv) out.saveAdv.push(...t.ef.saveAdv);
+    if (t.ef.saveAdvVsMagic) out.saveAdvVsMagic.push(...t.ef.saveAdvVsMagic);
     if (t.ef.skillProf) out.skillProf.push(...t.ef.skillProf);
     if (t.ef.cantrips) out.cantrips += t.ef.cantrips;
     ['rerollNat1','relentless','savageCrit','sunlightSensitivity','hpPerLevel'].forEach(f => {
@@ -575,6 +576,57 @@ function fixedRacialSkills(race, subrace) {
   if (r.skillProf) out.push(...r.skillProf);
   (r.traits || []).forEach(t => { if (t.ef && t.ef.skillProf) out.push(...t.ef.skillProf); });
   return Array.from(new Set(out));
+}
+
+// ============================================================
+//  RESOLUÇÃO DE ROLAGENS (lógica pura, testável) — Fase 3
+//  A RNG (d20, dados de dano) fica no motor (game.js); aqui só a decisão.
+// ============================================================
+
+// O personagem é proficiente nesta perícia? (compara sem diferenciar caixa)
+function skillProficient(c, skillName) {
+  if (!skillName || !c.skills) return false;
+  const key = Object.keys(RULES.skills).find(s => s.toLowerCase() === String(skillName).toLowerCase());
+  return !!key && c.skills.includes(key);
+}
+
+// Decide modificador, proficiência e vantagem/desvantagem de uma rolagem.
+// tipo: 'save' | 'ataque' | <nome de perícia> | <atributo livre>
+// abr: 'FOR'..'CAR'.  tag: ameaça/situação opcional (veneno, enfeitiçar, magia, sol...).
+function rollModifiers(c, tipo, abr, tag) {
+  const t = String(tipo || '').toLowerCase();
+  const tg = String(tag || '').toLowerCase();
+  const fx = c.racialEffects || {};
+  let mod = abilityMod(c.abilities[abr] || 10);
+  let prof = false, adv = false, dis = false;
+
+  if (t === 'save') {
+    if (c.saves.includes(abr)) { mod += c.prof; prof = true; }
+    // vantagem por traço racial: a ameaça casa com saveAdv (veneno, enfeitiçar, amedrontar...)
+    if (tg && (fx.saveAdv || []).some(s => tg.includes(s.toLowerCase()) || s.toLowerCase().includes(tg))) adv = true;
+    // Astúcia Gnômica: vantagem em saves de INT/SAB/CAR contra magia
+    if ((fx.saveAdvVsMagic || []).includes(abr) && (tg.includes('magia') || tg.includes('magic'))) adv = true;
+  } else if (t === 'ataque' || t === 'attack') {
+    mod += c.prof; prof = true;
+  } else {
+    // teste de perícia: proficiência só se o personagem realmente a tem
+    if (skillProficient(c, tipo)) { mod += c.prof; prof = true; }
+  }
+
+  // Sensibilidade à Luz Solar (Drow): desvantagem em ataques e Percepção sob sol direto
+  if (fx.flags && fx.flags.sunlightSensitivity && (tg.includes('sol') || tg.includes('luz solar'))) {
+    if (t === 'ataque' || t.includes('percep')) dis = true;
+  }
+  return { mod, prof, adv, dis };
+}
+
+// Especificação do dano da arma equipada (sem rolar). 'savage' = Ataques Selvagens (Meio-Orc).
+function weaponDamageSpec(c, abr) {
+  const wname = (c.weapons && c.weapons[0]) || null;
+  const w = wname && RULES.weapons[wname];
+  const savage = !!(c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.savageCrit);
+  if (!w) return { name: 'desarmado', dmg: null, flat: 1, bonus: 0, type: 'concussão', savage };
+  return { name: wname, dmg: w.dmg, bonus: abilityMod(c.abilities[abr] || 10), type: w.type, savage };
 }
 
 // ============================================================

@@ -64,6 +64,29 @@ function rollExpr(expr) {
   return { total, rolls, bonus: bonus?+bonus:0 };
 }
 
+// d20 com o traço Sortudo do Halfling: re-rola um 1 natural uma vez.
+function d20ForChar(c, mod=0, opts={}) {
+  const r = d20(mod, opts);
+  const lucky = c && c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.rerollNat1;
+  if (lucky && r.nat === 1) { const r2 = d20(mod, {}); r2.lucky = true; return r2; }
+  return r;
+}
+
+// rola o dano de uma arma; dobra os DADOS no crítico; Ataques Selvagens soma 1 dado no crit.
+function rollDamage(spec, crit) {
+  if (!spec.dmg) {
+    const total = (spec.flat || 1) + (spec.bonus || 0);
+    return { total, detail: `${spec.flat||1}${spec.bonus?fmtMod(spec.bonus):''}` };
+  }
+  const m = spec.dmg.match(/(\d+)d(\d+)/);
+  let nDice = +m[1]; const sides = +m[2];
+  if (crit) nDice *= 2;
+  if (crit && spec.savage) nDice += 1;   // Ataques Selvagens: 1 dado extra da arma
+  const rolls = rollDiceArr(nDice, sides);
+  const total = rolls.reduce((a,b)=>a+b,0) + (spec.bonus || 0);
+  return { total, detail: `${nDice}d${sides}${spec.bonus?fmtMod(spec.bonus):''} (${rolls.join(',')})` };
+}
+
 // =====================================================
 //  TELA 1 — SETUP
 // =====================================================
@@ -641,7 +664,7 @@ ${CAMPAIGN.premise}
 ${CAMPAIGN.dmRules.map(r=>'- '+r).join('\n')}
 
 ## MARCADORES DE SISTEMA (use quando aplicável, em linha própria)
-- Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12] ou [ROLL:save:DES:14] ou [ROLL:ataque:DES:0]. Depois do marcador, PARE e espere o resultado.
+- Para pedir uma rolagem: [ROLL:tipo:ATRIBUTO:CD] — ex: [ROLL:Atletismo:FOR:12], [ROLL:save:DES:14], [ROLL:ataque:DES:0]. Em saves, acrescente a AMEAÇA como 5º campo para ativar vantagens de traço (veneno, enfeitiçar, amedrontar, magia, sol): ex. [ROLL:save:CON:12:veneno], [ROLL:save:SAB:13:amedrontar], [ROLL:save:INT:14:magia]. O sistema aplica proficiência, vantagem/desvantagem e o dano da arma automaticamente — você só narra. Depois do marcador, PARE e espere o resultado.
 - Para iniciar combate: [COMBAT_START:${sc.combat||'id'}]
 - Quando a cena termina: [SCENE_COMPLETE]
 
@@ -685,7 +708,7 @@ async function askDM(userMsg, isSceneKickoff) {
 // processa marcadores [ROLL], [COMBAT_START], [SCENE_COMPLETE]
 async function processDMReply(reply) {
   // separa marcadores do texto
-  const rollMatch = reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)\]/);
+  const rollMatch = reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)(?::([^:\]]+))?\]/);
   const combatMatch = reply.match(/\[COMBAT_START:([^\]]+)\]/);
   const sceneComplete = reply.includes('[SCENE_COMPLETE]');
 
@@ -700,23 +723,28 @@ async function processDMReply(reply) {
 
   // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
   if (rollMatch) {
-    const [, tipo, atr, cd] = rollMatch;
+    const [, tipo, atr, cd, tag] = rollMatch;
     const c = STATE.characters[STATE.activeChar];
     const abr = atr.toUpperCase().slice(0,3);
-    let mod = abilityMod(c.abilities[abr] || 10);
-    // adiciona proficiência se for save proficiente
-    if (tipo.toLowerCase()==='save' && c.saves.includes(abr)) mod += c.prof;
-    // perícias: adiciona proficiência por padrão (simplificação)
-    else if (tipo.toLowerCase()!=='save' && tipo.toLowerCase()!=='ataque') mod += c.prof;
-    else if (tipo.toLowerCase()==='ataque') mod += c.prof;
 
-    const result = d20(mod);
+    // decisão (proficiência, vantagem/desvantagem de traços) na lógica pura da rules.js
+    const { mod, prof, adv, dis } = rollModifiers(c, tipo, abr, tag);
+    const result = d20ForChar(c, mod, { adv, dis });
     const cdNum = +cd > 0 ? +cd : null;
-    showRollCard(`${c.name} · ${tipo} (${abr})`, result, cdNum);
 
-    // devolve o resultado para a IA narrar a consequência
+    const advNote = adv && !dis ? ' · vantagem' : dis && !adv ? ' · desvantagem' : '';
+    showRollCard(`${c.name} · ${tipo} (${abr})${advNote}`, result, cdNum);
+
+    // ataque: rola o dano da arma equipada (justo); a IA decide se acerta vs a AC do alvo
+    let dmgNote = '';
+    if (tipo.toLowerCase() === 'ataque') {
+      const spec = weaponDamageSpec(c, abr);
+      const dmg = rollDamage(spec, result.crit);
+      dmgNote = ` Dano se acertar: ${dmg.total} [${spec.type}] (${spec.name}: ${dmg.detail}${result.crit?' — CRÍTICO, dados dobrados':''}).`;
+    }
+
     const outcome = cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : 'resultado';
-    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr}): d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}${result.crit?' (CRÍTICO!)':''}${result.fumble?' (FALHA CRÍTICA!)':''}. Narre a consequência e continue.`, false);
+    await askDM(`[RESULTADO DA ROLAGEM] ${c.name} rolou ${tipo} (${abr})${prof?' [proficiente]':''}${advNote}: d20=${result.nat} ${fmtMod(result.mod)} = ${result.total}${cdNum?` vs CD ${cdNum} → ${outcome}`:''}${result.crit?' (CRÍTICO!)':''}${result.fumble?' (FALHA CRÍTICA!)':''}${result.lucky?' (Sortudo: re-rolou o 1)':''}.${dmgNote} Narre a consequência e continue.`, false);
     return;
   }
 
