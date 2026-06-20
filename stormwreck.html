@@ -77,6 +77,14 @@
     font-size: 1.1rem;
     margin-top: 14px;
   }
+  .mp-link {
+    display: block; text-align: center; margin: 16px auto 0; padding: 11px 16px;
+    color: var(--ember); text-decoration: none; font-size: 0.9rem; font-weight: 600;
+    background: rgba(214,108,46,0.08); border: 1px solid var(--basalt-600);
+    border-radius: 10px; transition: border-color .15s, background .15s;
+  }
+  .mp-link:hover { border-color: var(--ember); background: rgba(214,108,46,0.16); }
+  .mp-link span { color: var(--stone-400); font-weight: 400; font-size: 0.78rem; }
 
   .panel {
     background: linear-gradient(180deg, var(--basalt-700), var(--basalt-800));
@@ -573,6 +581,7 @@
         <button class="btn ghost" id="toSignupBtn">Criar conta</button>
       </div>
     </div>
+    <a class="mp-link" href="v2-multiplayer/">🎲 Jogar em grupo — Multiplayer <span>(beta)</span></a>
   </div>
 </div>
 
