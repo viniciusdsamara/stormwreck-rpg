@@ -5,3 +5,7 @@ livro-jogador-referencia.md
 
 # Artefato de teste em Python (não usado; a validação roda em Node).
 validate.py
+
+# Artefatos de desenvolvimento local (servidor estático e config do preview).
+server.js
+.claude/

@@ -510,6 +510,73 @@ function computeAC(cls, abilities, armorName, hasShield) {
 // Compat: assinatura antiga usada por código legado. Sem armadura.
 function computeCA(cls, abilities) { return computeAC(cls, abilities, 'Nenhuma', false); }
 
+// ----- OPÇÕES DISPONÍVEIS (proficiências) — usado pela tela de criação -----
+
+// Junta as proficiências de armadura de classe + sub-raça (ex.: Anão da Montanha)
+function armorProfFor(cls, race, subrace) {
+  const set = new Set(RULES.classes[cls].armorProf || []);
+  const sr = race && subrace && RULES.races[race].subraces[subrace];
+  if (sr && sr.armorProf) sr.armorProf.forEach(p => set.add(p));
+  return set;
+}
+
+// Armaduras que o personagem pode vestir (inclui 'Nenhuma'); exclui metálicas p/ Druida
+function availableArmors(cls, race, subrace) {
+  const prof = armorProfFor(cls, race, subrace);
+  const noMetal = !!RULES.classes[cls].noMetalArmor;
+  const metalArmors = new Set(['Camisão de Malha','Cota de Anéis','Cota de Malha','Cota de Talas','Placas','Meia-Armadura']);
+  const out = ['Nenhuma'];
+  for (const name in RULES.armor) {
+    const a = RULES.armor[name];
+    if (!a.type) continue;                       // 'Nenhuma' já incluída
+    if (!prof.has(a.type)) continue;             // sem proficiência no tipo
+    if (noMetal && metalArmors.has(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+function canUseShield(cls, race, subrace) {
+  return armorProfFor(cls, race, subrace).has('escudo');
+}
+
+// Armas com as quais o personagem é proficiente (classe + raça + sub-raça)
+function availableWeapons(cls, race, subrace) {
+  const tokens = [];
+  const add = p => { if (typeof p === 'string') tokens.push(p.toLowerCase()); else if (Array.isArray(p)) p.forEach(x => tokens.push(String(x).toLowerCase())); };
+  add(RULES.classes[cls].weaponProf);
+  if (race && RULES.races[race].weaponProf) add(RULES.races[race].weaponProf);
+  const sr = race && subrace && RULES.races[race].subraces[subrace];
+  if (sr && sr.weaponProf) add(sr.weaponProf);
+
+  const allow = new Set();
+  for (const name in RULES.weapons) {
+    const cat = RULES.weapons[name].cat;         // 'simples' | 'marcial'
+    const lname = name.toLowerCase();
+    for (const t of tokens) {
+      if (t === 'marciais' || t === 'marcial') { allow.add(name); break; }   // simples + marciais
+      if ((t === 'simples' || t === 'simple') && cat === 'simples') { allow.add(name); break; }
+      if (t === lname) { allow.add(name); break; }                            // arma específica
+    }
+  }
+  return Array.from(allow);
+}
+
+// Pool de perícias da classe ('any' => todas as 18)
+function skillOptionsFor(cls) {
+  const list = RULES.classes[cls].skillList;
+  return list === 'any' ? Object.keys(RULES.skills) : list.slice();
+}
+
+// Perícias concedidas de graça pela raça/sub-raça (ex.: Elfo Percepção, Meio-Orc Intimidação)
+function fixedRacialSkills(race, subrace) {
+  const out = [];
+  const r = RULES.races[race];
+  if (r.skillProf) out.push(...r.skillProf);
+  (r.traits || []).forEach(t => { if (t.ef && t.ef.skillProf) out.push(...t.ef.skillProf); });
+  return Array.from(new Set(out));
+}
+
 // ============================================================
 //  buildCharacter — monta a ficha fiel ao PHB
 //  opts: { name, player, slot, race, subrace, cls, scores,

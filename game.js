@@ -18,7 +18,8 @@ const STATE = {
 };
 
 // rascunho de criação do personagem atual
-let DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+let DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+              skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null };
 
 // ---------- UTIL DOM ----------
 const $ = sel => document.querySelector(sel);
@@ -105,7 +106,8 @@ function startCreation() {
 }
 
 function renderCreation() {
-  DRAFT = { race:null, cls:null, scores:null, assigned:{} };
+  DRAFT = { race:null, subrace:null, cls:null, scores:null, assigned:{},
+            skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null };
   $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
   $('#charName').value = '';
   $('#playerName').value = '';
@@ -113,19 +115,25 @@ function renderCreation() {
   // raças
   $('#raceGrid').innerHTML = Object.entries(RULES.races).map(([name, r]) => {
     const asi = Object.entries(r.asi).map(([k,v])=>`${k}+${v}`).join(' ');
+    const extra = r.asiChoice ? ` +1×${r.asiChoice.count}` : '';
+    const sub = (r.subraces && Object.keys(r.subraces).length) ? ' · sub-raças' : '';
     return `<div class="choice" data-race="${name}">
       <div class="name">${name}</div>
-      <div class="meta">${asi}${r.darkvision?' · darkvision':''}</div>
+      <div class="meta">${asi}${extra}${r.darkvision?' · darkvision':''}${sub}</div>
     </div>`;
   }).join('');
 
   // classes
   $('#classGrid').innerHTML = Object.entries(RULES.classes).map(([name, c]) => {
+    const sk = c.spell ? ` · conjura ${c.spell.ability}` : '';
     return `<div class="choice" data-class="${name}">
       <div class="name">${name}</div>
-      <div class="meta">d${c.hitDie} · ${c.primary.join('/')}</div>
+      <div class="meta">d${c.hitDie} · ${c.primary.join('/')}${sk}</div>
     </div>`;
   }).join('');
+
+  // seções dependentes começam ocultas
+  ['#subraceSection','#asiChoiceSection','#skillsSection','#equipmentSection'].forEach(s=>$(s).classList.add('hide'));
 
   // atributos vazios
   renderScorePool();
@@ -134,17 +142,162 @@ function renderCreation() {
   // eventos
   $$('#raceGrid .choice').forEach(el => el.onclick = () => {
     $$('#raceGrid .choice').forEach(c=>c.classList.remove('selected'));
-    el.classList.add('selected'); DRAFT.race = el.dataset.race; checkCreationReady();
+    el.classList.add('selected');
+    DRAFT.race = el.dataset.race; DRAFT.subrace = null;
+    DRAFT.skills = []; DRAFT.skillsExtra = []; DRAFT.asiChoices = [];
+    renderSubraces(); renderAsiChoice(); renderSkills(); renderEquipment();
+    renderAbilityGrid(); checkCreationReady();
   });
   $$('#classGrid .choice').forEach(el => el.onclick = () => {
     $$('#classGrid .choice').forEach(c=>c.classList.remove('selected'));
-    el.classList.add('selected'); DRAFT.cls = el.dataset.class; checkCreationReady();
+    el.classList.add('selected');
+    DRAFT.cls = el.dataset.class; DRAFT.skills = [];
+    DRAFT.armor = null; DRAFT.weapon = null;   // recalcula equipamento padrão p/ a nova classe
+    renderSkills(); renderEquipment(); checkCreationReady();
   });
   $('#rollScoresBtn').onclick = doRollScores;
-  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); checkCreationReady(); };
+  $('#resetScoresBtn').onclick = () => { DRAFT.scores=null; DRAFT.assigned={}; renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady(); };
   $('#charName').oninput = checkCreationReady;
   $('#playerName').oninput = checkCreationReady;
   $('#charNextBtn').onclick = commitCharacter;
+}
+
+// ---- Sub-raça ----
+function renderSubraces() {
+  const sec = $('#subraceSection'), grid = $('#subraceGrid');
+  const subs = DRAFT.race ? RULES.races[DRAFT.race].subraces : null;
+  if (!subs || !Object.keys(subs).length) { sec.classList.add('hide'); grid.innerHTML=''; return; }
+  sec.classList.remove('hide');
+  grid.innerHTML = Object.entries(subs).map(([name, sr]) => {
+    const asi = Object.entries(sr.asi||{}).map(([k,v])=>`${k}+${v}`).join(' ');
+    return `<div class="choice" data-subrace="${name}">
+      <div class="name">${name}</div><div class="meta">${asi||'—'}</div></div>`;
+  }).join('');
+  $$('#subraceGrid .choice').forEach(el => el.onclick = () => {
+    $$('#subraceGrid .choice').forEach(c=>c.classList.remove('selected'));
+    el.classList.add('selected');
+    DRAFT.subrace = el.dataset.subrace;
+    renderSkills(); renderEquipment(); renderAbilityGrid(); checkCreationReady();
+  });
+}
+
+// ---- Escolha de ASI (Meio-Elfo: +1 em dois) ----
+function renderAsiChoice() {
+  const sec = $('#asiChoiceSection'), grid = $('#asiChoiceGrid');
+  const rc = DRAFT.race ? RULES.races[DRAFT.race].asiChoice : null;
+  if (!rc) { sec.classList.add('hide'); grid.innerHTML=''; return; }
+  sec.classList.remove('hide');
+  const exclude = rc.exclude || [];
+  $('#asiChoiceNote').textContent = `Escolhidos ${DRAFT.asiChoices.length}/${rc.count}`;
+  $('#asiChoiceNote').classList.toggle('done', DRAFT.asiChoices.length===rc.count);
+  grid.innerHTML = RULES.abilities.map(ab => {
+    const off = exclude.includes(ab);
+    const sel = DRAFT.asiChoices.includes(ab);
+    return `<div class="choice ${sel?'selected':''} ${off?'':''}" data-asi="${ab}" style="${off?'opacity:.35;pointer-events:none':''}">
+      <div class="name">${ab}</div><div class="meta">${RULES.abilityNames[ab]}${off?' (já +2)':' +1'}</div></div>`;
+  }).join('');
+  $$('#asiChoiceGrid .choice').forEach(el => el.onclick = () => {
+    const ab = el.dataset.asi;
+    const i = DRAFT.asiChoices.indexOf(ab);
+    if (i>=0) DRAFT.asiChoices.splice(i,1);
+    else if (DRAFT.asiChoices.length < rc.count) DRAFT.asiChoices.push(ab);
+    renderAsiChoice(); renderAbilityGrid(); updateAC(); checkCreationReady();
+  });
+}
+
+// ---- Perícias (classe + extra racial) ----
+function renderSkills() {
+  const sec = $('#skillsSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+  const need = RULES.classes[DRAFT.cls].skillCount;
+  const pool = skillOptionsFor(DRAFT.cls);
+  const fixed = DRAFT.race ? fixedRacialSkills(DRAFT.race, DRAFT.subrace) : [];
+  // remove de DRAFT.skills qualquer que tenha virado fixa ou saído do pool
+  DRAFT.skills = DRAFT.skills.filter(s => pool.includes(s) && !fixed.includes(s));
+
+  $('#skillsNote').textContent = `Escolha ${need} (de ${DRAFT.cls}). Selecionadas: ${DRAFT.skills.length}/${need}`;
+  $('#skillsNote').classList.toggle('done', DRAFT.skills.length===need);
+  const atMax = DRAFT.skills.length >= need;
+  $('#skillsGrid').innerHTML = pool.map(s => {
+    if (fixed.includes(s)) return `<div class="skill-chip locked">${s}<span class="tag">raça</span></div>`;
+    const sel = DRAFT.skills.includes(s);
+    const dis = !sel && atMax;
+    return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-skill="${s}">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+  }).join('');
+  $$('#skillsGrid .skill-chip[data-skill]').forEach(el => el.onclick = () => {
+    const s = el.dataset.skill; const i = DRAFT.skills.indexOf(s);
+    if (i>=0) DRAFT.skills.splice(i,1);
+    else if (DRAFT.skills.length < need) DRAFT.skills.push(s);
+    renderSkills(); checkCreationReady();
+  });
+
+  // extra racial (Meio-Elfo: 2 quaisquer)
+  const extraN = DRAFT.race ? (RULES.races[DRAFT.race].skillChoiceExtra||0) : 0;
+  const wrap = $('#skillsExtraWrap');
+  if (!extraN) { wrap.classList.add('hide'); DRAFT.skillsExtra=[]; return; }
+  wrap.classList.remove('hide');
+  const taken = new Set([...DRAFT.skills, ...fixed]);
+  DRAFT.skillsExtra = DRAFT.skillsExtra.filter(s => !taken.has(s));
+  $('#skillsExtraNote').textContent = `Versatilidade em Perícia — escolha ${extraN} quaisquer: ${DRAFT.skillsExtra.length}/${extraN}`;
+  $('#skillsExtraNote').classList.toggle('done', DRAFT.skillsExtra.length===extraN);
+  const extraMax = DRAFT.skillsExtra.length >= extraN;
+  $('#skillsExtraGrid').innerHTML = Object.keys(RULES.skills).map(s => {
+    if (taken.has(s)) return `<div class="skill-chip disabled">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+    const sel = DRAFT.skillsExtra.includes(s);
+    const dis = !sel && extraMax;
+    return `<div class="skill-chip ${sel?'selected':''} ${dis?'disabled':''}" data-xskill="${s}">${s}<span class="tag">${RULES.skills[s]}</span></div>`;
+  }).join('');
+  $$('#skillsExtraGrid .skill-chip[data-xskill]').forEach(el => el.onclick = () => {
+    const s = el.dataset.xskill; const i = DRAFT.skillsExtra.indexOf(s);
+    if (i>=0) DRAFT.skillsExtra.splice(i,1);
+    else if (DRAFT.skillsExtra.length < extraN) DRAFT.skillsExtra.push(s);
+    renderSkills(); checkCreationReady();
+  });
+}
+
+// ---- Equipamento (armadura, escudo, arma) ----
+function defaultArmor(cls, race, subrace) {
+  if (RULES.classes[cls].unarmoredDefense) return 'Nenhuma';
+  const av = availableArmors(cls, race, subrace);
+  for (const pref of ['Cota de Malha','Brunea','Couro Batido']) if (av.includes(pref)) return pref;
+  return 'Nenhuma';
+}
+function renderEquipment() {
+  const sec = $('#equipmentSection');
+  if (!DRAFT.cls) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
+  const armors = availableArmors(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  if (!armors.includes(DRAFT.armor)) DRAFT.armor = defaultArmor(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  $('#armorSelect').innerHTML = armors.map(a=>`<option value="${a}" ${a===DRAFT.armor?'selected':''}>${a}${a==='Nenhuma'?'':` (${RULES.armor[a].base}${RULES.armor[a].dexCap===0?'':'+DES'})`}</option>`).join('');
+  $('#armorSelect').onchange = e => { DRAFT.armor = e.target.value; updateAC(); checkCreationReady(); };
+
+  const weapons = availableWeapons(DRAFT.cls, DRAFT.race, DRAFT.subrace).sort();
+  if (!weapons.includes(DRAFT.weapon)) DRAFT.weapon = weapons[0] || null;
+  $('#weaponSelect').innerHTML = weapons.map(w=>`<option value="${w}" ${w===DRAFT.weapon?'selected':''}>${w} (${RULES.weapons[w].dmg} ${RULES.weapons[w].type})</option>`).join('');
+  $('#weaponSelect').onchange = e => { DRAFT.weapon = e.target.value; checkCreationReady(); };
+
+  const canShield = canUseShield(DRAFT.cls, DRAFT.race, DRAFT.subrace);
+  const row = $('#shieldRow'); row.classList.toggle('disabled', !canShield);
+  if (!canShield) DRAFT.shield = false;
+  $('#shieldCheck').checked = DRAFT.shield;
+  $('#shieldCheck').onchange = e => { DRAFT.shield = e.target.checked; updateAC(); };
+  updateAC();
+}
+
+// abilities atuais do rascunho (scores atribuídos + ASI racial/escolha; fallback 10)
+function draftAbilities() {
+  const base = {};
+  RULES.abilities.forEach(a => {
+    const idx = DRAFT.assigned[a];
+    base[a] = (DRAFT.scores && idx!==undefined) ? DRAFT.scores[idx] : 10;
+  });
+  return DRAFT.race ? applyASI(base, DRAFT.race, DRAFT.subrace, DRAFT.asiChoices) : base;
+}
+function updateAC() {
+  if (!DRAFT.cls) return;
+  const ac = computeAC(DRAFT.cls, draftAbilities(), DRAFT.armor, DRAFT.shield);
+  const el = $('#acPreview'); if (el) el.textContent = ac;
 }
 
 function doRollScores() {
@@ -172,11 +325,19 @@ function renderScorePool() {
   });
 }
 
+function abilityRaceBonus(ab) {
+  if (!DRAFT.race) return 0;
+  const r = RULES.races[DRAFT.race];
+  let b = r.asi[ab] || 0;
+  if (DRAFT.subrace && r.subraces[DRAFT.subrace]) b += (r.subraces[DRAFT.subrace].asi || {})[ab] || 0;
+  if (r.asiChoice && DRAFT.asiChoices.includes(ab)) b += r.asiChoice.amount;
+  return b;
+}
 function renderAbilityGrid() {
   $('#abilityGrid').innerHTML = RULES.abilities.map(ab => {
     const idx = DRAFT.assigned[ab];
     const score = idx!==undefined ? DRAFT.scores[idx] : null;
-    const raceBonus = DRAFT.race ? (RULES.races[DRAFT.race].asi[ab]||0) : 0;
+    const raceBonus = abilityRaceBonus(ab);
     const finalScore = score!==null ? score + raceBonus : null;
     const mod = finalScore!==null ? abilityMod(finalScore) : null;
     return `<div class="ability-box ${score!==null?'assigned':''}" data-ab="${ab}">
@@ -192,18 +353,25 @@ function renderAbilityGrid() {
       for (const k in DRAFT.assigned) if (DRAFT.assigned[k]===pendingScore) delete DRAFT.assigned[k];
       DRAFT.assigned[ab] = pendingScore;
       pendingScore = null;
-      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
     } else if (DRAFT.assigned[ab] !== undefined) {
       // clicar num atribuído remove
       delete DRAFT.assigned[ab];
-      renderScorePool(); renderAbilityGrid(); checkCreationReady();
+      renderScorePool(); renderAbilityGrid(); updateAC(); checkCreationReady();
     }
   });
 }
 
 function checkCreationReady() {
+  const r = DRAFT.race ? RULES.races[DRAFT.race] : null;
   const allAssigned = DRAFT.scores && Object.keys(DRAFT.assigned).length === 6;
-  const ready = DRAFT.race && DRAFT.cls && allAssigned && $('#charName').value.trim() && $('#playerName').value.trim();
+  const subOk = !r || !Object.keys(r.subraces||{}).length || DRAFT.subrace;
+  const asiOk = !r || !r.asiChoice || DRAFT.asiChoices.length === r.asiChoice.count;
+  const skillsOk = DRAFT.cls && DRAFT.skills.length === RULES.classes[DRAFT.cls].skillCount;
+  const extraN = r ? (r.skillChoiceExtra||0) : 0;
+  const extraOk = DRAFT.skillsExtra.length === extraN;
+  const ready = DRAFT.race && subOk && asiOk && DRAFT.cls && allAssigned && skillsOk && extraOk
+    && $('#charName').value.trim() && $('#playerName').value.trim();
   $('#charNextBtn').disabled = !ready;
   $('#charNextBtn').textContent = STATE.creationSlot === 0 ? 'Próximo aventureiro →' : 'Começar aventura →';
 }
@@ -215,7 +383,11 @@ function commitCharacter() {
     name: $('#charName').value.trim(),
     player: $('#playerName').value.trim(),
     slot: STATE.creationSlot,
-    race: DRAFT.race, cls: DRAFT.cls, scores
+    race: DRAFT.race, subrace: DRAFT.subrace, cls: DRAFT.cls, scores,
+    asiChoices: DRAFT.asiChoices,
+    skills: [...DRAFT.skills, ...DRAFT.skillsExtra],
+    armor: DRAFT.armor, shield: DRAFT.shield,
+    weapons: DRAFT.weapon ? [DRAFT.weapon] : []
   });
   STATE.characters.push(char);
 

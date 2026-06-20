@@ -189,6 +189,31 @@
   .pool .chip:hover { transform: translateY(-2px); border-color: var(--ember); }
   .pool .chip.used { opacity:0.25; pointer-events:none; }
 
+  /* ====== CRIAÇÃO — sub-raça, perícias, equipamento ====== */
+  .subsection { margin-top:24px; }
+  .req-note { color:var(--stone-400); font-size:0.82rem; margin:4px 0 10px; }
+  .req-note.done { color:var(--myco); }
+  .skill-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:8px; }
+  .skill-chip {
+    background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:8px;
+    padding:9px 12px; cursor:pointer; font-size:0.86rem; color:var(--stone-300);
+    transition:all 0.14s; user-select:none; display:flex; justify-content:space-between; align-items:center;
+  }
+  .skill-chip:hover { border-color:var(--stone-400); color:var(--parch); }
+  .skill-chip.selected { border-color:var(--ember); background:rgba(232,132,60,0.10); color:var(--parch); }
+  .skill-chip.locked { border-color:var(--myco); background:rgba(127,212,163,0.08); color:var(--parch); cursor:default; }
+  .skill-chip.disabled { opacity:0.35; pointer-events:none; }
+  .skill-chip .tag { font-family:var(--font-mono); font-size:0.58rem; letter-spacing:0.06em; color:var(--stone-400); }
+  .eq-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:560px){ .eq-grid{ grid-template-columns:1fr; } }
+  .eq-field span { display:block; font-family:var(--font-mono); font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--stone-300); margin-bottom:6px; }
+  .shield-row { display:flex; align-items:center; gap:9px; margin-top:14px; font-size:0.92rem; color:var(--parch); cursor:pointer; user-select:none; }
+  .shield-row input { width:18px; height:18px; accent-color:var(--ember); cursor:pointer; }
+  .shield-row.disabled { opacity:0.4; pointer-events:none; }
+  .ac-badge { display:inline-flex; align-items:baseline; gap:9px; margin-top:16px; padding:10px 18px; border:1px solid var(--ember); border-radius:10px; background:rgba(232,132,60,0.07); }
+  .ac-badge b { font-family:var(--font-display); font-size:1.9rem; color:var(--gold-bone); line-height:1; }
+  .ac-badge span { font-family:var(--font-mono); font-size:0.64rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--stone-300); }
+
   .player-tag { display:inline-block; font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.15em; padding:4px 10px; border-radius:6px; text-transform:uppercase; }
   .player-tag.p1 { background:rgba(232,132,60,0.15); color:var(--ember); }
   .player-tag.p2 { background:rgba(111,168,212,0.15); color:var(--azure); }
@@ -383,6 +408,11 @@
       <label class="field"><span>Raça</span></label>
       <div class="choice-grid" id="raceGrid"></div>
 
+      <div class="subsection hide" id="subraceSection">
+        <label class="field"><span>Sub-raça</span></label>
+        <div class="choice-grid" id="subraceGrid"></div>
+      </div>
+
       <label class="field" style="margin-top:20px"><span>Classe</span></label>
       <div class="choice-grid" id="classGrid"></div>
 
@@ -394,6 +424,38 @@
         <button class="btn ghost" id="resetScoresBtn">Limpar</button>
       </div>
       <div class="ability-grid" id="abilityGrid"></div>
+
+      <div class="subsection hide" id="asiChoiceSection">
+        <label class="field"><span>Aumento de habilidade — escolha dois (+1 cada)</span></label>
+        <p class="req-note" id="asiChoiceNote"></p>
+        <div class="choice-grid" id="asiChoiceGrid"></div>
+      </div>
+
+      <div class="subsection hide" id="skillsSection">
+        <label class="field"><span>Perícias</span></label>
+        <p class="req-note" id="skillsNote"></p>
+        <div class="skill-grid" id="skillsGrid"></div>
+        <div class="hide" id="skillsExtraWrap">
+          <p class="req-note" id="skillsExtraNote" style="margin-top:14px"></p>
+          <div class="skill-grid" id="skillsExtraGrid"></div>
+        </div>
+      </div>
+
+      <div class="subsection hide" id="equipmentSection">
+        <label class="field"><span>Equipamento inicial</span></label>
+        <div class="eq-grid">
+          <label class="eq-field"><span>Armadura</span>
+            <select id="armorSelect"></select>
+          </label>
+          <label class="eq-field"><span>Arma principal</span>
+            <select id="weaponSelect"></select>
+          </label>
+        </div>
+        <label class="shield-row" id="shieldRow">
+          <input type="checkbox" id="shieldCheck"> Usar escudo (+2 CA)
+        </label>
+        <div class="ac-badge"><b id="acPreview">10</b><span>Classe de Armadura</span></div>
+      </div>
     </div>
 
     <div class="row end" style="margin-top:24px">
