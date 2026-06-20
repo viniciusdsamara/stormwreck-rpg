@@ -45,6 +45,10 @@
              border-radius:12px; padding:14px 18px; margin-bottom:18px; }
   .code-box .lbl{ font-size:0.7rem; color:var(--stone-400); letter-spacing:0.15em; text-transform:uppercase; }
   .code-box .code{ font-family:ui-monospace,monospace; font-size:1.8rem; letter-spacing:0.3em; color:var(--ember); font-weight:700; }
+  .invite{ margin:-6px 0 18px; }
+  .invite .lbl{ font-size:0.68rem; color:var(--stone-400); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:6px; }
+  .invite-row{ display:flex; gap:8px; }
+  .invite-row input{ flex:1; font-size:0.8rem; color:var(--stone-300); }
   .member{ display:flex; justify-content:space-between; align-items:center; gap:8px;
            background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:9px 12px; margin-bottom:7px; }
   .member.me{ border-color:var(--ember); }
@@ -125,7 +129,15 @@
 
     <div class="code-box">
       <div><div class="lbl">Código</div><div class="code" id="roomCode">—</div></div>
-      <button class="btn ghost" id="copyCodeBtn" style="margin-left:auto;padding:8px 12px;font-size:0.8rem">Copiar</button>
+      <button class="btn ghost" id="copyCodeBtn" style="margin-left:auto;padding:8px 12px;font-size:0.8rem">Copiar código</button>
+    </div>
+
+    <div class="invite" id="inviteBox" style="display:none">
+      <div class="lbl">Link de convite — só quem tem o link entra</div>
+      <div class="invite-row">
+        <input id="inviteLink" type="text" readonly>
+        <button class="btn" id="copyLinkBtn" style="padding:9px 14px;font-size:0.82rem">Copiar link</button>
+      </div>
     </div>
 
     <div class="panel">

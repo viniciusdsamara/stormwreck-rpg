@@ -7,6 +7,11 @@ const SUPA_URL = 'https://qyqvnokqkukhecnpykds.supabase.co';
 const SUPA_KEY = 'sb_publishable_7Pnila08_CO32ae28pIM5g_3WACbxV1';
 
 let supa, ME = null, ROOM = null, MEMBERS = [], roomChannel = null;
+// código de convite vindo no link (?sala=XXXXXX) — entra direto após login
+let PENDING_CODE = (new URLSearchParams(location.search).get('sala') || '').toUpperCase() || null;
+
+function roomLink(){ return `${location.origin}${location.pathname}?sala=${ROOM.code}`; }
+function clearUrlCode(){ try { history.replaceState(null, '', location.pathname); } catch(e){} }
 
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -25,7 +30,12 @@ async function initAuth(){
   $('#loginBtn').onclick = doLogin;
   $('#loginPass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
   const { data:{ session } } = await supa.auth.getSession();
-  if (session){ ME = session.user; enterHub(); } else { show('screen-login'); }
+  if (session){ ME = session.user; afterAuth(); } else { show('screen-login'); }
+}
+// depois de autenticado: se veio por link de convite, entra direto na sala
+async function afterAuth(){
+  if (PENDING_CODE){ const code = PENDING_CODE; PENDING_CODE = null; clearUrlCode(); await joinByCode(code, true); }
+  else enterHub();
 }
 async function doLogin(){
   const email = $('#loginEmail').value.trim(), pass = $('#loginPass').value;
@@ -34,7 +44,7 @@ async function doLogin(){
   const { data, error } = await supa.auth.signInWithPassword({ email, password: pass });
   $('#loginBtn').disabled = false;
   if (error){ $('#loginErr').textContent = 'Falha no login: ' + error.message; return; }
-  ME = data.user; $('#loginErr').textContent=''; enterHub();
+  ME = data.user; $('#loginErr').textContent=''; afterAuth();
 }
 async function doLogout(){
   await leaveRoomQuietly();
@@ -79,15 +89,23 @@ async function createRoom(){
   if (mErr){ toast('Sala criada, mas falhou ao entrar: '+mErr.message); return; }
   ROOM = room; enterRoom();
 }
-async function joinRoom(){
+function joinRoom(){
   const code = ($('#joinCode').value||'').trim().toUpperCase();
   if (code.length < 4){ toast('Digite o código da sala.'); return; }
-  $('#joinBtn').disabled = true;
+  joinByCode(code);
+}
+// entra numa sala pelo código (usado pelo botão e pelo link de convite)
+async function joinByCode(code, fromLink){
+  const btn = $('#joinBtn'); if (btn) btn.disabled = true;
   const { data, error } = await supa.rpc('join_room', { p_code: code, p_name: nameFromEmail(ME.email) });
-  $('#joinBtn').disabled = false;
-  if (error){ toast(error.message || 'Não foi possível entrar.'); return; }
+  if (btn) btn.disabled = false;
+  if (error){
+    toast(error.message || 'Não foi possível entrar.');
+    if (fromLink) enterHub();   // link inválido → cai no hub
+    return;
+  }
   const { data: room, error: rErr } = await supa.from('rooms').select('*').eq('id', data).single();
-  if (rErr || !room){ toast('Sala encontrada mas não pôde ser carregada.'); return; }
+  if (rErr || !room){ toast('Sala encontrada mas não pôde ser carregada.'); if (fromLink) enterHub(); return; }
   ROOM = room; enterRoom();
 }
 
@@ -162,6 +180,15 @@ function renderRoom(){
       ? 'Todos prontos. (Iniciar a partida chega na próxima fase.)'
       : 'Aguardando todos ficarem prontos.';
   } else { ap.style.display='none'; }
+
+  // link de convite (visível para todos; serve para chamar mais gente)
+  const link = roomLink();
+  $('#inviteBox').style.display = '';
+  $('#inviteLink').value = link;
+  $('#copyLinkBtn').onclick = async ()=>{
+    try { await navigator.clipboard.writeText(link); toast('Link de convite copiado!'); }
+    catch(e){ $('#inviteLink').select(); document.execCommand && document.execCommand('copy'); toast('Link copiado.'); }
+  };
 
   $('#leaveBtn').onclick = leaveRoom;
   $('#copyCodeBtn').onclick = ()=>{ navigator.clipboard?.writeText(ROOM.code); toast('Código copiado: '+ROOM.code); };
