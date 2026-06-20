@@ -465,6 +465,16 @@
   .lu-feats { font-size:0.78rem; color:var(--myco); margin-top:8px; }
   .lu-actions { display:flex; justify-content:flex-end; margin-top:6px; }
 
+  /* ====== Criação dinâmica (chat) ====== */
+  .cc-chat { max-height:48vh; min-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:6px 4px 14px; }
+  .cc-msg { max-width:90%; font-size:0.95rem; line-height:1.6; }
+  .cc-msg.dm { align-self:flex-start; font-family:var(--font-display); color:var(--parch); white-space:pre-wrap; }
+  .cc-msg.dm em { color:var(--gold-bone); }
+  .cc-msg.player { align-self:flex-end; background:var(--basalt-700); border:1px solid var(--basalt-600); border-radius:12px 12px 4px 12px; padding:9px 13px; }
+  .cc-compose { display:flex; gap:10px; border-top:1px solid var(--basalt-600); padding-top:12px; }
+  .cc-compose textarea { flex:1; resize:none; min-height:48px; max-height:120px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; color:var(--parch); padding:11px 13px; font-family:var(--font-body); font-size:0.96rem; }
+  .cc-compose textarea:focus { outline:none; border-color:var(--ember); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -549,6 +559,16 @@
       <div class="eyebrow" id="creationStepLabel">Aventureiro 1 de 2</div>
       <h1 style="font-size:clamp(2rem,5vw,3rem)">Forje seu herói</h1>
     </div>
+    <div class="panel" id="creationModePick">
+      <h2 style="font-family:var(--font-display);font-weight:400;color:var(--gold-bone);margin-bottom:14px">Como criar este aventureiro?</h2>
+      <div class="row">
+        <button class="btn" id="modeGuidedBtn">🧭 Guiada (botões)</button>
+        <button class="btn myco" id="modeChatBtn">💬 Conversando com o Mestre</button>
+      </div>
+      <p class="hint" style="margin-top:12px">A guiada é passo a passo com botões. Na conversa, o Mestre conduz a criação num chat e monta a ficha pra você.</p>
+    </div>
+
+    <div id="creationGuided" class="hide">
     <div class="panel">
       <label class="field">
         <span>Nome do personagem</span>
@@ -655,6 +675,22 @@
 
     <div class="row end" style="margin-top:24px">
       <button class="btn" id="charNextBtn" disabled>Próximo →</button>
+    </div>
+    </div><!-- creationGuided -->
+
+    <div id="creationChat" class="hide">
+      <div class="panel" style="padding:14px">
+        <div class="cc-chat" id="ccChat"></div>
+        <div class="cc-compose">
+          <textarea id="ccInput" placeholder="Converse com o Mestre sobre seu personagem..."></textarea>
+          <button class="btn" id="ccSendBtn">Enviar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn ghost" id="ccBackBtn">← Trocar modo</button>
+        <span class="spacer"></span>
+        <button class="btn myco hide" id="ccFinishBtn">✓ Concluir personagem</button>
+      </div>
     </div>
   </div>
 </div>

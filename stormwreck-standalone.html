@@ -465,6 +465,16 @@
   .lu-feats { font-size:0.78rem; color:var(--myco); margin-top:8px; }
   .lu-actions { display:flex; justify-content:flex-end; margin-top:6px; }
 
+  /* ====== Criação dinâmica (chat) ====== */
+  .cc-chat { max-height:48vh; min-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:6px 4px 14px; }
+  .cc-msg { max-width:90%; font-size:0.95rem; line-height:1.6; }
+  .cc-msg.dm { align-self:flex-start; font-family:var(--font-display); color:var(--parch); white-space:pre-wrap; }
+  .cc-msg.dm em { color:var(--gold-bone); }
+  .cc-msg.player { align-self:flex-end; background:var(--basalt-700); border:1px solid var(--basalt-600); border-radius:12px 12px 4px 12px; padding:9px 13px; }
+  .cc-compose { display:flex; gap:10px; border-top:1px solid var(--basalt-600); padding-top:12px; }
+  .cc-compose textarea { flex:1; resize:none; min-height:48px; max-height:120px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; color:var(--parch); padding:11px 13px; font-family:var(--font-body); font-size:0.96rem; }
+  .cc-compose textarea:focus { outline:none; border-color:var(--ember); }
+
   .toast {
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
     background:var(--basalt-700); border:1px solid var(--ember);
@@ -549,6 +559,16 @@
       <div class="eyebrow" id="creationStepLabel">Aventureiro 1 de 2</div>
       <h1 style="font-size:clamp(2rem,5vw,3rem)">Forje seu herói</h1>
     </div>
+    <div class="panel" id="creationModePick">
+      <h2 style="font-family:var(--font-display);font-weight:400;color:var(--gold-bone);margin-bottom:14px">Como criar este aventureiro?</h2>
+      <div class="row">
+        <button class="btn" id="modeGuidedBtn">🧭 Guiada (botões)</button>
+        <button class="btn myco" id="modeChatBtn">💬 Conversando com o Mestre</button>
+      </div>
+      <p class="hint" style="margin-top:12px">A guiada é passo a passo com botões. Na conversa, o Mestre conduz a criação num chat e monta a ficha pra você.</p>
+    </div>
+
+    <div id="creationGuided" class="hide">
     <div class="panel">
       <label class="field">
         <span>Nome do personagem</span>
@@ -655,6 +675,22 @@
 
     <div class="row end" style="margin-top:24px">
       <button class="btn" id="charNextBtn" disabled>Próximo →</button>
+    </div>
+    </div><!-- creationGuided -->
+
+    <div id="creationChat" class="hide">
+      <div class="panel" style="padding:14px">
+        <div class="cc-chat" id="ccChat"></div>
+        <div class="cc-compose">
+          <textarea id="ccInput" placeholder="Converse com o Mestre sobre seu personagem..."></textarea>
+          <button class="btn" id="ccSendBtn">Enviar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn ghost" id="ccBackBtn">← Trocar modo</button>
+        <span class="spacer"></span>
+        <button class="btn myco hide" id="ccFinishBtn">✓ Concluir personagem</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2081,7 +2117,169 @@ function startCreation() {
   STATE.creationSlot = 0;
   STATE.characters = [];
   showScreen('screen-creation');
+  showCreationModePick();
+}
+
+// Escolha do modo de criação (guiada x conversando com o Mestre)
+function showCreationModePick() {
+  $('#creationStepLabel').textContent = `Aventureiro ${STATE.creationSlot+1} de 2`;
+  $('#creationModePick').classList.remove('hide');
+  $('#creationGuided').classList.add('hide');
+  $('#creationChat').classList.add('hide');
+  $('#modeGuidedBtn').onclick = showGuidedCreation;
+  $('#modeChatBtn').onclick = startCreationChat;
+  window.scrollTo(0,0);
+}
+
+function showGuidedCreation() {
+  $('#creationModePick').classList.add('hide');
+  $('#creationChat').classList.add('hide');
+  $('#creationGuided').classList.remove('hide');
   renderCreation();
+}
+
+// ---- Criação dinâmica: chat com o Mestre ----
+let CC = { history: [], spec: null };
+
+function startCreationChat() {
+  $('#creationModePick').classList.add('hide');
+  $('#creationGuided').classList.add('hide');
+  $('#creationChat').classList.remove('hide');
+  CC = { history: [], spec: null };
+  $('#ccChat').innerHTML = '';
+  $('#ccFinishBtn').classList.add('hide');
+  $('#ccSendBtn').onclick = ccSend;
+  $('#ccBackBtn').onclick = showCreationModePick;
+  $('#ccFinishBtn').onclick = ccFinish;
+  $('#ccInput').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ccSend(); } };
+  ccAddMsg('dm', 'Olá! Vou te ajudar a criar seu aventureiro para *Stormwreck Isle*. Me conta: que herói você imagina? Pode ser um conceito ("um anão durão"), uma raça/classe, ou só uma vibe.');
+}
+
+function ccAddMsg(role, text) {
+  const n = $('#ccChat');
+  const d = document.createElement('div');
+  d.className = 'cc-msg ' + role;
+  d.innerHTML = role === 'dm' ? formatNarration(text) : '';
+  if (role !== 'dm') d.textContent = text;
+  n.appendChild(d); n.scrollTop = n.scrollHeight;
+}
+
+function creationChatSystemPrompt() {
+  const races = Object.keys(RULES.races).join(', ');
+  const classes = Object.keys(RULES.classes).join(', ');
+  const skills = Object.keys(RULES.skills).join(', ');
+  return `Você é o Mestre de D&D 5e ajudando a criar UM personagem de NÍVEL 1 para a campanha Dragons of Stormwreck Isle. Fale em português do Brasil, de forma acolhedora e concisa (2-4 frases por vez): faça perguntas, sugira e explique. Conduza por: conceito → raça (e sub-raça se houver) → classe → atributos → perícias → equipamento → opções de classe (estilo de luta/subclasse) → magias (se conjurador) → perfil (aparência, contexto, motivações, defeitos, qualidades).
+
+Opções válidas (use os nomes EXATOS):
+- Raças: ${races}. (algumas têm sub-raças)
+- Classes: ${classes}.
+- Atributos: point-buy de 27 pontos, cada um entre 8 e 15 (custo 5e: 14→15 custa 2).
+- Perícias: ${skills}.
+
+Quando — e SOMENTE quando — tudo estiver definido e o jogador confirmar, inclua na MESMA mensagem, na última linha, um bloco JSON exatamente neste formato (nomes exatos do sistema; deixe campos não aplicáveis como null ou lista vazia):
+[CHARACTER]{"name":"","race":"","subrace":null,"cls":"","base":{"FOR":10,"DES":10,"CON":10,"INT":10,"SAB":10,"CAR":10},"asiChoices":[],"skills":[],"armor":"Nenhuma","shield":false,"weapon":"","fightingStyle":null,"archetype":null,"cantrips":[],"spells":[],"expertise":[],"profile":{"appearance":"","context":"","motivation":"","flaw":"","quality":""}}[/CHARACTER]
+NÃO emita o bloco antes de tudo estar pronto e confirmado.`;
+}
+
+async function ccSend() {
+  const txt = $('#ccInput').value.trim();
+  if (!txt) return;
+  ccAddMsg('player', txt);
+  $('#ccInput').value = '';
+  CC.history.push({ role:'user', content: txt });
+  const thinking = document.createElement('div');
+  thinking.className = 'cc-msg dm'; thinking.textContent = 'O Mestre pensa…';
+  $('#ccChat').appendChild(thinking); $('#ccChat').scrollTop = $('#ccChat').scrollHeight;
+  $('#ccSendBtn').disabled = true;
+  try {
+    const reply = await callClaude(CC.history.slice(-16), creationChatSystemPrompt(), 700, null, STATE.model);
+    thinking.remove();
+    CC.history.push({ role:'assistant', content: reply });
+    const m = reply.match(/\[CHARACTER\]([\s\S]*?)\[\/CHARACTER\]/);
+    const visible = reply.replace(/\[CHARACTER\][\s\S]*?\[\/CHARACTER\]/, '').trim();
+    if (visible) ccAddMsg('dm', visible);
+    if (m) {
+      try { CC.spec = JSON.parse(m[1].trim()); $('#ccFinishBtn').classList.remove('hide'); ccAddMsg('dm', '✓ *Ficha montada!* Revise acima e clique em **Concluir personagem** — ou peça ajustes.'); }
+      catch (e) { ccAddMsg('dm', '(tive um problema ao montar a ficha — pode confirmar os detalhes de novo?)'); }
+    }
+  } catch (e) {
+    thinking.remove(); ccAddMsg('dm', 'Erro: ' + e.message);
+  } finally { $('#ccSendBtn').disabled = false; }
+}
+
+function ccFinish() {
+  if (!CC.spec) { $('#ccInput').value = 'Pode finalizar minha ficha agora?'; ccSend(); return; }
+  const char = buildFromSpec(CC.spec);
+  STATE.characters.push(char);
+  $('#creationChat').classList.add('hide');
+  if (STATE.creationSlot === 0) { STATE.creationSlot = 1; showCreationModePick(); }
+  else startGame();
+}
+
+// Monta um personagem a partir do JSON do Mestre, validando/saneando contra as regras.
+function buildFromSpec(s) {
+  s = s || {};
+  const race = RULES.races[s.race] ? s.race : 'Humano';
+  const r = RULES.races[race];
+  const subs = Object.keys(r.subraces || {});
+  const subrace = subs.length ? (r.subraces[s.subrace] ? s.subrace : subs[0]) : null;
+  const cls = RULES.classes[s.cls] ? s.cls : 'Guerreiro';
+  const c = RULES.classes[cls];
+
+  const base = {};
+  RULES.abilities.forEach(a => { let v = (s.base && +s.base[a]) || 10; base[a] = Math.max(8, Math.min(15, v)); });
+
+  let asiChoices = [];
+  if (r.asiChoice) {
+    const excl = r.asiChoice.exclude || [];
+    asiChoices = (Array.isArray(s.asiChoices) ? s.asiChoices : []).filter(a => RULES.abilities.includes(a) && !excl.includes(a));
+    asiChoices = Array.from(new Set(asiChoices)).slice(0, r.asiChoice.count);
+    RULES.abilities.forEach(a => { if (asiChoices.length < r.asiChoice.count && !asiChoices.includes(a) && !excl.includes(a)) asiChoices.push(a); });
+  }
+  const abilities = applyASI(base, race, subrace, asiChoices);
+
+  const pool = skillOptionsFor(cls), fixed = fixedRacialSkills(race, subrace);
+  let skills = (Array.isArray(s.skills) ? s.skills : []).filter(x => pool.includes(x) && !fixed.includes(x));
+  skills = Array.from(new Set(skills)).slice(0, c.skillCount);
+  for (const cand of pool) { if (skills.length >= c.skillCount) break; if (!skills.includes(cand) && !fixed.includes(cand)) skills.push(cand); }
+  let extra = [];
+  if (r.skillChoiceExtra) {
+    const taken = new Set([...skills, ...fixed]);
+    extra = (Array.isArray(s.skillsExtra) ? s.skillsExtra : []).filter(x => RULES.skills[x] && !taken.has(x)).slice(0, r.skillChoiceExtra);
+    for (const cand of Object.keys(RULES.skills)) { if (extra.length >= r.skillChoiceExtra) break; if (!taken.has(cand) && !extra.includes(cand)) extra.push(cand); }
+  }
+  const allSkills = [...skills, ...extra];
+
+  const armors = availableArmors(cls, race, subrace);
+  const armor = armors.includes(s.armor) ? s.armor : defaultArmor(cls, race, subrace);
+  const shield = !!s.shield && canUseShield(cls, race, subrace);
+  const weapons = availableWeapons(cls, race, subrace).sort();
+  const weapon = weapons.includes(s.weapon) ? s.weapon : weapons[0];
+
+  const fightingStyle = fightingStyleLevel(cls) === 1 ? (RULES.fightingStyles[s.fightingStyle] ? s.fightingStyle : 'Defesa') : null;
+  const archetype = c.subclassLevel === 1 ? ((c.subclasses || []).includes(s.archetype) ? s.archetype : (c.subclasses || [])[0]) : null;
+
+  let cantrips = [], spells = [];
+  const picks = spellPicks(cls, abilities, 1);
+  if (picks) {
+    cantrips = (Array.isArray(s.cantrips) ? s.cantrips : []).filter(x => picks.cantripList.includes(x)).slice(0, picks.cantrips);
+    for (const cand of picks.cantripList) { if (cantrips.length >= picks.cantrips) break; if (!cantrips.includes(cand)) cantrips.push(cand); }
+    const needSp = Math.min(picks.spells, picks.spellList.length);
+    spells = (Array.isArray(s.spells) ? s.spells : []).filter(x => picks.spellList.includes(x)).slice(0, needSp);
+    for (const cand of picks.spellList) { if (spells.length >= needSp) break; if (!spells.includes(cand)) spells.push(cand); }
+  }
+  let expertise = [];
+  if (cls === 'Ladino') {
+    const epool = Array.from(new Set([...allSkills, ...fixed]));
+    expertise = (Array.isArray(s.expertise) ? s.expertise : []).filter(x => epool.includes(x)).slice(0, 2);
+    for (const cand of epool) { if (expertise.length >= 2) break; if (!expertise.includes(cand)) expertise.push(cand); }
+  }
+  const profile = Object.assign({ appearance:'', context:'', motivation:'', flaw:'', quality:'' }, s.profile || {});
+  const name = (s.name || '').toString().trim() || 'Aventureiro';
+  const player = (s.player || '').toString().trim() || 'Jogador';
+
+  return buildCharacter({ name, player, slot: STATE.creationSlot, race, subrace, cls, scores: base, asiChoices,
+    skills: allSkills, armor, shield, weapons: [weapon], fightingStyle, archetype, cantrips, spells, expertise, profile });
 }
 
 function renderCreation() {
@@ -2503,8 +2701,7 @@ function commitCharacter() {
 
   if (STATE.creationSlot === 0) {
     STATE.creationSlot = 1;
-    renderCreation();
-    window.scrollTo(0,0);
+    showCreationModePick();
   } else {
     startGame();
   }
