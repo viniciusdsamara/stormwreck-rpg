@@ -484,6 +484,7 @@ function startGame() {
   STATE.activeChar = 0;
   STATE.history = [];
   renderSidebar();
+  $('#rollLogList').innerHTML = '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
   $('#saveBtn').onclick = saveGame;
   $('#menuBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');
   $('#sendBtn').onclick = submitAction;
@@ -495,7 +496,7 @@ function startGame() {
 }
 
 function renderSidebar() {
-  const sb = $('#sidebar');
+  const sb = $('#charPanel');
   sb.innerHTML = STATE.characters.map((c, i) => {
     const pct = Math.max(0, Math.round(c.hp / c.maxHp * 100));
     const slots = c.spellSlots ? `<div class="spell-slots">${
@@ -525,6 +526,40 @@ function addMsg(role, html, who) {
   n.scrollTop = n.scrollHeight;
   return div;
 }
+
+// Mensagem do Mestre revelada progressivamente (efeito de digitação).
+// rawText é o texto cru (com *itálico*); markers já removidos. Clique pula.
+function addMsgTyped(role, rawText, who) {
+  const n = $('#narrative');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = (who?`<div class="who">${who}</div>`:'') + `<div class="body typing"></div>`;
+  n.appendChild(div);
+  const body = div.querySelector('.body');
+  const tokens = rawText.split(/(\s+)/);      // palavras + espaços
+  return new Promise(resolve => {
+    let i = 0, done = false;
+    function finish() {
+      if (done) return; done = true;
+      body.classList.remove('typing');
+      body.innerHTML = formatNarration(rawText);
+      n.scrollTop = n.scrollHeight;
+      div.onclick = null;
+      resolve();
+    }
+    div.onclick = finish;                      // clicar pula a animação
+    function step() {
+      if (done) return;
+      i++;
+      const partial = tokens.slice(0, i).join('');
+      body.innerHTML = formatNarration(partial).replace(/\*(?=[^*]*$)/, '');
+      n.scrollTop = n.scrollHeight;
+      if (i >= tokens.length) { finish(); return; }
+      setTimeout(step, 16);
+    }
+    step();
+  });
+}
 function addThinking() {
   const n = $('#narrative');
   const d = document.createElement('div');
@@ -549,6 +584,27 @@ function showRollCard(label, result, dc) {
     <div class="rbreak">d20 [${diceStr}] ${result.mod>=0?'+':''}${result.mod}${result.crit?' · CRÍTICO!':''}${result.fumble?' · FALHA CRÍTICA':''}</div>
     ${outcome}`;
   n.appendChild(div); n.scrollTop = n.scrollHeight;
+  logRoll(label, result, dc);   // registra no painel lateral persistente
+}
+
+// Acrescenta a rolagem ao painel lateral (mais recente no topo).
+function logRoll(label, result, dc) {
+  const list = $('#rollLogList'); if (!list) return;
+  const empty = list.querySelector('.rolllog-empty'); if (empty) empty.remove();
+  let cls = result.crit ? 'crit' : result.fumble ? 'fumble' : '';
+  let out = '';
+  if (dc != null) {
+    const ok = result.total >= dc;
+    if (!cls) cls = ok ? 'ok' : 'fail';
+    out = `${ok ? '✓' : '✗'} CD ${dc}`;
+  }
+  if (result.crit) out = 'CRÍTICO! ' + out;
+  if (result.fumble) out = 'FALHA CRÍTICA ' + out;
+  const e = document.createElement('div');
+  e.className = 'rl-entry ' + cls;
+  e.innerHTML = `<div class="rl-head">${label}</div>
+    <div class="rl-line"><span class="rl-num">${result.total}</span><span class="rl-out">${out.trim()}</span></div>`;
+  list.insertBefore(e, list.firstChild);
 }
 
 // ---------- FLUXO DE CENA ----------
@@ -581,8 +637,8 @@ async function beginScene(sceneId, isFirst) {
   // level up automático se a cena exige
   if (sc.levelUp) applyLevelUp(sc.levelUp);
 
-  // mostra o texto de leitura da cena imediatamente (vem do roteiro, não da IA — economiza tokens)
-  addMsg('dm', formatNarration(sc.readAloud));
+  // mostra o texto de leitura da cena (vem do roteiro, não da IA — economiza tokens)
+  await addMsgTyped('dm', sc.readAloud);
 
   // pede à IA para continuar/ambientar a cena e abrir para ação
   const kickoff = isFirst
@@ -719,7 +775,7 @@ async function processDMReply(reply) {
     .replace(/\[SCENE_COMPLETE\]/g,'')
     .trim();
 
-  if (clean) addMsg('dm', formatNarration(clean));
+  if (clean) await addMsgTyped('dm', clean);
 
   // pedido de rolagem → o CÓDIGO rola (justo) e devolve à IA
   if (rollMatch) {
