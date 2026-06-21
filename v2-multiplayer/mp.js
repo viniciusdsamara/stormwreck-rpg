@@ -1587,27 +1587,75 @@ function stageDraft(reply){
   renderDmConsole();
   renderGame();
 }
-// painel privado do Mestre (só admin em modo comando)
+// extrai atributo/tipo de uma sugestão de teste do roteiro (ex.: "DEX (Acrobacia) para…")
+function parsePossibleRoll(text){
+  const t = String(text || '');
+  const abM = t.match(/\b(STR|DEX|CON|INT|WIS|CHA|FOR|DES|SAB|CAR)\b/i);
+  const skM = t.match(/\(([^)]+)\)/);
+  let tipo = skM ? skM[1].trim() : 'Teste';
+  if (/save/i.test(tipo)) tipo = 'save';
+  return { atr: mpNormAbility(abM ? abM[1] : 'DES'), tipo };
+}
+// chips do console mexem no rascunho (a IA sugere, o Mestre dispõe)
+function dmcQueueRoll(tipo, atr, cd){ if (!DM_DRAFT) return; DM_DRAFT.rollM = ['', tipo, mpNormAbility(atr), String(cd)]; DM_DRAFT.sceneComplete = false; DM_DRAFT.combatStart = null; renderDmConsole(); }
+function dmcToggleScene(){ if (!DM_DRAFT) return; DM_DRAFT.sceneComplete = !DM_DRAFT.sceneComplete; if (DM_DRAFT.sceneComplete){ DM_DRAFT.rollM = null; DM_DRAFT.combatStart = null; } renderDmConsole(); }
+function dmcToggleCombat(enc){ if (!DM_DRAFT) return; DM_DRAFT.combatStart = DM_DRAFT.combatStart ? null : enc; if (DM_DRAFT.combatStart){ DM_DRAFT.rollM = null; DM_DRAFT.sceneComplete = false; } renderDmConsole(); }
+function dmcSeed(instruction){ if (!DM_DRAFT) return; DM_DRAFT.seed = instruction; redraftDm(); }
+
+// painel privado do Mestre (só admin em modo comando) — rascunho + chips predefinidos da cena
 function renderDmConsole(){
   const box = $('#dmConsole'); if (!box) return;
   if (!DM_DRAFT){ box.style.display = 'none'; box.innerHTML = ''; return; }
   const d = DM_DRAFT;
-  let hint = '';
-  if (d.rollM)              hint = `<div class="dmc-hint roll">🎲 A IA sugere uma rolagem: <b>${escapeHtml(rollLabel(d.rollM))}</b> — o código rola (justo) ao enviar.</div>`;
-  else if (d.rawRoll)       hint = `<div class="dmc-hint">A IA pediu mais uma rolagem, mas o limite da ação foi atingido. Enviar encerra a vez.</div>`;
-  else if (d.sceneComplete) hint = `<div class="dmc-hint scene">➡️ A IA sugere que a cena cumpriu o objetivo e deve avançar.</div>`;
-  else if (d.combatStart)   hint = `<div class="dmc-hint combat">⚔️ A IA sugere iniciar combate.</div>`;
-  const sendLabel = d.rollM ? '✓ Enviar e rolar' : (d.sceneComplete ? '✓ Enviar e avançar' : '✓ Enviar');
+  const st = ROOM.state || {};
+  const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || {};
+  const ABR = ['FOR','DES','CON','INT','SAB','CAR'];
+  // linha da rolagem (editável) quando há uma na fila
+  let rollRow = '';
+  if (d.rollM){
+    rollRow = `<div class="dmc-roll">🎲
+      <input id="dmcRtipo" value="${escapeHtml(d.rollM[1]||'Teste')}" placeholder="tipo (Persuasão / save / ataque)">
+      <select id="dmcRatr">${ABR.map(a=>`<option ${mpNormAbility(d.rollM[2])===a?'selected':''}>${a}</option>`).join('')}</select>
+      <label>CD<input id="dmcRcd" type="number" min="0" max="30" value="${+d.rollM[3]||0}"></label>
+      <button class="dmc-x" id="dmcRcancel" title="Cancelar rolagem">✕</button></div>`;
+  }
+  // chips predefinidos da cena
+  const objBlock = (sc.objectives||[]).length
+    ? `<div class="dmc-grp"><span class="dmc-lbl">🎯 Objetivos</span><div class="dmc-obj">${(sc.objectives||[]).map(escapeHtml).join(' · ')}</div></div>` : '';
+  const rollChips = (sc.possibleRolls||[]).map((t,i)=>{ const p = parsePossibleRoll(t); return `<button class="dmc-chip" data-roll="${i}" title="${escapeHtml(t)}">🎲 ${escapeHtml(p.tipo)} (${p.atr})</button>`; }).join('');
+  const rollBlock = `<div class="dmc-grp"><span class="dmc-lbl">Testes</span>${rollChips}<button class="dmc-chip alt" data-rollcustom="1">+ teste</button></div>`;
+  const npcKeys = Object.keys(sc.npcs||{});
+  const npcBlock = npcKeys.length ? `<div class="dmc-grp"><span class="dmc-lbl">🗣️ NPCs</span>${npcKeys.map(n=>`<button class="dmc-chip" data-npc="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}</div>` : '';
+  const suggs = Array.isArray(st.suggestions) ? st.suggestions : [];
+  const suggBlock = suggs.length ? `<div class="dmc-grp"><span class="dmc-lbl">💡 Ideias</span>${suggs.map((s,i)=>`<button class="dmc-chip" data-sugg="${i}">${escapeHtml(s)}</button>`).join('')}</div>` : '';
+  let actChips = '';
+  if (sc.next) actChips += `<button class="dmc-chip act ${d.sceneComplete?'on':''}" data-scene="1">➡️ Avançar cena</button>`;
+  if (sc.combat && !mpCombatActive(st)) actChips += `<button class="dmc-chip act ${d.combatStart?'on':''}" data-combat="${escapeHtml(sc.combat)}">⚔️ Iniciar combate</button>`;
+  const actBlock = actChips ? `<div class="dmc-grp"><span class="dmc-lbl">Rumo</span>${actChips}</div>` : '';
+  const sendLabel = d.rollM ? '✓ Enviar e rolar' : d.sceneComplete ? '✓ Enviar e avançar' : d.combatStart ? '✓ Enviar e lutar' : '✓ Enviar';
   box.style.display = '';
   box.innerHTML = `
     <div class="dmc-head">🎬 Console do Mestre <span class="dmc-sub">só você vê — os jogadores aguardam</span></div>
-    ${hint}
     <textarea id="dmcText" class="dmc-text" rows="6" placeholder="A narração que os jogadores vão ler…">${escapeHtml(d.text)}</textarea>
+    ${rollRow}
+    <div class="dmc-chips">${objBlock}${rollBlock}${npcBlock}${suggBlock}${actBlock}</div>
     <div class="dmc-actions">
       <button class="btn ghost" id="dmcRedraft" title="A IA gera outra versão">↻ Refazer</button>
       <button class="btn" id="dmcSend">${sendLabel}</button>
     </div>`;
   $('#dmcText').oninput = e => { DM_DRAFT.text = e.target.value; };
+  if (d.rollM){
+    $('#dmcRtipo').oninput = e => { DM_DRAFT.rollM[1] = e.target.value; };
+    $('#dmcRatr').onchange = e => { DM_DRAFT.rollM[2] = e.target.value; };
+    $('#dmcRcd').oninput = e => { DM_DRAFT.rollM[3] = e.target.value; };
+    $('#dmcRcancel').onclick = () => { DM_DRAFT.rollM = null; renderDmConsole(); };
+  }
+  $$('#dmConsole [data-roll]').forEach(b => b.onclick = () => { const p = parsePossibleRoll((sc.possibleRolls||[])[+b.dataset.roll]); dmcQueueRoll(p.tipo, p.atr, 13); });
+  const rc = $('#dmConsole [data-rollcustom]'); if (rc) rc.onclick = () => dmcQueueRoll('Teste','DES',13);
+  $$('#dmConsole [data-npc]').forEach(b => b.onclick = () => dmcSeed(`Faça o NPC ${b.dataset.npc} falar ou reagir agora, coerente com a cena. Termine devolvendo o controle aos jogadores.`));
+  $$('#dmConsole [data-sugg]').forEach(b => b.onclick = () => dmcSeed(`Conduza a cena nesta direção: "${suggs[+b.dataset.sugg]}". Narre em 2-3 frases curtas.`));
+  const scb = $('#dmConsole [data-scene]'); if (scb) scb.onclick = dmcToggleScene;
+  const cmb = $('#dmConsole [data-combat]'); if (cmb) cmb.onclick = () => dmcToggleCombat(cmb.dataset.combat);
   $('#dmcRedraft').onclick = redraftDm;
   $('#dmcSend').onclick = sendDraft;
 }
@@ -1629,8 +1677,11 @@ async function sendDraft(){
   const text = (d.text || '').trim();
   const sd = $('#dmcSend'); if (sd) sd.disabled = true;
   try {
-    applyMpMarkers(d.reply, st);                                  // condições/sugestões/mapa/combate (do reply cru)
-    let sceneComplete = /\[SCENE_COMPLETE\]/.test(d.reply);
+    // combate é decidido pelo CHIP do Mestre (d.combatStart), não pelo marcador cru → ele pode vetar a sugestão da IA
+    const replyForMarkers = d.reply.replace(/\[COMBAT_START:[^\]]*\]/gi, '');
+    applyMpMarkers(replyForMarkers, st);                          // condições/dano/mapa/sugestões (sem auto-combate)
+    if (d.combatStart && !mpCombatActive(st)) mpStartCombat(st, d.combatStart);
+    let sceneComplete = !!d.sceneComplete;                        // idem: avanço pelo chip, não pelo marcador
     if (sceneComplete && mpCombatActive(st) && !mpAllEnemiesDead(st)) sceneComplete = false;
     if (text) st.history.push({ role:'dm', text });
     // 1) rolagem tem prioridade: commita o pedido, o código rola, e a CONSEQUÊNCIA volta ao console
