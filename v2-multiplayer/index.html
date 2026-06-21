@@ -331,8 +331,6 @@
   .conn.live{ color:var(--myco); border:1px solid rgba(90,143,107,0.5); }
   .conn.reconnecting{ color:var(--gold); border:1px solid rgba(217,196,138,0.5); }
   .conn.paused{ color:var(--blood); border:1px solid rgba(196,72,90,0.5); }
-  #musicBtn.on{ color:var(--gold); border-color:var(--gold); }
-  #musicVol{ accent-color:var(--ember); vertical-align:middle; }
   .combat-bar{ background:var(--basalt-900); border-bottom:1px solid var(--blood); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:0.84rem; }
   .cb-round{ font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--blood); white-space:nowrap; }
   .cb-list{ display:flex; gap:6px; flex-wrap:wrap; flex:1; }
@@ -618,8 +616,6 @@
         <div class="loc"><span class="chapter" id="chapterLabel">Capítulo 1</span><span id="locationLabel">—</span></div>
         <div class="row">
           <span class="conn live" id="connDot" style="display:none">● ao vivo</span>
-          <button class="btn ghost" id="musicBtn" style="padding:8px 12px;font-size:0.82rem" title="Trilha sonora (teste)">🎵</button>
-          <input type="range" id="musicVol" min="0" max="0.4" step="0.02" value="0.14" title="Volume da trilha" style="width:64px;display:none">
           <button class="btn ghost" id="sfxBtn" style="padding:8px 12px;font-size:0.82rem" title="Efeitos sonoros (teste)">🔇</button>
           <button class="btn ghost chars-btn" id="charsBtn" style="padding:8px 12px;font-size:0.82rem" title="Ver fichas do grupo">👥</button>
           <button class="btn ghost" id="gmCtrlBtn" style="padding:8px 12px;font-size:0.82rem;display:none" title="Controles do Mestre">⚙ Mestre</button>

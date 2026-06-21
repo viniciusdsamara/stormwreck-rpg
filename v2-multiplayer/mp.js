@@ -43,6 +43,10 @@ function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.reveale
 function mpMarkSceneVisited(st){
   const loc = SCENE_LOC[st.sceneId];
   if (loc){ st.visited = st.visited || []; if (!st.visited.includes(loc)) st.visited.push(loc); }
+  // revela no mapa o destino da PRÓXIMA cena (ex.: em alto-mar já dá pra ver a praia)
+  const sc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.scenes[st.sceneId]) || {};
+  const nextLoc = sc.next && SCENE_LOC[sc.next];
+  if (nextLoc && !mpMapKnown(st, nextLoc)){ st.revealed = st.revealed || []; st.revealed.push(nextLoc); }
 }
 // revela um local avistado/ouvido pelo Mestre ([REVELAR_LOCAL:id]); retorna true se novo
 function mpRevealLocation(st, id){
@@ -124,7 +128,7 @@ function openMapMp(){
     const here = id === SCENE_LOC[st.sceneId], seen = (st.visited||[]).includes(id);
     const tag = here ? '<span class="map-tag here">você está aqui</span>'
               : seen ? '<span class="map-tag seen">visitado</span>'
-              : '<span class="map-tag revealed">revelado pelo Mestre</span>';
+              : '<span class="map-tag revealed">no horizonte</span>';
     $('#mapDetail').innerHTML = `<div class="map-d-head">${loc.icon} <b>${loc.label}</b> ${tag}</div>
       <div class="map-d-chap">${loc.chapter}</div>
       <p>${loc.summary}</p>`;
@@ -683,34 +687,15 @@ function enterGame(){
     $('#charsBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');   // fichas no mobile
     $('#sidebarCloseBtn').onclick = () => $('#sidebar').classList.remove('mobile-open');
     $('#sfxBtn').onclick = toggleSfx;          // efeitos (teste)
-    $('#musicBtn').onclick = toggleMusic;      // trilha (teste)
-    $('#musicVol').oninput = (e) => { if (typeof MUSIC!=='undefined') MUSIC.setVolume(+e.target.value); };
     G_WIRED = true;
   }
-  updateSfxBtn(); updateMusicBtn();
+  updateSfxBtn();
   renderGame();
   if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
 }
 // ---------------- SONS (teste) — diffing do estado dispara os SFX em todos ----------------
 function toggleSfx(){ if (typeof SFX==='undefined') return; SFX.setEnabled(!SFX.isEnabled()); updateSfxBtn(); if (SFX.isEnabled()) SFX.turn(); }
 function updateSfxBtn(){ const b = document.getElementById('sfxBtn'); if (b && typeof SFX!=='undefined') b.textContent = SFX.isEnabled() ? '🔊' : '🔇'; }
-// trilha sonora (teste)
-function toggleMusic(){
-  if (typeof MUSIC==='undefined') return;
-  if (MUSIC.isOn()) MUSIC.stop(); else { MUSIC.start(); musicTick(ROOM && ROOM.state); }
-  updateMusicBtn();
-}
-function updateMusicBtn(){
-  const b = document.getElementById('musicBtn'), v = document.getElementById('musicVol');
-  if (b && typeof MUSIC!=='undefined') b.classList.toggle('on', MUSIC.isOn());
-  if (v && typeof MUSIC!=='undefined'){ v.style.display = MUSIC.isOn() ? '' : 'none'; v.value = MUSIC.getVolume(); }
-}
-// ajusta o clima da trilha conforme o estado do jogo
-function musicTick(st){
-  if (typeof MUSIC==='undefined' || !MUSIC.isOn() || !st) return;
-  const havens = ['claustro','claustro_volta','epilogo'];
-  MUSIC.setMood(mpCombatActive(st) ? 'combat' : (havens.includes(st.sceneId) ? 'haven' : 'exploration'));
-}
 let SND = null;
 function soundTick(st){
   if (typeof SFX === 'undefined' || !SFX.isEnabled()){ SND = null; return; }
@@ -987,7 +972,6 @@ function renderGame(){
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
-  musicTick(st);   // trilha (teste): muda o clima conforme combate/cena
 }
 
 // ---------------- M5: CONTROLES DO MESTRE (só admin) ----------------
