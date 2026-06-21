@@ -1358,27 +1358,31 @@ async function gmCombatEnd(){
   mpEndCombat(ROOM.state, false);
   await saveState(ROOM.state); renderGame();
 }
-// auto-conduz os turnos de inimigos até chegar num PC vivo ou o combate acabar
+// auto-conduz os inimigos: junta os que agem antes do próximo PC vivo e narra
+// TODOS numa ÚNICA chamada à IA (economiza tokens em vez de 1 chamada por inimigo)
 async function mpRunEnemyTurns(st){
   let guard = 0;
   while (mpCombatActive(st) && guard++ < 12){
     if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); break; }
     if (mpAllEnemiesDead(st)){ mpEndCombat(st, true); break; }
-    const cur = mpCurrentActor(st);
-    if (!cur) break;
-    if (cur.kind==='pc'){
-      if ((st.characters[cur.idx]||{}).hp > 0) break;     // PC vivo → ele joga
-      mpAdvanceCombat(st); continue;                       // PC caído: pula a vez dele
+    // coleta os inimigos vivos que agem agora, até o próximo PC vivo
+    const acting = [];
+    while (mpCombatActive(st)){
+      const cur = mpCurrentActor(st);
+      if (!cur) break;
+      if (cur.kind==='pc'){ if ((st.characters[cur.idx]||{}).hp > 0) break; mpAdvanceCombat(st); continue; }
+      const e = st.combat.enemies[cur.idx];
+      if (e.curHp > 0) acting.push(e);
+      mpAdvanceCombat(st);
     }
-    const e = st.combat.enemies[cur.idx];
-    if (e.curHp <= 0){ mpAdvanceCombat(st); continue; }   // inimigo caído: pula
+    if (!acting.length) break;   // chegou num PC vivo → ele joga
     await saveState(st); renderGame();
     await mpSleep(600);
-    const reply = await callDm(st, `[TURNO DO INIMIGO] É a vez de ${e.name} (HP ${e.curHp}/${e.hp}) na iniciativa. Narre a ação dele AGORA, em 1-2 frases, coerente com a cena. Se atacar um herói e acertar, aplique o dano com [DANO:NomeDoHeroi:quantidade] (use o dano ${e.dmg||'1d6'} do inimigo). NÃO peça rolagem ao jogador nem fale como sistema.`);
+    const lista = acting.map(e => `${e.name} (HP ${e.curHp}/${e.hp}, dano ${e.dmg||'1d6'})`).join('; ');
+    const reply = await callDm(st, `[TURNO DOS INIMIGOS] É a vez destes inimigos: ${lista}. Narre as ações deles AGORA, no total em 1-3 frases, coerente com a cena. Para cada herói atingido, aplique [DANO:NomeDoHeroi:quantidade]. NÃO peça rolagem nem fale como sistema.`);
     applyMpMarkers(reply, st);
     const clean = reply.replace(/\[[^\]]*\]/g, '').trim();
     if (clean) st.history.push({ role:'dm', text: clean });
-    mpAdvanceCombat(st);
     await saveState(st); renderGame();
   }
 }
@@ -1486,7 +1490,7 @@ async function onPlayerAction(action){
 const mpSleep = ms => new Promise(r => setTimeout(r, ms));
 function buildMpHistory(st){
   const msgs = [];
-  (st.history||[]).slice(-16).forEach(m => {
+  (st.history||[]).slice(-12).forEach(m => {
     if (m.role==='dm') msgs.push({ role:'assistant', content: m.text });
     else if (m.role==='player') msgs.push({ role:'user', content:`[${m.who}]: ${m.text}` });
   });
@@ -1500,30 +1504,14 @@ async function callDm(st, extraUser){
     if (msgs.length && msgs[msgs.length-1].role === 'user') msgs[msgs.length-1].content += '\n\n' + extraUser;
     else msgs.push({ role:'user', content: extraUser });
   }
-  try { return await callClaudeMp(msgs, buildMpSystemPrompt(st), 700); }
+  try { return await callClaudeMp(msgs, buildMpSystemPrompt(st), 512); }
   catch (e){ return `*(O Mestre tropeçou: ${e.message})*`; }
 }
-function buildMpSystemPrompt(st){
-  const sc = CAMPAIGN.scenes[st.sceneId] || {};
-  const sheets = (st.characters||[]).map(c =>
-    `- ${c.name} (jogador ${c.ownerName||'?'}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
-    `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}.` +
-    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
-    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'') +
-    ` Inventário: ${(c.inventory&&c.inventory.length)?c.inventory.join('; '):'(vazio)'}.` +
-    ((c.conditions&&c.conditions.length)?` Condições ativas: ${c.conditions.join(', ')}.`:'')
-  ).join('\n');
-  const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
-  // bloco de combate: estado em andamento, ou encontro disponível na cena
-  const enc = sc.combat && CAMPAIGN.encounters[sc.combat];
-  let combatBlock = '';
-  if (mpCombatActive(st)){
-    const cb = st.combat;
-    combatBlock = `\n## COMBATE EM ANDAMENTO (rodada ${cb.round})\nOrdem de iniciativa: ${cb.order.map((o,k)=>`${k===cb.turn?'▶ ':''}${o.name}`).join(' > ')}\nInimigos: ${cb.enemies.map(e=>`${e.name}[id:${e.id}] HP ${e.curHp}/${e.hp}, CA ${e.ca}`).join('; ')}\nO sistema controla a iniciativa (de quem é a vez). Quando um inimigo levar dano, emita [HIT:id:quantidade] (ex.: [HIT:${cb.enemies[0]?cb.enemies[0].id:'e1'}:8]). Quando um inimigo atingir um herói, emita [DANO:NomeDoHeroi:quantidade]. Encerre quando todos os inimigos caírem.\n`;
-  } else if (enc){
-    combatBlock = `\n## ENCONTRO DESTA CENA\nSe a situação evoluir para luta, INICIE o combate com [COMBAT_START:${sc.combat}] — o sistema rola a iniciativa e mostra o tracker na tela. Encontro: "${enc.name}".${enc.negotiable?' Este combate é NEGOCIÁVEL: bons testes sociais podem evitá-lo.':''}\n`;
-  }
-  return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
+// Bloco ESTÁTICO do system prompt (idêntico a sessão toda) → habilita prompt caching.
+let MP_STATIC_CACHE = null;
+function mpStaticPrompt(){
+  if (MP_STATIC_CACHE) return MP_STATIC_CACHE;
+  MP_STATIC_CACHE = `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 ${CAMPAIGN.premise||''}
 
 Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês.
@@ -1531,46 +1519,67 @@ Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personage
 REGRAS DE IMERSÃO (siga à risca):
 - Você é SEMPRE o narrador EM PERSONAGEM. NUNCA fale como sistema, IA ou assistente. NUNCA cite "Apêndice A", regras, "dano", "RP", "condição" como pergunta de bastidor, nem peça ao jogador para "escolher o efeito".
 - Quando a ação tem resultado CERTO/automático (ex.: beber um veneno que ele tem, abrir uma porta destrancada, conversar), NARRE direto. Mas quando o resultado é INCERTO (pode dar certo OU errado), você NÃO decide — peça uma rolagem (veja abaixo). Nunca anuncie sucesso ou fracasso de uma ação arriscada sem antes pedir o dado.
-- Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias (ex.: "Em qual dos dois guardas você mira?"). Nunca pergunte sobre mecânica.
-- COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário, magias, recursos listados abaixo) e o que a CENA oferece. Se o jogador descrever usar um item, magia ou recurso que ele NÃO possui (ex.: beber um veneno que não está no inventário), corrija DENTRO da ficção — narre que ele procura mas não há tal item, ou que a tentativa falha — em vez de aceitar a invenção. Nunca dê itens que não existem.
-- ★ REGRA MAIS IMPORTANTE: você NÃO rola dados nem inventa números, e NÃO decide se uma ação arriscada deu certo. Sempre que a ação puder falhar (escalar, saltar, esgueirar-se, persuadir/intimidar/enganar, investigar, atacar, resistir a algo, arrombar, equilibrar-se etc.), sua resposta DEVE conter o marcador [ROLL:tipo:ATRIBUTO:CD] e PARAR ali. O sistema rola o d20 justo e te devolve o número; só ENTÃO, na resposta seguinte, você narra o que aconteceu. Se você narrar o desfecho sem ter pedido o dado, está ERRADO.
-  • tipo = nome da perícia (Atletismo, Acrobacia, Furtividade, Percepção, Persuasão, Intimidação, Enganação, Investigação, Arcanismo...), ou 'save', ou 'ataque'.
-  • ATRIBUTO = FOR, DES, CON, INT, SAB ou CAR.
-  • CD = dificuldade: 10 fácil, 12-13 médio, 15 difícil, 18+ muito difícil. Para 'ataque' use CD 0.
-  • Formato EXATO, em colchetes, sem espaços extras: [ROLL:Atletismo:FOR:12]  ·  [ROLL:save:DES:14]  ·  [ROLL:ataque:DES:0]
-  • Uma rolagem por vez. Só dispense o dado em ações triviais sem risco.
+- Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias. Nunca pergunte sobre mecânica.
+- COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário/magias) e o que a CENA oferece. Se descrever usar algo que NÃO possui, corrija DENTRO da ficção. Nunca dê itens que não existem.
+- ★ REGRA MAIS IMPORTANTE: você NÃO rola dados nem inventa números. Sempre que a ação puder falhar (escalar, esgueirar-se, persuadir/intimidar/enganar, investigar, atacar, resistir, arrombar etc.), sua resposta DEVE conter [ROLL:tipo:ATRIBUTO:CD] e PARAR ali. O sistema rola o d20 justo e devolve o número; só ENTÃO você narra o desfecho. Narrar o resultado sem pedir o dado está ERRADO.
+  • tipo = perícia (Atletismo, Furtividade, Percepção, Persuasão, Intimidação, Enganação, Investigação...), 'save' ou 'ataque'. ATRIBUTO = FOR/DES/CON/INT/SAB/CAR. CD: 10 fácil, 13 médio, 15 difícil, 18+ muito difícil; 'ataque' usa CD 0.
+  • Formato exato, sem espaços: [ROLL:Atletismo:FOR:12] · [ROLL:save:DES:14] · [ROLL:ataque:DES:0]. Uma rolagem por vez.
 
-## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
+## MARCADORES (o sistema processa e REMOVE do texto — não os explique)
+- Combate: [COMBAT_START:idDoEncontro] inicia (rola iniciativa). Dano a inimigo: [HIT:idDoInimigo:n]. Dano a herói: [DANO:NomeDoHeroi:n]. Respeite a iniciativa — o sistema diz de quem é a vez.
+- Condição (Apêndice A): [CONDICAO:NomeDoHeroi:Condição] — ex.: [CONDICAO:Garrett:Envenenado]; ao acabar: [REMOVER_CONDICAO:NomeDoHeroi:Condição]. Válidas: ${Object.keys(RULES.conditions).join(', ')}.
+- Avistou área nova do mapa: [REVELAR_LOCAL:id]. Não cite o nome de um local desconhecido antes de revelá-lo.
+- Cena cumprida (hora de avançar de local/capítulo): termine com [SCENE_COMPLETE]. O sistema cuida da transição/nível/descanso. Não use cedo demais.
+- SEMPRE termine com 2-3 sugestões curtas: [SUGESTOES: ação 1 | ação 2 | ação 3] (exceto se emitir [SCENE_COMPLETE]).
+
+## EXEMPLOS (peça o dado e PARE quando for arriscado)
+Jogador [Bjorn]: "Tento escalar o mastro escorregadio." Você: A madeira encharcada cede sob as botas. [ROLL:Atletismo:FOR:13]
+Jogador [Lia]: "Tento convencer o capitão." Você: O capitão cruza os braços, desconfiado. [ROLL:Persuasão:CAR:15]
+Jogador [Bjorn]: "Ataco o esqueleto." Você: Bjorn ruge e desce a lâmina. [ROLL:ataque:FOR:0]`;
+  return MP_STATIC_CACHE;
+}
+// Bloco DINÂMICO (cena + fichas + combate + mapa) — muda por turno.
+function mpDynamicPrompt(st){
+  const sc = CAMPAIGN.scenes[st.sceneId] || {};
+  const sheets = (st.characters||[]).map(c =>
+    `- ${c.name} (${c.ownerName||'?'}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
+    `Atrib: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}.` +
+    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
+    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'') +
+    ` Inventário: ${(c.inventory&&c.inventory.length)?c.inventory.join('; '):'(vazio)'}.` +
+    ((c.conditions&&c.conditions.length)?` Condições: ${c.conditions.join(', ')}.`:'')
+  ).join('\n');
+  const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
+  const enc = sc.combat && CAMPAIGN.encounters[sc.combat];
+  let combatBlock = '';
+  if (mpCombatActive(st)){
+    const cb = st.combat;
+    combatBlock = `\n## COMBATE (rodada ${cb.round}) — o sistema controla a iniciativa\nOrdem: ${cb.order.map((o,k)=>`${k===cb.turn?'▶ ':''}${o.name}`).join(' > ')}\nInimigos: ${cb.enemies.map(e=>`${e.name}[id:${e.id}] HP ${e.curHp}/${e.hp}, CA ${e.ca}`).join('; ')}\nDano a inimigo: [HIT:id:n]. Dano a herói: [DANO:Nome:n].\n`;
+  } else if (enc){
+    combatBlock = `\n## ENCONTRO DESTA CENA\nSe virar luta, inicie com [COMBAT_START:${sc.combat}]. Encontro: "${enc.name}".${enc.negotiable?' NEGOCIÁVEL (bons testes sociais podem evitá-lo).':''}\n`;
+  }
+  const mapList = Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${mpMapKnown(st,id)?m.label:'(desconhecido)'}`).join('\n');
+  return `## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
 ${sc.summary||''}
 Objetivos: ${(sc.objectives||[]).join('; ')}
-${sc.npcs?'':''}
 
-## NPCs DESTA CENA
+## NPCs
 ${npcs}
 
-## PERSONAGENS DO GRUPO
+## GRUPO
 ${sheets}
 ${combatBlock}
-## MARCADORES (o sistema processa e REMOVE do texto exibido — não os explique)
-- Combate: comece com [COMBAT_START:idDoEncontro] (o sistema rola iniciativa). Dano a inimigo: [HIT:idDoInimigo:quantidade]. Dano a herói: [DANO:NomeDoHeroi:quantidade]. Em combate, respeite a ordem de iniciativa — o sistema diz de quem é a vez.
-- Quando um personagem passar a sofrer uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:${(st.characters&&st.characters[0]?st.characters[0].name:'Garrett')}:Envenenado]. Quando a condição acabar: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
-- Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. As áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas — NÃO mencione o nome de um local desconhecido antes de revelá-lo.
-- Quando os OBJETIVOS da cena atual estiverem cumpridos e for hora de a história seguir para o próximo local/capítulo, encerre sua narração com [SCENE_COMPLETE]. O sistema cuida da transição, do texto da próxima cena, da subida de nível e do descanso — você NÃO precisa narrar a viagem nem anunciar a mudança. Não use cedo demais: só quando a cena estiver de fato resolvida.
-- SEMPRE termine a resposta com 2 ou 3 sugestões curtas de ação para o próximo jogador, no formato exato: [SUGESTOES: ação curta 1 | ação curta 2 | ação curta 3]. São atalhos clicáveis; o jogador ainda pode digitar livremente. (Não inclua sugestões se você emitir [SCENE_COMPLETE].)
+## MAPA (ids para [REVELAR_LOCAL])
+${mapList}
 
-## MAPA DA ILHA (ids para [REVELAR_LOCAL])
-${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mpMapKnown(st,id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não cite o nome até revelar/alcançar)'}`).join('\n')}
-
-## EXEMPLOS — siga este padrão SEMPRE que a ação for arriscada (peça o dado e PARE)
-Jogador [Bjorn]: "Tento escalar o mastro escorregadio durante a tempestade."
-Você: A madeira encharcada cede sob as botas; só a força bruta o levará ao topo. [ROLL:Atletismo:FOR:13]
-Jogador [Lia]: "Tento convencer o capitão a mudar de rota."
-Você: O capitão cruza os braços, o maxilar tenso. Suas palavras terão de ser muito boas. [ROLL:Persuasão:CAR:15]
-Jogador [Bjorn]: "Ataco o esqueleto com meu machado."
-Você: Bjorn ruge e desce a lâmina num arco selvagem. [ROLL:ataque:FOR:0]
-(Em todos os casos você PARA após o marcador. O sistema rola e devolve o número; aí você narra o sucesso ou a falha.)
-
-Responda à ação do jogador. Se houver QUALQUER incerteza, peça [ROLL:...] e pare. Caso contrário, narre e termine com as [SUGESTOES:...].`;
+Responda à ação. Se houver incerteza, peça [ROLL:...] e pare; senão narre e termine com [SUGESTOES:...].`;
+}
+// system como blocos: estático (cacheado) + dinâmico → corta ~90% do input repetido
+function buildMpSystemPrompt(st){
+  return [
+    { type:'text', text: mpStaticPrompt(), cache_control:{ type:'ephemeral' } },
+    { type:'text', text: mpDynamicPrompt(st) },
+  ];
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });
