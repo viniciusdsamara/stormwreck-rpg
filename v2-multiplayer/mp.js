@@ -741,11 +741,11 @@ function renderGame(){
   const levelingUp = !!Object.keys(luPend).length;
   const mestreAusente = !amIAdmin() && !MESTRE_PRESENTE;
   const locked = !!st.busy || TYPING || localBusy || levelingUp || mestreAusente;
-  const myTurn = !enemyTurn && turnChar && turnChar.owner === ME.id && !locked;
+  const myTurn = !enemyTurn && turnChar && turnChar.hp > 0 && turnChar.owner === ME.id && !locked;
   $('#turnIndicator').innerHTML = mestreAusente
     ? '⏸ <b style="color:var(--blood)">Mestre ausente</b> — partida pausada. Aguardando o Mestre voltar…'
     : (levelingUp
-      ? '⬆ Subida de nível — quem tem o card pulsando deve tocar nele e escolher.'
+      ? `⬆ Subida de nível — toque no card pulsando e escolha.${amIAdmin()?' (o Mestre pode escolher por um jogador ausente)':''}`
       : (st.busy ? 'O Mestre está pensando…'
         : (TYPING ? 'O Mestre está narrando…'
           : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
@@ -801,6 +801,7 @@ function renderGmModal(){
 
 async function gmAdjustHp(idx, delta){
   if (!amIAdmin()) return;
+  if (engineBusy){ toast('Aguarde o Mestre terminar a narração.'); return; }   // evita perder a edição
   const st = ROOM.state || {}; const c = (st.characters||[])[idx]; if (!c) return;
   c.hp = Math.max(0, Math.min(c.maxHp, (c.hp||0) + delta));
   await saveState(st);
@@ -809,6 +810,7 @@ async function gmAdjustHp(idx, delta){
 
 async function gmSkipTurn(){
   if (!amIAdmin()) return;
+  if (engineBusy){ toast('Aguarde o Mestre terminar a narração.'); return; }
   const st = ROOM.state || {};
   if (!st.characters || st.characters.length < 2) return;
   const skipped = st.characters[st.turnIndex||0];
@@ -1077,7 +1079,8 @@ function mpAdvanceScene(st){
 // ---------------- COMBATE (tracker de iniciativa + HP, espelhado a todos) ----------------
 function mpCombatActive(st){ return !!(st.combat && st.combat.order && st.combat.order.length); }
 function mpCurrentActor(st){ return mpCombatActive(st) ? st.combat.order[st.combat.turn] : null; }
-function mpAllEnemiesDead(st){ return !!st.combat && st.combat.enemies.every(e => e.curHp <= 0); }
+function mpAllEnemiesDead(st){ return !!st.combat && (st.combat.enemies||[]).every(e => e.curHp <= 0); }
+function mpAllPcsDead(st){ return !!(st.characters && st.characters.length) && st.characters.every(c => (c.hp||0) <= 0); }
 // o personagem que pode AGIR agora (em combate, o PC da iniciativa; fora dela, o do rodízio)
 function mpActivePc(st){
   if (mpCombatActive(st)){ const cur = mpCurrentActor(st); return (cur && cur.kind==='pc') ? st.characters[cur.idx] : null; }
@@ -1136,7 +1139,7 @@ function renderCombatBar(st){
 }
 // admin: pular o turno atual (jogador AFK ou inimigo travado)
 async function gmCombatSkip(){
-  if (!amIAdmin() || !mpCombatActive(ROOM.state) || ROOM.state.busy) return;
+  if (!amIAdmin() || !mpCombatActive(ROOM.state) || ROOM.state.busy || engineBusy) return;
   const st = ROOM.state;
   mpAdvanceCombat(st);
   await saveState(st); renderGame();
@@ -1151,10 +1154,15 @@ async function gmCombatEnd(){
 // auto-conduz os turnos de inimigos até chegar num PC vivo ou o combate acabar
 async function mpRunEnemyTurns(st){
   let guard = 0;
-  while (mpCombatActive(st) && guard++ < 8){
+  while (mpCombatActive(st) && guard++ < 12){
+    if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); break; }
     if (mpAllEnemiesDead(st)){ mpEndCombat(st, true); break; }
     const cur = mpCurrentActor(st);
-    if (!cur || cur.kind==='pc') break;                  // chegou num PC vivo → ele joga
+    if (!cur) break;
+    if (cur.kind==='pc'){
+      if ((st.characters[cur.idx]||{}).hp > 0) break;     // PC vivo → ele joga
+      mpAdvanceCombat(st); continue;                       // PC caído: pula a vez dele
+    }
     const e = st.combat.enemies[cur.idx];
     if (e.curHp <= 0){ mpAdvanceCombat(st); continue; }   // inimigo caído: pula
     await saveState(st); renderGame();
@@ -1177,7 +1185,9 @@ async function saveState(st){
 function advanceTurn(st){
   if (mpCombatActive(st)){ mpAdvanceCombat(st); return; }   // em combate, segue a iniciativa
   if (!st.characters || !st.characters.length) return;
-  st.turnIndex = ((st.turnIndex||0) + 1) % st.characters.length;
+  let g = 0;                                                // fora de combate, pula personagens caídos
+  do { st.turnIndex = ((st.turnIndex||0) + 1) % st.characters.length; }
+  while ((st.characters[st.turnIndex]||{}).hp <= 0 && ++g < st.characters.length);
 }
 // jogador envia ação → vai para a fila room_actions
 async function submitAction(){
@@ -1226,24 +1236,29 @@ async function onPlayerAction(action){
     let rolls = 0;
     // ciclo do Mestre: pode pedir uma rolagem [ROLL]; o CÓDIGO rola e devolve o número
     while (true){
-      const sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
-      const rollM = (rolls < 4) ? reply.match(ROLL_RE) : null;
-      applyMpMarkers(reply, st);                             // condições + sugestões + mapa
+      const rawRoll = reply.match(ROLL_RE);
+      const rollM = (rolls < 4) ? rawRoll : null;
+      applyMpMarkers(reply, st);                             // condições + sugestões + mapa + combate
+      let sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
+      if (sceneComplete && mpCombatActive(st) && !mpAllEnemiesDead(st)) sceneComplete = false;   // não pula cena no meio do combate
       const clean = reply.replace(/\[[^\]]*\]/g, '').trim(); // remove marcadores do texto exibido
       if (clean) st.history.push({ role:'dm', text: clean });
-      if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); break; }
+      // 1) rolagem tem PRIORIDADE (mesmo se o Mestre mandar [SCENE_COMPLETE] junto)
       if (rollM && actor){
         rolls++;
-        await saveState(st);                                // mostra o pedido do Mestre já
-        renderGame();
+        await saveState(st); renderGame();                  // mostra o pedido do Mestre já
         await mpSleep(750);                                 // um respiro antes do dado cair
         const card = doMpRoll(actor, rollM);                // o CÓDIGO rola (justo)
         st.history.push(card);
-        await saveState(st);                                // espelha o card a todos (ainda "busy")
-        renderGame();
+        await saveState(st); renderGame();                  // espelha o card a todos (ainda "busy")
         reply = await callDm(st, mpRollResultText(actor, card));   // devolve o número ao Mestre
         continue;
       }
+      // pediu rolagem mas estourou o teto de 4: NÃO perde o turno — mantém a vez com o jogador
+      if (rawRoll && !rollM){ if (!clean) st.history.push({ role:'dm', text:'…' }); break; }
+      // 2) fim de cena
+      if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); break; }
+      // 3) turno normal
       if (!clean) st.history.push({ role:'dm', text:'…' });
       if (mpCombatActive(st)){
         if (hadCombat) advanceTurn(st);                     // já estava em combate: passa o ponteiro do PC que agiu
