@@ -59,3 +59,68 @@ const SFX = (() => {
     scene()  { tone({freq:330,type:'triangle',dur:0.45,vol:0.14,slideTo:440}); },
   };
 })();
+
+// ====================================================================
+//  MUSIC — trilha procedural (pad atmosférico + melodia esparsa), sem
+//  arquivos. Muda de clima conforme o jogo (exploração/combate/refúgio).
+//  Em produção, trocaríamos por faixas curadas/IA (Suno/Udio) em loop.
+// ====================================================================
+const MUSIC = (() => {
+  let ctx = null, master = null, nodes = [], melodyTimer = null, on = false, vol = 0.14, mood = 'exploration';
+  const MOODS = {
+    exploration: { chord:[220, 277.18, 329.63],          cutoff:900,  trem:0.10, scale:[440,493.88,587.33,659.25,739.99] }, // A maj7 calmo
+    combat:      { chord:[146.83, 174.61, 220, 233.08],  cutoff:620,  trem:5.0,  scale:[293.66,349.23,415.30,440] },        // Dm + tensão pulsante
+    tension:     { chord:[110, 164.81],                  cutoff:520,  trem:0.18, scale:[440,466.16,523.25] },                // quinta vazia
+    haven:       { chord:[261.63, 329.63, 392.0],        cutoff:1100, trem:0.08, scale:[523.25,587.33,659.25,783.99] },      // C maj quente
+  };
+  function ac(){ if (!ctx){ try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } return ctx; }
+  function teardown(){
+    if (melodyTimer){ clearInterval(melodyTimer); melodyTimer = null; }
+    nodes.forEach(n => { try { n.stop(); } catch(e){} try { n.disconnect(); } catch(e){} });
+    nodes = [];
+    if (master){ try { master.disconnect(); } catch(e){} master = null; }
+  }
+  function build(){
+    const c = ac(); if (!c) return;
+    teardown();
+    const M = MOODS[mood] || MOODS.exploration;
+    master = c.createGain(); master.gain.value = 0.0001; master.connect(c.destination);
+    const filt = c.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = M.cutoff; filt.connect(master);
+    // tremolo (movimento do pad)
+    const trem = c.createGain(); trem.gain.value = 0.8; trem.connect(filt);
+    const lfo = c.createOscillator(); const lfoGain = c.createGain();
+    lfo.frequency.value = M.trem; lfoGain.gain.value = 0.18; lfo.connect(lfoGain); lfoGain.connect(trem.gain); lfo.start(); nodes.push(lfo);
+    // acorde sustentado
+    M.chord.forEach((f, i) => {
+      const o = c.createOscillator(); o.type = i === 0 ? 'sine' : 'triangle'; o.frequency.value = f;
+      const g = c.createGain(); g.gain.value = 0.16 / (i + 1); o.connect(g); g.connect(trem); o.start(); nodes.push(o);
+    });
+    master.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), c.currentTime + 2.0);   // fade-in
+    // melodia esparsa (caixinha de música)
+    melodyTimer = setInterval(() => {
+      if (!on || Math.random() < 0.45) return;
+      const sc = M.scale, f = sc[Math.floor(Math.random() * sc.length)];
+      const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const g = c.createGain(); const t = c.currentTime;
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol * 0.5, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+      o.connect(g); g.connect(filt); o.start(t); o.stop(t + 1.4);
+    }, 2600);
+  }
+  return {
+    isOn: () => on,
+    getVolume: () => vol,
+    unlock(){ const c = ac(); if (c && c.state === 'suspended'){ try { c.resume(); } catch(e){} } },
+    setVolume(v){ vol = Math.max(0, Math.min(1, v)); const c = ac(); if (master && c){ master.gain.cancelScheduledValues(c.currentTime); master.gain.linearRampToValueAtTime(Math.max(0.0002, vol), c.currentTime + 0.3); } try { localStorage.setItem('musicVol', String(vol)); } catch(e){} },
+    start(){ on = true; this.unlock(); build(); try { localStorage.setItem('musicOn','1'); } catch(e){} },
+    stop(){ on = false; const c = ac(); if (master && c){ master.gain.cancelScheduledValues(c.currentTime); master.gain.linearRampToValueAtTime(0.0001, c.currentTime + 1.0); setTimeout(teardown, 1100); } else teardown(); try { localStorage.setItem('musicOn','0'); } catch(e){} },
+    setMood(m){
+      if (!MOODS[m] || m === mood) return;
+      mood = m; if (!on) return;
+      const c = ac();
+      if (master && c){ master.gain.cancelScheduledValues(c.currentTime); master.gain.linearRampToValueAtTime(0.0001, c.currentTime + 0.7); }
+      setTimeout(() => { if (on) build(); }, 760);   // recomeça no novo clima (dip curto)
+    },
+  };
+  // volume salvo
+})();
+try { const v = parseFloat(localStorage.getItem('musicVol')); if (!isNaN(v)) MUSIC.setVolume(v); } catch(e){}

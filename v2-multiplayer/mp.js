@@ -682,16 +682,35 @@ function enterGame(){
     $('#mapBtn').onclick = openMapMp;          // mapa da ilha
     $('#charsBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');   // fichas no mobile
     $('#sidebarCloseBtn').onclick = () => $('#sidebar').classList.remove('mobile-open');
-    $('#sfxBtn').onclick = toggleSfx;          // sons (teste)
+    $('#sfxBtn').onclick = toggleSfx;          // efeitos (teste)
+    $('#musicBtn').onclick = toggleMusic;      // trilha (teste)
+    $('#musicVol').oninput = (e) => { if (typeof MUSIC!=='undefined') MUSIC.setVolume(+e.target.value); };
     G_WIRED = true;
   }
-  updateSfxBtn();
+  updateSfxBtn(); updateMusicBtn();
   renderGame();
   if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
 }
 // ---------------- SONS (teste) — diffing do estado dispara os SFX em todos ----------------
 function toggleSfx(){ if (typeof SFX==='undefined') return; SFX.setEnabled(!SFX.isEnabled()); updateSfxBtn(); if (SFX.isEnabled()) SFX.turn(); }
 function updateSfxBtn(){ const b = document.getElementById('sfxBtn'); if (b && typeof SFX!=='undefined') b.textContent = SFX.isEnabled() ? '🔊' : '🔇'; }
+// trilha sonora (teste)
+function toggleMusic(){
+  if (typeof MUSIC==='undefined') return;
+  if (MUSIC.isOn()) MUSIC.stop(); else { MUSIC.start(); musicTick(ROOM && ROOM.state); }
+  updateMusicBtn();
+}
+function updateMusicBtn(){
+  const b = document.getElementById('musicBtn'), v = document.getElementById('musicVol');
+  if (b && typeof MUSIC!=='undefined') b.classList.toggle('on', MUSIC.isOn());
+  if (v && typeof MUSIC!=='undefined'){ v.style.display = MUSIC.isOn() ? '' : 'none'; v.value = MUSIC.getVolume(); }
+}
+// ajusta o clima da trilha conforme o estado do jogo
+function musicTick(st){
+  if (typeof MUSIC==='undefined' || !MUSIC.isOn() || !st) return;
+  const havens = ['claustro','claustro_volta','epilogo'];
+  MUSIC.setMood(mpCombatActive(st) ? 'combat' : (havens.includes(st.sceneId) ? 'haven' : 'exploration'));
+}
 let SND = null;
 function soundTick(st){
   if (typeof SFX === 'undefined' || !SFX.isEnabled()){ SND = null; return; }
@@ -967,7 +986,8 @@ function renderGame(){
   // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
-  soundTick(st);   // sons (teste): dispara SFX conforme o estado muda
+  soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
+  musicTick(st);   // trilha (teste): muda o clima conforme combate/cena
 }
 
 // ---------------- M5: CONTROLES DO MESTRE (só admin) ----------------
