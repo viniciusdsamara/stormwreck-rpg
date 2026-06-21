@@ -500,7 +500,7 @@ function mpSheetHtml(c, i){
   }).join('');
   const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
   const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
-  const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag" title="${escapeHtml(((RULES.conditions[t]||{}).desc)||'')}">${escapeHtml(t)}</span>`).join('')}</div>` : '';
+  const conds  = (c.conditions||[]).length ? `<h4>Condições ativas</h4><div class="sh-conds">${c.conditions.map(t=>`<div class="sh-cond"><span class="sh-cond-name">${escapeHtml(t)}</span><span class="sh-cond-desc">${escapeHtml(((RULES.conditions[t]||{}).desc)||'Sem descrição.')}</span></div>`).join('')}</div>` : '';
   const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv${c.spellSlots.level||1} ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.spellSlots2&&c.spellSlots2.max?`, nv2 ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}`:''}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
   const known  = ((c.cantripsChosen&&c.cantripsChosen.length)||(c.spellsChosen&&c.spellsChosen.length))
     ? `<h4>Magias conhecidas</h4><div class="sh-tags">${(c.cantripsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)} <small>(truque)</small></span>`).join('')}${(c.spellsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)}</span>`).join('')}</div>` : '';
@@ -641,13 +641,22 @@ function buildMpSystemPrompt(st){
     `- ${c.name} (jogador ${c.ownerName||'?'}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
     `Atributos: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}.` +
     ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
-    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'')
+    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'') +
+    ` Inventário: ${(c.inventory&&c.inventory.length)?c.inventory.join('; '):'(vazio)'}.` +
+    ((c.conditions&&c.conditions.length)?` Condições ativas: ${c.conditions.join(', ')}.`:'')
   ).join('\n');
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
   return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 ${CAMPAIGN.premise||''}
 
-Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês. NÃO role dados nem decida sucesso/falha de testes incertos — isso é do sistema; narre de forma aberta e plausível.
+Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês.
+
+REGRAS DE IMERSÃO (siga à risca):
+- Você é SEMPRE o narrador EM PERSONAGEM. NUNCA fale como sistema, IA ou assistente. NUNCA cite "Apêndice A", regras, "dano", "RP", "condição" como pergunta de bastidor, nem peça ao jogador para "escolher o efeito".
+- Quando a ação do jogador tem consequência clara (ex.: beber veneno, enfiar a mão no fogo, provocar um inimigo), DECIDA a consequência mais plausível e NARRE-A já acontecendo. Se for o caso, aplique a condição pelo marcador. Não peça permissão.
+- Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias (ex.: "Em qual dos dois guardas você mira?"). Nunca pergunte sobre mecânica.
+- COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário, magias, recursos listados abaixo) e o que a CENA oferece. Se o jogador descrever usar um item, magia ou recurso que ele NÃO possui (ex.: beber um veneno que não está no inventário), corrija DENTRO da ficção — narre que ele procura mas não há tal item, ou que a tentativa falha — em vez de aceitar a invenção. Nunca dê itens que não existem.
+- NÃO role dados nem decida sucesso/falha de testes incertos — isso é do sistema. Para o resto, narre de forma plausível.
 
 ## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
 ${sc.summary||''}

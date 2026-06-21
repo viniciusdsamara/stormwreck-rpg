@@ -144,6 +144,10 @@
   .sh-prof-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:640px){ .sh-prof-grid{ grid-template-columns:1fr;} }
   .sh-prof-lbl{ display:block; font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--stone-300); margin:0 0 5px; }
+  .sh-conds{ display:flex; flex-direction:column; gap:6px; }
+  .sh-cond{ background:rgba(196,72,90,0.10); border:1px solid var(--blood); border-radius:9px; padding:8px 11px; }
+  .sh-cond-name{ display:block; font-weight:700; color:var(--blood); font-size:0.82rem; margin-bottom:2px; }
+  .sh-cond-desc{ display:block; color:var(--stone-300); font-size:0.78rem; line-height:1.35; }
   /* ---- criação de personagem ---- */
   .hide{ display:none; }
   .field{ display:block; margin-bottom:6px; } .field>span{ display:block; font-size:0.74rem; color:var(--stone-300); margin-bottom:5px; }
