@@ -13,6 +13,129 @@ let PENDING_CODE = (new URLSearchParams(location.search).get('sala') || '').toUp
 function roomLink(){ return `${location.origin}${location.pathname}?sala=${ROOM.code}`; }
 function clearUrlCode(){ try { history.replaceState(null, '', location.pathname); } catch(e){} }
 
+// ---------------- MAPA DA ILHA (mesmas regras do V1: névoa de guerra) ----------------
+const MAP_LOCS = {
+  praia:        { x:208, y:322, label:"Praia de Dragon's Rest", chapter:'Cap. 1', icon:'⚓',
+                  summary:'Onde o naufrágio do Próspero lançou os heróis. Areia escura e destroços fumegantes.' },
+  claustro:     { x:250, y:236, label:"Claustro de Dragon's Rest", chapter:'Cap. 1', icon:'🏯',
+                  summary:'Refúgio dos monges sob a guarda da dragão de bronze Runara. Porto seguro da campanha.' },
+  cavernas:     { x:118, y:262, label:'Cavernas Seagrow', chapter:'Cap. 2', icon:'🍄',
+                  summary:'Túneis úmidos tomados por fungos myconídeos — e a tumba selada de Sharruth.' },
+  naufragio:    { x:168, y:108, label:'Naufrágio Amaldiçoado', chapter:'Cap. 3', icon:'☠️',
+                  summary:'Casco apodrecido na costa norte, assombrado por mortos-vivos e maré sombria.' },
+  observatorio: { x:236, y:64,  label:'Observatório do Penhasco', chapter:'Cap. 4', icon:'🔭',
+                  summary:'No alto do penhasco de basalto, palco do confronto final com a dragão das tempestades.' }
+};
+// cada cena do roteiro → local no mapa (chegada = alto-mar, sem local)
+const SCENE_LOC = {
+  praia:'praia',
+  claustro:'claustro', claustro_volta:'claustro', epilogo:'claustro',
+  cavernas:'cavernas', sharruth:'cavernas',
+  naufragio:'naufragio', observatorio:'observatorio'
+};
+const MAP_ROUTE = ['praia','claustro','cavernas','claustro','naufragio','observatorio'];
+
+function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
+// marca o local da cena atual como visitado (roda na engine do admin)
+function mpMarkSceneVisited(st){
+  const loc = SCENE_LOC[st.sceneId];
+  if (loc){ st.visited = st.visited || []; if (!st.visited.includes(loc)) st.visited.push(loc); }
+}
+// revela um local avistado/ouvido pelo Mestre ([REVELAR_LOCAL:id]); retorna true se novo
+function mpRevealLocation(st, id){
+  if (!MAP_LOCS[id] || mpMapKnown(st, id)) return false;
+  st.revealed = st.revealed || []; st.revealed.push(id);
+  return true;
+}
+function mapSvg(st){
+  const cur = SCENE_LOC[st.sceneId];
+  let paths = '';
+  for (let i = 0; i < MAP_ROUTE.length - 1; i++){
+    const a = MAP_LOCS[MAP_ROUTE[i]], b = MAP_LOCS[MAP_ROUTE[i+1]];
+    if (!a || !b) continue;
+    if (!mpMapKnown(st, MAP_ROUTE[i]) || !mpMapKnown(st, MAP_ROUTE[i+1])) continue;
+    const done = (st.visited||[]).includes(MAP_ROUTE[i]) && (st.visited||[]).includes(MAP_ROUTE[i+1]);
+    paths += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="map-route ${done?'done':''}" />`;
+  }
+  const markers = Object.entries(MAP_LOCS).map(([id, m]) => {
+    const isCur = id === cur, visited = (st.visited||[]).includes(id), known = mpMapKnown(st, id);
+    if (!known){
+      return `<g class="map-marker unknown" data-loc="${id}" tabindex="0" role="button" aria-label="Área desconhecida">
+        <circle cx="${m.x}" cy="${m.y}" r="11" class="map-dot" />
+        <text x="${m.x}" y="${m.y+4}" class="map-icon" text-anchor="middle">?</text>
+        <text x="${m.x}" y="${m.y+26}" class="map-lbl" text-anchor="middle">???</text>
+      </g>`;
+    }
+    const cls = isCur ? 'cur' : (visited ? 'seen' : 'revealed');
+    return `<g class="map-marker ${cls}" data-loc="${id}" tabindex="0" role="button" aria-label="${m.label}">
+      ${isCur ? `<circle cx="${m.x}" cy="${m.y}" r="16" class="map-pulse" />` : ''}
+      <circle cx="${m.x}" cy="${m.y}" r="11" class="map-dot" />
+      <text x="${m.x}" y="${m.y+4}" class="map-icon" text-anchor="middle">${m.icon}</text>
+      <text x="${m.x}" y="${m.y+26}" class="map-lbl" text-anchor="middle">${m.label}</text>
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 360 400" xmlns="http://www.w3.org/2000/svg" class="map-svg" aria-label="Mapa de Stormwreck Isle">
+    <defs>
+      <radialGradient id="mapSea" cx="50%" cy="40%" r="75%">
+        <stop offset="0%" stop-color="#15303f"/><stop offset="100%" stop-color="#0a1822"/>
+      </radialGradient>
+      <linearGradient id="mapLand" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3a3030"/><stop offset="100%" stop-color="#241c20"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="360" height="400" fill="url(#mapSea)"/>
+    <g class="map-waves" opacity="0.18">
+      <path d="M0 350 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0" fill="none" stroke="#5fa8c7" stroke-width="1.2"/>
+      <path d="M0 372 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0" fill="none" stroke="#5fa8c7" stroke-width="1.2"/>
+    </g>
+    <path class="map-island" fill="url(#mapLand)" stroke="#52443f" stroke-width="2"
+      d="M150 40 C 200 30 250 48 268 90 C 300 110 312 150 296 188 C 318 222 300 270 262 286
+         C 256 322 214 350 178 338 C 140 356 92 332 86 292 C 52 280 70 236 96 224
+         C 82 188 104 150 138 142 C 130 96 120 56 150 40 Z"/>
+    <path class="map-island-inner" fill="none" stroke="#6b574f" stroke-width="1" opacity="0.5"
+      d="M150 70 C 188 64 228 86 232 120 C 262 150 250 196 220 210 C 224 250 190 286 158 280
+         C 124 292 104 256 116 230 C 92 206 110 168 140 166 C 132 120 130 86 150 70 Z"/>
+    ${paths}
+    ${markers}
+  </svg>`;
+}
+function openMapMp(){
+  const st = ROOM.state || {};
+  $('#mapCard').innerHTML = `
+    <div class="map-head">
+      <div><h3>🗺️ Stormwreck Isle</h3><span class="map-sub">A jornada até aqui</span></div>
+      <button class="rp-close" id="mapCloseBtn" title="Fechar">✕</button>
+    </div>
+    <div class="map-body">${mapSvg(st)}</div>
+    <div class="map-detail" id="mapDetail"></div>`;
+  $('#mapModal').classList.remove('hide');
+  $('#mapModal').onclick = e => { if (e.target.id === 'mapModal') closeMapMp(); };
+  $('#mapCloseBtn').onclick = closeMapMp;
+  const showDetail = id => {
+    const loc = MAP_LOCS[id]; if (!loc) return;
+    if (!mpMapKnown(st, id)){
+      $('#mapDetail').innerHTML = `<div class="map-d-head">❔ <b>Área desconhecida</b> <span class="map-tag dim">não revelada</span></div>
+        <p>Uma região da ilha que vocês ainda não alcançaram nem ouviram falar. Explore ou deixe o Mestre revelá-la.</p>`;
+      return;
+    }
+    const here = id === SCENE_LOC[st.sceneId], seen = (st.visited||[]).includes(id);
+    const tag = here ? '<span class="map-tag here">você está aqui</span>'
+              : seen ? '<span class="map-tag seen">visitado</span>'
+              : '<span class="map-tag revealed">revelado pelo Mestre</span>';
+    $('#mapDetail').innerHTML = `<div class="map-d-head">${loc.icon} <b>${loc.label}</b> ${tag}</div>
+      <div class="map-d-chap">${loc.chapter}</div>
+      <p>${loc.summary}</p>`;
+  };
+  $$('#mapCard .map-marker').forEach(g => {
+    g.onclick = () => showDetail(g.dataset.loc);
+    g.onkeydown = e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); showDetail(g.dataset.loc); } };
+  });
+  const curLoc = SCENE_LOC[st.sceneId];
+  if (curLoc) showDetail(curLoc);
+  else $('#mapDetail').innerHTML = `<p>Vocês ainda estão em alto-mar, a caminho da ilha. As áreas serão reveladas conforme exploram.</p>`;
+}
+function closeMapMp(){ $('#mapModal').classList.add('hide'); }
+
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 function show(id){ $$('.screen').forEach(s=>s.classList.remove('active')); $('#'+id).classList.add('active'); }
@@ -267,6 +390,7 @@ async function startMatch(){
     history:[ { role:'scene', text:`⚔ ${sc.chapter} — ${sc.location} ⚔` }, { role:'dm', text: sc.readAloud } ],
     version:1, started_at: new Date().toISOString()
   };
+  mpMarkSceneVisited(state);   // marca o local da cena inicial (chegada = alto-mar, nada)
   $('#startBtn').disabled = true;
   const { error } = await supa.from('rooms')
     .update({ status:'playing', scene_id:'chegada', state, turn_owner: players[0].user_id }).eq('id', ROOM.id);
@@ -291,6 +415,7 @@ function enterGame(){
     $('#gmSkipBtn').onclick = gmSkipTurn;
     $('#gmEndBtn').onclick = gmEndMatch;
     $('#micBtn').onclick = toggleDictation;   // ditado por voz
+    $('#mapBtn').onclick = openMapMp;          // mapa da ilha
     G_WIRED = true;
   }
   renderGame();
@@ -572,6 +697,12 @@ function applyMpMarkers(reply, st){
     const ci = mpFindChar(chars, m[1]), key = mpMatchCondition(m[2]);
     if (ci>=0 && key && chars[ci].conditions) chars[ci].conditions = chars[ci].conditions.filter(n=>n!==key);
   });
+  // mapa: revela locais avistados/ouvidos
+  [...reply.matchAll(/\[REVELAR_LOCAL:([^\]]+)\]/g)].forEach(m => {
+    const id = m[1].trim();
+    if (mpRevealLocation(st, id)){ st.history = st.history || []; st.history.push({ role:'scene', text:`🗺️ Novo local revelado: ${MAP_LOCS[id].label}` }); }
+  });
+  mpMarkSceneVisited(st);   // garante que o local da cena atual esteja marcado
   const sm = reply.match(/\[SUGESTOES:([^\]]+)\]/i);
   st.suggestions = sm ? sm[1].split('|').map(s=>s.trim()).filter(Boolean).slice(0,3) : [];
 }
@@ -671,7 +802,11 @@ ${sheets}
 
 ## MARCADORES (o sistema processa e REMOVE do texto exibido — não os explique)
 - Quando um personagem passar a sofrer uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:${(st.characters&&st.characters[0]?st.characters[0].name:'Garrett')}:Envenenado]. Quando a condição acabar: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
+- Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. As áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas — NÃO mencione o nome de um local desconhecido antes de revelá-lo.
 - SEMPRE termine a resposta com 2 ou 3 sugestões curtas de ação para o próximo jogador, no formato exato: [SUGESTOES: ação curta 1 | ação curta 2 | ação curta 3]. São atalhos clicáveis; o jogador ainda pode digitar livremente.
+
+## MAPA DA ILHA (ids para [REVELAR_LOCAL])
+${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mpMapKnown(st,id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não cite o nome até revelar/alcançar)'}`).join('\n')}
 
 Responda à ação do jogador, faça a história avançar e termine abrindo para a próxima ação do grupo (com as sugestões no final).`;
 }
