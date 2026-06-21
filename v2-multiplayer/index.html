@@ -265,7 +265,9 @@
   .rp-close{ background:none; border:none; color:var(--stone-400); cursor:pointer; font-size:0.85rem; padding:2px 6px; border-radius:6px; }
   .rp-close:hover{ color:var(--ember); }
   @media(max-width:1100px){ .game-layout, .game-layout.rolls-hidden{ grid-template-columns:300px 1fr; } .rollpanel{ position:fixed; top:0; right:0; bottom:0; width:300px; z-index:40; box-shadow:-10px 0 30px -12px rgba(0,0,0,0.7); } .game-layout.rolls-hidden .rollpanel{ display:none; } }
-  @media(max-width:820px){ .game-layout, .game-layout.rolls-hidden{ grid-template-columns:1fr; } .sidebar{ display:none; } .sidebar.mobile-open{ display:block; position:fixed; inset:0; z-index:50; overflow-y:auto; } }
+  @media(max-width:820px){ .game-layout, .game-layout.rolls-hidden{ grid-template-columns:1fr; } .sidebar{ display:none; } .sidebar.mobile-open{ display:block; position:fixed; inset:0; z-index:50; overflow-y:auto; } .chars-btn{ display:inline-block; } .sidebar.mobile-open .sidebar-close{ display:block; } }
+  .chars-btn{ display:none; }
+  .sidebar-close{ display:none; width:100%; margin-bottom:12px; }
   .sidebar{ background:var(--basalt-800); border-right:1px solid var(--basalt-600); padding:20px 16px; overflow-y:auto; max-height:100vh; }
   .char-card{ background:linear-gradient(180deg,var(--basalt-700),var(--basalt-900)); border:1px solid var(--basalt-600); border-radius:12px; padding:11px 13px; margin-bottom:10px; }
   .char-card.active-turn{ border-color:var(--ember); box-shadow:0 0 0 1px var(--ember), 0 8px 20px -10px rgba(232,132,60,0.5); }
@@ -554,11 +556,12 @@
 <!-- PARTIDA — layout do V1 (3 colunas) -->
 <div class="screen" id="screen-game">
   <div class="game-layout">
-    <aside class="sidebar" id="sidebar"><div id="charPanel"></div></aside>
+    <aside class="sidebar" id="sidebar"><button class="btn ghost sidebar-close" id="sidebarCloseBtn">✕ Fechar fichas</button><div id="charPanel"></div></aside>
     <div class="main-col">
       <div class="topbar">
         <div class="loc"><span class="chapter" id="chapterLabel">Capítulo 1</span><span id="locationLabel">—</span></div>
         <div class="row">
+          <button class="btn ghost chars-btn" id="charsBtn" style="padding:8px 12px;font-size:0.82rem" title="Ver fichas do grupo">👥</button>
           <button class="btn ghost" id="gmCtrlBtn" style="padding:8px 12px;font-size:0.82rem;display:none" title="Controles do Mestre">⚙ Mestre</button>
           <button class="btn ghost" id="mapBtn" style="padding:8px 12px;font-size:0.82rem" title="Mapa da ilha">🗺️</button>
           <button class="btn ghost" id="rollsToggleBtn" style="padding:8px 12px;font-size:0.82rem" title="Mostrar/esconder rolagens">⚄</button>

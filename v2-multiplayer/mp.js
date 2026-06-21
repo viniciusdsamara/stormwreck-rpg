@@ -416,6 +416,8 @@ function enterGame(){
     $('#gmEndBtn').onclick = gmEndMatch;
     $('#micBtn').onclick = toggleDictation;   // ditado por voz
     $('#mapBtn').onclick = openMapMp;          // mapa da ilha
+    $('#charsBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');   // fichas no mobile
+    $('#sidebarCloseBtn').onclick = () => $('#sidebar').classList.remove('mobile-open');
     G_WIRED = true;
   }
   renderGame();
