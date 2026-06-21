@@ -282,6 +282,13 @@ function enterGame(){
     $('#gLeaveBtn').onclick = leaveRoom;
     $('#sendBtn').onclick = submitAction;
     $('#actionInput').addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); submitAction(); } });
+    // M5 — controles do Mestre
+    $('#gmCtrlBtn').onclick = openGmModal;
+    $('#gmCloseBtn').onclick = closeGmModal;
+    $('#gmModalBack').onclick = e => { if (e.target === $('#gmModalBack')) closeGmModal(); };
+    $('#gmModel').onchange = () => updateRoom({ model: $('#gmModel').value });
+    $('#gmSkipBtn').onclick = gmSkipTurn;
+    $('#gmEndBtn').onclick = gmEndMatch;
     G_WIRED = true;
   }
   renderGame();
@@ -329,6 +336,69 @@ function renderGame(){
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
   inp.placeholder = myTurn ? 'O que você faz?' : 'Aguarde sua vez…';
+  // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
+  $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
+  if ($('#gmModalBack').classList.contains('open')) renderGmModal();
+}
+
+// ---------------- M5: CONTROLES DO MESTRE (só admin) ----------------
+function openGmModal(){
+  if (!amIAdmin()) return;
+  $('#gmModalBack').classList.add('open');
+  renderGmModal();
+}
+function closeGmModal(){ $('#gmModalBack').classList.remove('open'); }
+
+function renderGmModal(){
+  const st = ROOM.state || {};
+  $('#gmModel').value = ROOM.model || 'claude-haiku-4-5';
+  const chars = st.characters || [];
+  const turnChar = chars[st.turnIndex||0];
+  $('#gmTurnNote').innerHTML = turnChar
+    ? `Vez de <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')}).`
+    : 'Sem personagens na vez.';
+  $('#gmSkipBtn').disabled = chars.length < 2 || ROOM._engineBusy;
+  // editor de HP
+  $('#gmHpList').innerHTML = chars.map((c,idx)=>`
+    <div class="gm-hp-row">
+      <div><div class="nm">${escapeHtml(c.name)}</div><div class="sub2">${escapeHtml(c.ownerName||'')}</div></div>
+      <div class="gm-steppers">
+        <button class="gm-step" data-hp="${idx}" data-d="-5">−5</button>
+        <button class="gm-step" data-hp="${idx}" data-d="-1">−1</button>
+        <span class="gm-hpv">${c.hp} / ${c.maxHp}</span>
+        <button class="gm-step" data-hp="${idx}" data-d="1">+1</button>
+        <button class="gm-step" data-hp="${idx}" data-d="5">+5</button>
+      </div>
+    </div>`).join('');
+  $$('#gmHpList [data-hp]').forEach(b => b.onclick = () => gmAdjustHp(+b.dataset.hp, +b.dataset.d));
+}
+
+async function gmAdjustHp(idx, delta){
+  if (!amIAdmin()) return;
+  const st = ROOM.state || {}; const c = (st.characters||[])[idx]; if (!c) return;
+  c.hp = Math.max(0, Math.min(c.maxHp, (c.hp||0) + delta));
+  await saveState(st);
+  renderGame();
+}
+
+async function gmSkipTurn(){
+  if (!amIAdmin()) return;
+  const st = ROOM.state || {};
+  if (!st.characters || st.characters.length < 2) return;
+  const skipped = st.characters[st.turnIndex||0];
+  st.history = st.history || [];
+  st.history.push({ role:'scene', text:`(O Mestre passou a vez de ${skipped?skipped.name:'—'}.)` });
+  advanceTurn(st);
+  await saveState(st);
+  renderGame();
+  toast('Vez passada.');
+}
+
+async function gmEndMatch(){
+  if (!amIAdmin()) return;
+  if (!confirm('Encerrar a partida para todos? O grupo volta ao hub.')) return;
+  await updateRoom({ status:'ended' });
+  // o Realtime leva todos (inclusive você) de volta ao hub via refreshRoom
 }
 
 // ---------------- ENGINE (roda no cliente do ADMIN) ----------------
