@@ -16,6 +16,8 @@
     --font-mono:'SF Mono','Cascadia Mono','Courier New',monospace;
   }
   *{ box-sizing:border-box; }
+  /* mobile: remove o zoom no toque duplo (e o atraso de 300ms) sem desabilitar o pinch-to-zoom */
+  button, .btn, .pb-btn, .gm-step, .sugg-chip, .cb-btn, .mic-btn{ touch-action:manipulation; }
   body{
     margin:0; min-height:100vh; background:
       radial-gradient(1200px 600px at 50% -10%, #1c1726 0%, var(--basalt-900) 60%);
