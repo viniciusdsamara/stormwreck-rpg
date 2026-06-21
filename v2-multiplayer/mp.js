@@ -1065,23 +1065,32 @@ function renderGmModal(){
     ? `Vez de <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')}).`
     : 'Sem personagens na vez.';
   $('#gmSkipBtn').disabled = chars.length < 2 || !!st.busy;
-  // editor de HP
-  $('#gmHpList').innerHTML = chars.map((c,idx)=>`
-    <div class="gm-hp-row">
-      <div><div class="nm">${escapeHtml(c.name)}</div><div class="sub2">${escapeHtml(c.ownerName||'')}</div></div>
-      <div class="gm-steppers">
-        <button class="gm-step" data-hp="${idx}" data-d="-5">−5</button>
-        <button class="gm-step" data-hp="${idx}" data-d="-1">−1</button>
-        <span class="gm-hpv">${c.hp} / ${c.maxHp}</span>
-        <button class="gm-step" data-hp="${idx}" data-d="1">+1</button>
-        <button class="gm-step" data-hp="${idx}" data-d="5">+5</button>
-      </div>
-    </div>`).join('');
-  $$('#gmHpList [data-hp]').forEach(b => b.onclick = () => gmAdjustHp(+b.dataset.hp, +b.dataset.d));
+  // nota do papel + gating do editor de HP (só Mestre-puro, evita auto-buff do admin-jogador)
+  const playing = !!ROOM.admin_plays;
+  const rn = $('#gmRoleNote');
+  if (rn) rn.textContent = playing
+    ? 'Você está jogando — a IA é o Mestre. Aqui ficam só os controles de mesa (sem spoiler).'
+    : 'Você é o Mestre: a narração passa pelo seu console. Controles extras abaixo.';
+  const hpSec = $('#gmHpSec'); if (hpSec) hpSec.style.display = playing ? 'none' : '';
+  // editor de HP (só quando você NÃO joga)
+  if (!playing){
+    $('#gmHpList').innerHTML = chars.map((c,idx)=>`
+      <div class="gm-hp-row">
+        <div><div class="nm">${escapeHtml(c.name)}</div><div class="sub2">${escapeHtml(c.ownerName||'')}</div></div>
+        <div class="gm-steppers">
+          <button class="gm-step" data-hp="${idx}" data-d="-5">−5</button>
+          <button class="gm-step" data-hp="${idx}" data-d="-1">−1</button>
+          <span class="gm-hpv">${c.hp} / ${c.maxHp}</span>
+          <button class="gm-step" data-hp="${idx}" data-d="1">+1</button>
+          <button class="gm-step" data-hp="${idx}" data-d="5">+5</button>
+        </div>
+      </div>`).join('');
+    $$('#gmHpList [data-hp]').forEach(b => b.onclick = () => gmAdjustHp(+b.dataset.hp, +b.dataset.d));
+  }
 }
 
 async function gmAdjustHp(idx, delta){
-  if (!amIAdmin()) return;
+  if (!amIAdmin() || ROOM.admin_plays) return;   // editor de HP só no modo Mestre-puro (sem auto-buff)
   if (engineBusy){ toast('Aguarde o Mestre terminar a narração.'); return; }   // evita perder a edição
   const st = ROOM.state || {}; const c = (st.characters||[])[idx]; if (!c) return;
   c.hp = Math.max(0, Math.min(c.maxHp, (c.hp||0) + delta));

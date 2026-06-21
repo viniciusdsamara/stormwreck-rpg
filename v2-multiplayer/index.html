@@ -716,7 +716,7 @@
   <div class="gm-modal-back" id="gmModalBack">
     <div class="gm-modal">
       <div class="row between" style="align-items:flex-start">
-        <div><h3>Controles do Mestre</h3><div class="note" style="margin-top:0">Só você (admin) vê este painel.</div></div>
+        <div><h3>Controles do Mestre</h3><div class="note" id="gmRoleNote" style="margin-top:0">Só você (admin) vê este painel.</div></div>
         <button class="btn ghost" id="gmCloseBtn" style="padding:6px 12px">✕</button>
       </div>
 
@@ -736,7 +736,7 @@
         <button class="btn ghost block" id="gmSkipBtn">⏭ Pular a vez deste jogador</button>
       </div>
 
-      <div class="gm-sec">
+      <div class="gm-sec" id="gmHpSec">
         <h4 style="margin:0 0 8px">Modo Mestre — ajustar HP</h4>
         <div id="gmHpList"></div>
         <div class="note">Edição manual das fichas (dano, cura, condições futuras).</div>
