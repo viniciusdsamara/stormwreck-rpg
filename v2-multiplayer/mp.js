@@ -512,10 +512,42 @@ function enterGame(){
     $('#mapBtn').onclick = openMapMp;          // mapa da ilha
     $('#charsBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');   // fichas no mobile
     $('#sidebarCloseBtn').onclick = () => $('#sidebar').classList.remove('mobile-open');
+    $('#sfxBtn').onclick = toggleSfx;          // sons (teste)
     G_WIRED = true;
   }
+  updateSfxBtn();
   renderGame();
   if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
+}
+// ---------------- SONS (teste) — diffing do estado dispara os SFX em todos ----------------
+function toggleSfx(){ if (typeof SFX==='undefined') return; SFX.setEnabled(!SFX.isEnabled()); updateSfxBtn(); if (SFX.isEnabled()) SFX.turn(); }
+function updateSfxBtn(){ const b = document.getElementById('sfxBtn'); if (b && typeof SFX!=='undefined') b.textContent = SFX.isEnabled() ? '🔊' : '🔇'; }
+let SND = null;
+function soundTick(st){
+  if (typeof SFX === 'undefined' || !SFX.isEnabled()){ SND = null; return; }
+  const rolls = (st.history||[]).filter(m => m.role==='roll');
+  const combat = mpCombatActive(st);
+  const leveling = !!(st.levelUp && st.levelUp.pending && Object.keys(st.levelUp.pending).length);
+  const me = (st.characters||[]).find(c => c.owner === ME.id);
+  const myHp = me ? me.hp : null;
+  const enemyHp = combat ? st.combat.enemies.reduce((s,e)=>s+e.curHp,0) : null;
+  const cur = mpCurrentActor(st);
+  const turnChar = combat ? (cur && cur.kind==='pc' ? st.characters[cur.idx] : null) : (st.characters||[])[st.turnIndex||0];
+  const myTurn = !st.busy && !!turnChar && turnChar.owner === ME.id && (turnChar.hp > 0);
+  const snap = { rolls: rolls.length, combat, leveling, myTurn, myHp, enemyHp, sceneId: st.sceneId };
+  if (!SND){ SND = snap; return; }                         // primeira passada: só memoriza, sem tocar
+  if (snap.rolls > SND.rolls){
+    const card = rolls[rolls.length-1];
+    const oc = card.crit ? 'crit' : card.fumble ? 'fumble' : card.autoFail ? 'fail' : (card.dc!=null ? (card.total>=card.dc?'success':'fail') : 'neutral');
+    SFX.dice(oc);
+  }
+  if (combat && !SND.combat) SFX.combat();
+  if (leveling && !SND.leveling) SFX.levelup();
+  if (snap.sceneId !== SND.sceneId) SFX.scene();
+  if (enemyHp!=null && SND.enemyHp!=null && enemyHp < SND.enemyHp) SFX.hit();
+  if (myHp!=null && SND.myHp!=null && myHp < SND.myHp) SFX.hurt();
+  if (myTurn && !SND.myTurn) SFX.turn();
+  SND = snap;
 }
 
 // ---------------- DITADO POR VOZ (Web Speech API, sem servidor) ----------------
@@ -765,6 +797,7 @@ function renderGame(){
   // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
+  soundTick(st);   // sons (teste): dispara SFX conforme o estado muda
 }
 
 // ---------------- M5: CONTROLES DO MESTRE (só admin) ----------------
@@ -1194,6 +1227,7 @@ async function submitAction(){
   const inp = $('#actionInput'); const txt = inp.value.trim(); if (!txt) return;
   const st = ROOM.state || {}; const active = mpActivePc(st);
   if (!active || active.owner !== ME.id){ toast('Não é sua vez.'); return; }
+  if (typeof SFX !== 'undefined') SFX.unlock();      // gesto do usuário libera o áudio
   inp.value = ''; localBusy = true; renderGame();   // trava já, antes da engine confirmar
   const { error } = await supa.from('room_actions').insert({
     room_id: ROOM.id, user_id: ME.id, display_name: active.name, text: txt
