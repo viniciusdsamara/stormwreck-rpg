@@ -210,6 +210,19 @@
   .rl-dmg b{ color:var(--parch); font-family:var(--font-display); }
   .rl-sub{ color:var(--stone-400); font-size:0.64rem; font-family:var(--font-mono); }
   @keyframes slideup2{ from{transform:translateY(10px);opacity:0} to{transform:translateY(0);opacity:1} }
+  /* ---- subida de nível (card pulsante + modal de escolha) ---- */
+  .char-card.levelup-pending{ border-color:var(--gold); cursor:pointer; animation:lupulse 1.3s ease-in-out infinite; }
+  @keyframes lupulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(217,196,138,0.0); } 50%{ box-shadow:0 0 0 4px rgba(217,196,138,0.35); } }
+  .lu-badge{ background:linear-gradient(180deg,var(--gold),#c9b072); color:#241c10; font-weight:700; font-size:0.68rem;
+          text-align:center; border-radius:7px; padding:4px 6px; margin-bottom:8px; letter-spacing:0.02em; }
+  .lu-card{ max-width:520px; }
+  .lu-opts{ display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+  .lu-opt{ text-align:left; background:var(--basalt-900); border:1px solid var(--basalt-600); color:var(--parch);
+          border-radius:10px; padding:11px 13px; cursor:pointer; transition:border-color .15s,background .15s; display:block; }
+  .lu-opt:hover{ border-color:var(--ember); }
+  .lu-opt.sel{ border-color:var(--gold); background:rgba(217,196,138,0.10); }
+  .lu-opt b{ display:block; font-size:0.92rem; }
+  .lu-desc{ display:block; color:var(--stone-400); font-size:0.76rem; margin-top:2px; }
   /* ---- criação de personagem ---- */
   .hide{ display:none; }
   .field{ display:block; margin-bottom:6px; } .field>span{ display:block; font-size:0.74rem; color:var(--stone-300); margin-bottom:5px; }
@@ -642,6 +655,9 @@
 
   <!-- ===== mapa da ilha (névoa de guerra, igual ao V1) ===== -->
   <div class="sheet-modal hide" id="mapModal"><div class="sheet-card map-card" id="mapCard"></div></div>
+
+  <!-- ===== subida de nível (escolha de subclasse/estilo) ===== -->
+  <div class="sheet-modal hide" id="levelupModal"><div class="sheet-card lu-card" id="levelupCard"></div></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

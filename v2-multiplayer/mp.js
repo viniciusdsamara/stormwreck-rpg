@@ -444,8 +444,8 @@ function toggleDictation(){
   try { recog.start(); } catch(e){ toast('Não consegui iniciar o microfone.'); }
 }
 
-// card de ficha no estilo do V1 (clicável → abre a ficha completa)
-function mpCharCard(c, active, idx){
+// card de ficha no estilo do V1 (clicável → abre a ficha completa, ou o level-up se pulsando)
+function mpCharCard(c, active, idx, luPending){
   const pct = Math.max(0, Math.round((c.hp/c.maxHp)*100));
   const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
   const minis = (typeof RULES!=='undefined' ? RULES.abilities : ['FOR','DES','CON','INT','SAB','CAR']).map(ab=>{
@@ -455,7 +455,9 @@ function mpCharCard(c, active, idx){
   const conds = (c.conditions||[]).length
     ? `<div class="cond-chips">${c.conditions.map(n=>`<span class="cond-chip ro" title="${escapeHtml((((typeof RULES!=='undefined'&&RULES.conditions[n])||{}).desc)||'')}">${escapeHtml(n)}</span>`).join('')}</div>`
     : '';
-  return `<div class="char-card ${active?'active-turn':''}" data-sheet="${idx}" title="Ver ficha completa">
+  const luBadge = luPending ? `<div class="lu-badge">⬆ Subir de nível — toque para escolher</div>` : '';
+  return `<div class="char-card ${active?'active-turn':''} ${luPending?'levelup-pending':''}" data-sheet="${idx}" title="${luPending?'Subir de nível':'Ver ficha completa'}">
+    ${luBadge}
     <div class="cc-name">${escapeHtml(c.name)}</div>
     <div class="cc-sub"><span class="player-tag ${active?'p1':'p2'}">${escapeHtml(c.ownerName||c.player||'')}</span> · ${sub}</div>
     <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
@@ -629,23 +631,26 @@ function renderGame(){
   const enemyTurn = !!(st.combat && cur && cur.kind==='enemy');
   const activeIdx = st.combat ? (cur && cur.kind==='pc' ? cur.idx : -1) : (st.turnIndex||0);
   const turnChar = activeIdx >= 0 ? (st.characters||[])[activeIdx] : null;
-  // grupo (sidebar) — cards clicáveis abrem a ficha completa
-  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===activeIdx, idx)).join('');
-  $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
+  // grupo (sidebar) — cards clicáveis abrem a ficha (ou o level-up, se pulsando)
+  const luPend = (st.levelUp && st.levelUp.pending) || {};
+  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===activeIdx, idx, !!luPend[idx])).join('');
+  $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => { const i = +el.dataset.sheet; if (luPend[i]) openLevelUp(i); else openSheet(i); });
   // barra de combate (espelhada a todos)
   renderCombatBar(st);
   // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
   renderRollLog(st);
-  // vez / compositor — trava para TODOS enquanto o Mestre pensa (st.busy) ou digita (TYPING)
-  const locked = !!st.busy || TYPING || localBusy;
+  // vez / compositor — trava para TODOS enquanto o Mestre pensa/digita ou há level-up pendente
+  const levelingUp = !!Object.keys(luPend).length;
+  const locked = !!st.busy || TYPING || localBusy || levelingUp;
   const myTurn = !enemyTurn && turnChar && turnChar.owner === ME.id && !locked;
-  $('#turnIndicator').innerHTML = st.busy
-    ? 'O Mestre está pensando…'
-    : (TYPING ? 'O Mestre está narrando…'
-      : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
-        : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
-          : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…'))));
+  $('#turnIndicator').innerHTML = levelingUp
+    ? '⬆ Subida de nível — quem tem o card pulsando deve tocar nele e escolher.'
+    : (st.busy ? 'O Mestre está pensando…'
+      : (TYPING ? 'O Mestre está narrando…'
+        : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
+          : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
+            : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')))));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
   $('#micBtn').disabled = !myTurn;
@@ -790,6 +795,55 @@ function mpSheetHtml(c, i){
   </div>`;
 }
 
+// ---------------- LEVEL-UP INTERATIVO (card pulsa → modal de escolha) ----------------
+const LU_PREFIX = '@@LEVELUP@@';
+let LU_SEL = { idx:null, subclass:null, style:null };
+function openLevelUp(idx){
+  const st = ROOM.state || {};
+  const p = (st.levelUp && st.levelUp.pending) ? st.levelUp.pending[idx] : null;
+  const c = (st.characters||[])[idx];
+  if (!p || !c) return;
+  if (c.owner !== ME.id && !amIAdmin()){ toast(`Aguardando ${c.ownerName||'o jogador'} subir de nível.`); return; }
+  LU_SEL = { idx, subclass:null, style:null };
+  $('#levelupModal').classList.remove('hide');
+  $('#levelupModal').onclick = e => { if (e.target.id==='levelupModal') $('#levelupModal').classList.add('hide'); };
+  renderLevelUpModal();
+}
+function renderLevelUpModal(){
+  const st = ROOM.state || {}; const idx = LU_SEL.idx;
+  const p = st.levelUp && st.levelUp.pending ? st.levelUp.pending[idx] : null;
+  const c = (st.characters||[])[idx]; if (!p || !c){ $('#levelupModal').classList.add('hide'); return; }
+  const subBlock = p.sub ? `<h4>Escolha sua subclasse (${c.cls})</h4><div class="lu-opts">${p.sub.map(s=>`<button class="lu-opt ${LU_SEL.subclass===s?'sel':''}" data-sub="${escapeHtml(s)}"><b>${escapeHtml(s)}</b></button>`).join('')}</div>` : '';
+  const styleBlock = p.style ? `<h4>Escolha seu estilo de luta</h4><div class="lu-opts">${p.style.map(s=>`<button class="lu-opt ${LU_SEL.style===s?'sel':''}" data-style="${escapeHtml(s)}"><b>${escapeHtml(s)}</b><span class="lu-desc">${escapeHtml((RULES.fightingStyles&&RULES.fightingStyles[s])||'')}</span></button>`).join('')}</div>` : '';
+  const ready = (!p.sub || LU_SEL.subclass) && (!p.style || LU_SEL.style);
+  const asAdmin = c.owner !== ME.id && amIAdmin();
+  $('#levelupCard').innerHTML = `
+    <div class="sh-top"><div><div class="sh-name">⬆ Nível ${st.levelUp.toLevel}</div>
+      <div class="sh-sub">${escapeHtml(c.name)} — ${escapeHtml(c.cls)}${asAdmin?' · escolhendo como Mestre':''}</div></div>
+      <button class="rp-close" id="luCloseBtn">✕</button></div>
+    ${subBlock}${styleBlock}
+    <button class="btn block" id="luConfirmBtn" ${ready?'':'disabled'} style="margin-top:18px">Confirmar</button>`;
+  $('#luCloseBtn').onclick = ()=> $('#levelupModal').classList.add('hide');
+  $$('#levelupCard [data-sub]').forEach(b=> b.onclick = ()=>{ LU_SEL.subclass = b.dataset.sub; renderLevelUpModal(); });
+  $$('#levelupCard [data-style]').forEach(b=> b.onclick = ()=>{ LU_SEL.style = b.dataset.style; renderLevelUpModal(); });
+  $('#luConfirmBtn').onclick = confirmLevelUp;
+}
+async function confirmLevelUp(){
+  const st = ROOM.state || {}; const idx = LU_SEL.idx; const c = (st.characters||[])[idx]; if (!c) return;
+  const data = { idx, subclass: LU_SEL.subclass, style: LU_SEL.style };
+  $('#levelupModal').classList.add('hide');
+  if (amIAdmin()){
+    // o admin é a engine: aplica direto (vale para o próprio personagem ou por um ausente)
+    if (engineBusy){ setTimeout(confirmLevelUp, 400); return; }
+    engineBusy = true;
+    try { if (mpApplyLevelChoiceData(st, idx, data)) await saveState(st); }
+    finally { engineBusy = false; renderGame(); }
+  } else {
+    const { error } = await supa.from('room_actions').insert({ room_id: ROOM.id, user_id: ME.id, display_name: c.name, text: LU_PREFIX + JSON.stringify(data) });
+    toast(error ? ('Erro: '+error.message) : 'Escolha enviada! Aguardando os outros…');
+  }
+}
+
 // condições: casar nome com RULES.conditions e localizar personagem (tolerante a caixa/acento)
 function mpMatchCondition(name){
   if (!name || typeof RULES==='undefined') return null;
@@ -843,25 +897,44 @@ function applyMpMarkers(reply, st){
 }
 
 // ---------------- TRANSIÇÃO DE CENAS (roteiro do campaign.js) ----------------
-// sobe os personagens para newLevel automaticamente (V2 não tem modal interativo)
+// sobe os personagens para newLevel: aplica HP/prof/slots na hora; devolve as
+// ESCOLHAS pendentes (subclasse/estilo) para o jogador decidir no card pulsante
 function mpApplyLevelUp(st, newLevel){
-  const subiram = [];
-  (st.characters||[]).forEach(c => {
+  const pending = {};
+  (st.characters||[]).forEach((c, idx) => {
     if (!c || c.level >= newLevel) return;
     const cd = RULES.classes[c.cls] || {};
     const conMod = abilityMod(c.abilities.CON);
     for (let L = c.level+1; L <= newLevel; L++) c.maxHp += Math.max(1, hitDieAverage(cd.hitDie||8) + conMod);
     c.level = newLevel;
     c.prof = profBonus(newLevel);
-    const need = levelUpNeeds(c, newLevel);                       // escolhas automáticas
-    if (need.subclass && (cd.subclasses||[]).length && !c.archetype) c.archetype = cd.subclasses[0];
-    if (need.fightingStyle && !c.fightingStyle) c.fightingStyle = 'Defesa';
     if (typeof recomputeSpellSlots === 'function') recomputeSpellSlots(c);
     if (c.spellAbility) c.spellDC = 8 + c.prof + abilityMod(c.abilities[c.spellAbility]);
     c.hp = c.maxHp;                                               // marco de história: HP cheio
-    subiram.push(c.name);
+    const need = levelUpNeeds(c, newLevel);                       // o que precisa ESCOLHER
+    const entry = {};
+    if (need.subclass && (cd.subclasses||[]).length) entry.sub = cd.subclasses.slice();
+    if (need.fightingStyle) entry.style = Object.keys(RULES.fightingStyles);
+    if (entry.sub || entry.style) pending[idx] = entry;
   });
-  return subiram;
+  return pending;
+}
+// aplica a escolha de level-up de um personagem; se foi a última, libera a mesa
+function mpApplyLevelChoiceData(st, ci, data){
+  if (!st.levelUp || !st.levelUp.pending || !st.levelUp.pending[ci]) return false;
+  const c = (st.characters||[])[ci]; if (!c) return false;
+  const p = st.levelUp.pending[ci];
+  if (p.sub && data.subclass && p.sub.includes(data.subclass)) c.archetype = data.subclass;
+  if (p.style && data.style && RULES.fightingStyles[data.style] && c.fightingStyle !== data.style){
+    c.fightingStyle = data.style;
+    if (data.style === 'Defesa') c.ca += 1;                       // Estilo de Luta: Defesa (+1 CA com armadura)
+  }
+  delete st.levelUp.pending[ci];
+  if (!Object.keys(st.levelUp.pending).length){
+    st.levelUp = null;
+    (st.history = st.history || []).push({ role:'scene', text:'✨ Todos subiram de nível! A aventura continua.' });
+  }
+  return true;
 }
 // descanso do roteiro (refúgio seguro): restaura HP/recursos/condições
 function mpApplyRest(st, kind){
@@ -887,7 +960,11 @@ function mpAdvanceScene(st){
   if (!nsc) return;
   st.history.push({ role:'scene', text:'— A jornada continua —' });
   st.sceneId = nextId;
-  if (nsc.levelUp){ const up = mpApplyLevelUp(st, nsc.levelUp); if (up.length) st.history.push({ role:'scene', text:`⬆ Nível ${nsc.levelUp}: ${up.join(', ')}` }); }
+  if (nsc.levelUp){
+    const pending = mpApplyLevelUp(st, nsc.levelUp);
+    st.history.push({ role:'scene', text:`⬆ O grupo subiu para o nível ${nsc.levelUp}` });
+    if (Object.keys(pending).length) st.levelUp = { toLevel: nsc.levelUp, pending };   // pausa para as escolhas
+  }
   if (nsc.rest && mpApplyRest(st, nsc.rest)) st.history.push({ role:'scene', text:'🌙 Descanso longo — HP, recursos e condições restaurados.' });
   mpMarkSceneVisited(st);
   st.history.push({ role:'scene', text:`⚔ ${nsc.chapter||''} — ${nsc.location||''} ⚔` });
@@ -1018,6 +1095,22 @@ let engineBusy = false;
 async function onPlayerAction(action){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
   if (action.processed) return;
+  // escolha de level-up de um jogador (não passa pelo Mestre)
+  if (typeof action.text === 'string' && action.text.startsWith(LU_PREFIX)){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 500); return; }
+    engineBusy = true;
+    const st = ROOM.state || {};
+    try {
+      let data = {}; try { data = JSON.parse(action.text.slice(LU_PREFIX.length)); } catch(e){}
+      const ci = (st.characters||[]).findIndex(c => c.owner === action.user_id);   // só o próprio personagem
+      if (ci >= 0){ if (mpApplyLevelChoiceData(st, ci, data)) await saveState(st); }
+    } finally {
+      engineBusy = false;
+      try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
+      renderGame();
+    }
+    return;
+  }
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
   engineBusy = true;
   const st = ROOM.state || {};
