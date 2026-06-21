@@ -707,6 +707,60 @@ function applyMpMarkers(reply, st){
   st.suggestions = sm ? sm[1].split('|').map(s=>s.trim()).filter(Boolean).slice(0,3) : [];
 }
 
+// ---------------- TRANSIÇÃO DE CENAS (roteiro do campaign.js) ----------------
+// sobe os personagens para newLevel automaticamente (V2 não tem modal interativo)
+function mpApplyLevelUp(st, newLevel){
+  const subiram = [];
+  (st.characters||[]).forEach(c => {
+    if (!c || c.level >= newLevel) return;
+    const cd = RULES.classes[c.cls] || {};
+    const conMod = abilityMod(c.abilities.CON);
+    for (let L = c.level+1; L <= newLevel; L++) c.maxHp += Math.max(1, hitDieAverage(cd.hitDie||8) + conMod);
+    c.level = newLevel;
+    c.prof = profBonus(newLevel);
+    const need = levelUpNeeds(c, newLevel);                       // escolhas automáticas
+    if (need.subclass && (cd.subclasses||[]).length && !c.archetype) c.archetype = cd.subclasses[0];
+    if (need.fightingStyle && !c.fightingStyle) c.fightingStyle = 'Defesa';
+    if (typeof recomputeSpellSlots === 'function') recomputeSpellSlots(c);
+    if (c.spellAbility) c.spellDC = 8 + c.prof + abilityMod(c.abilities[c.spellAbility]);
+    c.hp = c.maxHp;                                               // marco de história: HP cheio
+    subiram.push(c.name);
+  });
+  return subiram;
+}
+// descanso do roteiro (refúgio seguro): restaura HP/recursos/condições
+function mpApplyRest(st, kind){
+  const long = /long|longo/i.test(kind);
+  (st.characters||[]).forEach(c => {
+    if (!c) return;
+    if (long){
+      c.hp = c.maxHp; c.conditions = [];
+      if (c.spellSlots) c.spellSlots.used = 0;
+      if (c.spellSlots2) c.spellSlots2.used = 0;
+      if (c.resUsed) c.resUsed = {};
+      c.raging = false;
+    }
+  });
+  return long;
+}
+// avança para a próxima cena do roteiro quando o Mestre emite [SCENE_COMPLETE]
+function mpAdvanceScene(st){
+  const sc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.scenes[st.sceneId]) || {};
+  st.history = st.history || [];
+  if (sc.ending){ st.history.push({ role:'scene', text:'⚜ Fim da aventura ⚜' }); st.finished = true; return; }
+  const nextId = sc.next; const nsc = nextId && CAMPAIGN.scenes[nextId];
+  if (!nsc) return;
+  st.history.push({ role:'scene', text:'— A jornada continua —' });
+  st.sceneId = nextId;
+  if (nsc.levelUp){ const up = mpApplyLevelUp(st, nsc.levelUp); if (up.length) st.history.push({ role:'scene', text:`⬆ Nível ${nsc.levelUp}: ${up.join(', ')}` }); }
+  if (nsc.rest && mpApplyRest(st, nsc.rest)) st.history.push({ role:'scene', text:'🌙 Descanso longo — HP, recursos e condições restaurados.' });
+  mpMarkSceneVisited(st);
+  st.history.push({ role:'scene', text:`⚔ ${nsc.chapter||''} — ${nsc.location||''} ⚔` });
+  if (nsc.readAloud) st.history.push({ role:'dm', text: nsc.readAloud });
+  st.suggestions = [];
+  st.turnIndex = 0;                                              // nova cena começa pelo 1º jogador
+}
+
 // ---------------- ENGINE (roda no cliente do ADMIN) ----------------
 async function saveState(st){
   ROOM.state = st;
@@ -744,10 +798,13 @@ async function onPlayerAction(action){
     let reply;
     try { reply = await callClaudeMp(buildMpHistory(st), buildMpSystemPrompt(st), 700); }
     catch (e) { reply = `*(O Mestre tropeçou: ${e.message})*`; }
-    applyMpMarkers(reply, st);                                // condições + sugestões antes de limpar
+    const sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
+    applyMpMarkers(reply, st);                                // condições + sugestões + mapa antes de limpar
     const clean = reply.replace(/\[[^\]]*\]/g, '').trim();    // remove os marcadores do texto exibido
-    st.history.push({ role:'dm', text: clean || '…' });
-    advanceTurn(st);
+    if (clean) st.history.push({ role:'dm', text: clean });
+    else if (!sceneComplete) st.history.push({ role:'dm', text:'…' });
+    if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); }   // transição de cena pelo roteiro
+    else advanceTurn(st);
     st.busy = false;                                       // libera; cada cliente ainda digita a fala localmente
     await saveState(st);
   } finally {
@@ -803,7 +860,8 @@ ${sheets}
 ## MARCADORES (o sistema processa e REMOVE do texto exibido — não os explique)
 - Quando um personagem passar a sofrer uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:${(st.characters&&st.characters[0]?st.characters[0].name:'Garrett')}:Envenenado]. Quando a condição acabar: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
 - Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. As áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas — NÃO mencione o nome de um local desconhecido antes de revelá-lo.
-- SEMPRE termine a resposta com 2 ou 3 sugestões curtas de ação para o próximo jogador, no formato exato: [SUGESTOES: ação curta 1 | ação curta 2 | ação curta 3]. São atalhos clicáveis; o jogador ainda pode digitar livremente.
+- Quando os OBJETIVOS da cena atual estiverem cumpridos e for hora de a história seguir para o próximo local/capítulo, encerre sua narração com [SCENE_COMPLETE]. O sistema cuida da transição, do texto da próxima cena, da subida de nível e do descanso — você NÃO precisa narrar a viagem nem anunciar a mudança. Não use cedo demais: só quando a cena estiver de fato resolvida.
+- SEMPRE termine a resposta com 2 ou 3 sugestões curtas de ação para o próximo jogador, no formato exato: [SUGESTOES: ação curta 1 | ação curta 2 | ação curta 3]. São atalhos clicáveis; o jogador ainda pode digitar livremente. (Não inclua sugestões se você emitir [SCENE_COMPLETE].)
 
 ## MAPA DA ILHA (ids para [REVELAR_LOCAL])
 ${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mpMapKnown(st,id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não cite o nome até revelar/alcançar)'}`).join('\n')}
