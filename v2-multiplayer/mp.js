@@ -196,6 +196,124 @@ async function enterHub(){
   $('#hubLogout').onclick = doLogout;
   $('#joinCode').addEventListener('keydown', e=>{ if(e.key==='Enter') joinRoom(); });
   loadMyRooms();
+  renderRoster();
+}
+
+// ==================================================================
+//  ROSTER — personagens salvos na conta (reaproveitáveis entre campanhas)
+// ==================================================================
+let ROSTER = [];
+// reconstrói a ficha do nível 1 (base) até `level`, aplicando as escolhas salvas
+function mpLevelCharacterTo(base, level, choices){
+  const c = JSON.parse(JSON.stringify(base));
+  choices = choices || {};
+  for (let L = 2; L <= level; L++){
+    const cd = RULES.classes[c.cls] || {};
+    c.maxHp += Math.max(1, hitDieAverage(cd.hitDie||8) + abilityMod(c.abilities.CON));
+    c.level = L; c.prof = profBonus(L);
+    const need = levelUpNeeds(c, L);
+    if (need.subclass && choices.archetype) c.archetype = choices.archetype;
+    if (need.fightingStyle && choices.fightingStyle && c.fightingStyle !== choices.fightingStyle){
+      c.fightingStyle = choices.fightingStyle;
+      if (choices.fightingStyle === 'Defesa') c.ca += 1;
+    }
+    if (typeof recomputeSpellSlots === 'function') recomputeSpellSlots(c);
+    if (c.spellAbility) c.spellDC = 8 + c.prof + abilityMod(c.abilities[c.spellAbility]);
+  }
+  c.level = level; c.hp = c.maxHp;
+  return c;
+}
+// o que ainda falta ESCOLHER para chegar a `level` (subclasse/estilo)
+function mpNeededChoices(base, level, choices){
+  choices = choices || {}; const cd = RULES.classes[base.cls] || {}; const out = {};
+  if (cd.subclassLevel >= 2 && cd.subclassLevel <= level && !choices.archetype && !base.archetype && (cd.subclasses||[]).length) out.sub = cd.subclasses.slice();
+  if ((base.cls==='Paladino' || base.cls==='Patrulheiro') && level >= 2 && !choices.fightingStyle && !base.fightingStyle) out.style = Object.keys(RULES.fightingStyles);
+  return out;
+}
+async function loadRoster(){
+  try { const { data } = await supa.from('characters').select('*').eq('user_id', ME.id).order('updated_at', { ascending:false }); ROSTER = data || []; }
+  catch(e){ ROSTER = []; }
+  return ROSTER;
+}
+// salva um personagem novo (char = ficha de nível 1 saída da criação)
+async function rosterCreateFromChar(char){
+  const choices = { archetype: null, fightingStyle: (fightingStyleLevel(char.cls)===1 ? char.fightingStyle : null) };
+  const { data, error } = await supa.from('characters')
+    .insert({ user_id: ME.id, name: char.name, level: char.level||1, base: char, sheet: char, choices }).select().single();
+  if (!error && data) ROSTER.unshift(data);
+  return error ? null : data;
+}
+async function rosterSetLevel(id, level, extra){
+  const row = ROSTER.find(r=>r.id===id); if (!row) return;
+  const choices = Object.assign({}, row.choices||{}, extra||{});
+  const sheet = mpLevelCharacterTo(row.base, level, choices);
+  const { data } = await supa.from('characters').update({ level, choices, sheet, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+  if (data){ const i = ROSTER.findIndex(r=>r.id===id); if (i>=0) ROSTER[i] = data; }
+}
+async function rosterDelete(id){
+  await supa.from('characters').delete().eq('id', id);
+  ROSTER = ROSTER.filter(r=>r.id!==id);
+}
+function rosterCardHtml(r){
+  const s = r.sheet || r.base || {};
+  const lvlBtns = [1,2,3].map(n=>`<button class="lvl-btn ${r.level===n?'on':''}" data-lvl="${n}" data-cid="${r.id}">${n}</button>`).join('');
+  return `<div class="ros-card">
+    <div class="ros-top">
+      <div><div class="ros-name">${escapeHtml(s.name||r.name||'Herói')}</div>
+        <div class="ros-sub">${s.race||''}${s.subrace?` (${s.subrace})`:''} ${s.cls||''}${s.archetype?` [${s.archetype}]`:''}${s.fightingStyle?` · ${s.fightingStyle}`:''} · CA ${s.ca} · ${s.maxHp} HP</div></div>
+      <button class="mini-x" data-del="${r.id}" title="Excluir">✕</button>
+    </div>
+    <div class="ros-actions">
+      <span class="ros-lvl">Nível <span class="lvl-set">${lvlBtns}</span></span>
+      <button class="btn ghost" data-view="${r.id}" style="padding:5px 11px;font-size:0.78rem">Ver ficha</button>
+    </div>
+  </div>`;
+}
+async function renderRoster(){
+  const box = $('#myChars'); if (!box) return;
+  await loadRoster();
+  $('#myCharsList').innerHTML = ROSTER.length ? ROSTER.map(rosterCardHtml).join('') : '<div class="note" style="margin:0">Nenhum personagem salvo ainda. Crie um abaixo — ele fica guardado na sua conta.</div>';
+  $$('#myChars [data-lvl]').forEach(b => b.onclick = () => changeRosterLevel(b.dataset.cid, +b.dataset.lvl));
+  $$('#myChars [data-del]').forEach(b => b.onclick = async () => { const r = ROSTER.find(x=>x.id===b.dataset.del); if (confirm(`Excluir ${r?.name||'este personagem'}?`)){ await rosterDelete(b.dataset.del); renderRoster(); } });
+  $$('#myChars [data-view]').forEach(b => b.onclick = () => { const r = ROSTER.find(x=>x.id===b.dataset.view); if (r) openSheetObj(r.sheet||r.base); });
+  $('#newCharBtn').onclick = () => startCreationMp(nameFromEmail(ME.email), async (char) => {
+    const row = await rosterCreateFromChar(char);
+    show('screen-hub'); enterHub();
+    toast(row ? `Personagem salvo: ${char.name}` : 'Erro ao salvar o personagem.');
+  });
+}
+// muda o nível de um personagem salvo (pede subclasse/estilo se faltar)
+async function changeRosterLevel(id, level){
+  const r = ROSTER.find(x=>x.id===id); if (!r) return;
+  const needed = mpNeededChoices(r.base, level, r.choices);
+  if (needed.sub || needed.style){ openLevelChooser(r, level, needed); return; }
+  await rosterSetLevel(id, level); renderRoster();
+}
+// modal de escolha (reusa #levelupModal) para subir de nível no roster
+function openLevelChooser(r, level, needed){
+  const sel = { sub:null, style:null };
+  const back = $('#levelupModal');
+  function render(){
+    const subBlock = needed.sub ? `<h4>Escolha a subclasse (${r.base.cls})</h4><div class="lu-opts">${needed.sub.map(s=>`<button class="lu-opt ${sel.sub===s?'sel':''}" data-sub="${escapeHtml(s)}"><b>${escapeHtml(s)}</b></button>`).join('')}</div>` : '';
+    const styleBlock = needed.style ? `<h4>Escolha o estilo de luta</h4><div class="lu-opts">${needed.style.map(s=>`<button class="lu-opt ${sel.style===s?'sel':''}" data-style="${escapeHtml(s)}"><b>${escapeHtml(s)}</b><span class="lu-desc">${escapeHtml((RULES.fightingStyles&&RULES.fightingStyles[s])||'')}</span></button>`).join('')}</div>` : '';
+    const ready = (!needed.sub||sel.sub) && (!needed.style||sel.style);
+    $('#levelupCard').innerHTML = `<div class="sh-top"><div><div class="sh-name">⬆ Nível ${level}</div><div class="sh-sub">${escapeHtml(r.name||'Herói')} — ${escapeHtml(r.base.cls)}</div></div><button class="rp-close" id="luCloseBtn">✕</button></div>${subBlock}${styleBlock}<button class="btn block" id="luConfirmBtn" ${ready?'':'disabled'} style="margin-top:18px">Confirmar nível ${level}</button>`;
+    $('#luCloseBtn').onclick = ()=> back.classList.add('hide');
+    $$('#levelupCard [data-sub]').forEach(b=> b.onclick = ()=>{ sel.sub = b.dataset.sub; render(); });
+    $$('#levelupCard [data-style]').forEach(b=> b.onclick = ()=>{ sel.style = b.dataset.style; render(); });
+    $('#luConfirmBtn').onclick = async ()=>{ back.classList.add('hide'); await rosterSetLevel(r.id, level, { archetype: sel.sub, fightingStyle: sel.style }); renderRoster(); };
+  }
+  back.classList.remove('hide');
+  back.onclick = e => { if (e.target.id==='levelupModal') back.classList.add('hide'); };
+  render();
+}
+// abre a ficha completa a partir de um objeto de ficha avulso (roster)
+function openSheetObj(sheet){
+  if (!sheet) return;
+  $('#sheetCard').innerHTML = mpSheetHtml(sheet, 0);
+  $('#sheetModal').classList.remove('hide');
+  $('#sheetModal').onclick = e => { if (e.target.id==='sheetModal') $('#sheetModal').classList.add('hide'); };
+  $('#sheetCloseBtn').onclick = () => $('#sheetModal').classList.add('hide');
 }
 // lista salas retomáveis (em que sou membro e que não foram encerradas)
 async function loadMyRooms(){
@@ -208,11 +326,33 @@ async function loadMyRooms(){
     const { data: rooms } = await supa.from('rooms').select('*').in('id', ids).neq('status','ended').order('created_at', { ascending:false });
     if (!rooms || !rooms.length) return;
     box.style.display = '';
-    $('#myRoomsList').innerHTML = rooms.map(r =>
-      `<div class="member"><div><span class="mname">${escapeHtml(r.name||'Sala')}</span><div class="mchar">código ${r.code} · ${r.status==='playing'?'em jogo':'no lobby'}</div></div>` +
-      `<button class="btn" data-resume="${r.id}" style="padding:6px 12px;font-size:0.82rem">Retomar</button></div>`).join('');
+    $('#myRoomsList').innerHTML = rooms.map(r => {
+      const host = r.host_id === ME.id;
+      const delBtn = `<button class="mini-x" data-${host?'delroom':'leaveroom'}="${r.id}" title="${host?'Excluir sala':'Sair da lista'}">✕</button>`;
+      return `<div class="member"><div><span class="mname">${escapeHtml(r.name||'Sala')}</span><div class="mchar">código ${r.code} · ${r.status==='playing'?'em jogo':'no lobby'}${host?' · sua':''}</div></div>` +
+        `<span class="mtags"><button class="btn" data-resume="${r.id}" style="padding:6px 12px;font-size:0.82rem">Retomar</button>${delBtn}</span></div>`;
+    }).join('');
     $$('#myRooms [data-resume]').forEach(b => b.onclick = () => { const r = rooms.find(x=>x.id===b.dataset.resume); if (r){ ROOM = r; enterRoom(); } });
+    $$('#myRooms [data-delroom]').forEach(b => b.onclick = () => deleteRoom(b.dataset.delroom));
+    $$('#myRooms [data-leaveroom]').forEach(b => b.onclick = () => leaveRoomList(b.dataset.leaveroom));
   } catch(e){}
+}
+// host: exclui a sala (apaga ações, membros e a sala)
+async function deleteRoom(id){
+  if (!confirm('Excluir esta sala de vez? Não dá para retomar depois.')) return;
+  try {
+    await supa.from('room_actions').delete().eq('room_id', id);
+    await supa.from('room_members').delete().eq('room_id', id);
+    const { error } = await supa.from('rooms').delete().eq('id', id);
+    toast(error ? ('Erro ao excluir: '+error.message) : 'Sala excluída.');
+  } catch(e){ toast('Erro ao excluir a sala.'); }
+  loadMyRooms();
+}
+// membro (não-host): remove a sala da sua lista saindo dela
+async function leaveRoomList(id){
+  if (!confirm('Remover esta sala da sua lista? Você sai dela.')) return;
+  try { await supa.from('room_members').delete().eq('room_id', id).eq('user_id', ME.id); } catch(e){}
+  loadMyRooms();
 }
 function genCode(){
   const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem caracteres ambíguos
@@ -416,14 +556,44 @@ async function toggleReady(){
   await supa.from('room_members').update({ ready: !me.ready }).eq('room_id', ROOM.id).eq('user_id', ME.id);
 }
 // abre a criação de personagem (creation-mp.js); ao confirmar, salva a ficha
-function openCreate(){
-  startCreationMp(myMember()?.display_name || nameFromEmail(ME.email), onCharacterCreated);
-}
+function openCreate(){ openPickChar(); }   // agora: escolher do roster OU criar novo
 async function onCharacterCreated(char){
   const { error } = await supa.from('room_members')
     .update({ sheet: char, ready: true }).eq('room_id', ROOM.id).eq('user_id', ME.id);
   show('screen-room'); await refreshRoom();
   toast(error ? ('Erro ao salvar: '+error.message) : ('Personagem pronto: '+char.name));
+}
+// seleção de personagem para a campanha: roster salvo + criar novo
+async function openPickChar(){
+  await loadRoster();
+  const back = $('#pickModalBack');
+  $('#pickList').innerHTML = ROSTER.length ? ROSTER.map(r => {
+    const s = r.sheet || r.base || {};
+    const lvlSel = [1,2,3].filter(n => n <= r.level).map(n => `<option value="${n}" ${n===r.level?'selected':''}>Nível ${n}</option>`).join('');
+    return `<div class="member"><div><span class="mname">${escapeHtml(s.name||r.name||'Herói')}</span>` +
+      `<div class="mchar">${s.race||''}${s.subrace?` (${s.subrace})`:''} ${s.cls||''} · CA ${s.ca} · ${s.maxHp} HP</div></div>` +
+      `<span class="mtags"><select class="pick-lvl" data-cid="${r.id}" style="width:auto;padding:5px 8px">${lvlSel}</select>` +
+      `<button class="btn" data-use="${r.id}" style="padding:6px 12px;font-size:0.82rem">Usar</button></span></div>`;
+  }).join('') : '<div class="note" style="margin:0 0 4px">Você ainda não tem personagens salvos. Crie um novo abaixo.</div>';
+  $$('#pickList [data-use]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.use; const sel = document.querySelector(`#pickList .pick-lvl[data-cid="${id}"]`);
+    await usePickedChar(id, sel ? +sel.value : undefined);
+  });
+  $('#pickNewBtn').onclick = () => { back.classList.remove('open'); startCreationMp(myMember()?.display_name || nameFromEmail(ME.email), onCharacterCreatedRoom); };
+  $('#pickCancelBtn').onclick = () => back.classList.remove('open');
+  back.onclick = e => { if (e.target === back) back.classList.remove('open'); };
+  back.classList.add('open');
+}
+async function usePickedChar(id, level){
+  const r = ROSTER.find(x => x.id === id); if (!r) return;
+  const sheet = mpLevelCharacterTo(r.base, level || r.level, r.choices);   // snapshot no nível escolhido
+  $('#pickModalBack').classList.remove('open');
+  await onCharacterCreated(sheet);
+}
+// criar novo personagem dentro da sala: salva no roster E entra com ele
+async function onCharacterCreatedRoom(char){
+  await rosterCreateFromChar(char);
+  await onCharacterCreated(char);
 }
 async function updateRoom(patch){
   await supa.from('rooms').update(patch).eq('id', ROOM.id);

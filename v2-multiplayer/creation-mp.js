@@ -13,7 +13,7 @@ function startCreationMp(playerName, onDone){
   show('screen-cmode');
   $('#cmGuided').onclick = openGuidedCreation;
   $('#cmChat').onclick = openChatCreation;
-  $('#cmBack').onclick = () => { show('screen-room'); refreshRoom(); };
+  $('#cmBack').onclick = () => { if (typeof ROOM !== 'undefined' && ROOM){ show('screen-room'); refreshRoom(); } else { show('screen-hub'); enterHub(); } };
 }
 function openGuidedCreation(){
   DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },

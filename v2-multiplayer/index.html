@@ -223,6 +223,17 @@
   .lu-opt.sel{ border-color:var(--gold); background:rgba(217,196,138,0.10); }
   .lu-opt b{ display:block; font-size:0.92rem; }
   .lu-desc{ display:block; color:var(--stone-400); font-size:0.76rem; margin-top:2px; }
+  /* ---- roster de personagens (perfil) ---- */
+  .ros-card{ background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:11px; padding:11px 13px; margin-bottom:9px; }
+  .ros-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .ros-name{ font-weight:700; color:var(--parch); }
+  .ros-sub{ font-size:0.74rem; color:var(--stone-400); margin-top:2px; }
+  .ros-actions{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:9px; }
+  .ros-lvl{ font-size:0.74rem; color:var(--stone-300); display:flex; align-items:center; gap:6px; }
+  .lvl-set{ display:inline-flex; gap:4px; }
+  .lvl-btn{ background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:6px; width:28px; height:26px; cursor:pointer; font-weight:700; font-size:0.8rem; }
+  .lvl-btn:hover{ border-color:var(--ember); }
+  .lvl-btn.on{ background:rgba(217,196,138,0.14); border-color:var(--gold); color:var(--gold); }
   /* ---- criação de personagem ---- */
   .hide{ display:none; }
   .field{ display:block; margin-bottom:6px; } .field>span{ display:block; font-size:0.74rem; color:var(--stone-300); margin-bottom:5px; }
@@ -372,6 +383,13 @@
       <div style="text-align:right"><small id="hubEmail"></small><br>
         <a id="hubAdmin" href="../admin.html" style="display:none;color:var(--ember);font-size:0.78rem;text-decoration:none;margin-right:10px">🛡️ Painel</a>
         <button class="btn ghost" id="hubLogout" style="margin-top:6px;padding:6px 12px;font-size:0.78rem">Sair</button></div>
+    </div>
+
+    <div class="panel">
+      <h4>Meus personagens</h4>
+      <div id="myChars"><div id="myCharsList"></div>
+        <button class="btn ghost block" id="newCharBtn" style="margin-top:10px">🧙 Criar novo personagem</button>
+      </div>
     </div>
 
     <div class="panel" id="myRooms" style="display:none">
@@ -623,7 +641,9 @@
       <div id="rollLogList"><div class="rolllog-empty">Nenhuma rolagem ainda.</div></div>
     </aside>
   </div>
+</div><!-- /#screen-game -->
 
+<!-- ===== modais globais (position:fixed → funcionam em qualquer tela) ===== -->
   <!-- ===== M5: painel de controles do Mestre (só admin) ===== -->
   <div class="gm-modal-back" id="gmModalBack">
     <div class="gm-modal">
@@ -670,6 +690,19 @@
   <!-- ===== subida de nível (escolha de subclasse/estilo) ===== -->
   <div class="sheet-modal hide" id="levelupModal"><div class="sheet-card lu-card" id="levelupCard"></div></div>
 
+  <!-- ===== escolher personagem para a campanha ===== -->
+  <div class="gm-modal-back" id="pickModalBack">
+    <div class="gm-modal" style="max-width:440px">
+      <h3>Escolher personagem</h3>
+      <div class="note" style="margin-top:0">Use um personagem salvo (escolha o nível para esta campanha) ou crie um novo.</div>
+      <div class="gm-sec"><div id="pickList"></div></div>
+      <div class="gm-sec">
+        <button class="btn block" id="pickNewBtn">🧙 Criar novo (salva no seu perfil)</button>
+        <button class="btn ghost block" id="pickCancelBtn" style="margin-top:8px">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== sair (admin): pausar ou encerrar ===== -->
   <div class="gm-modal-back" id="leaveModalBack">
     <div class="gm-modal" style="max-width:380px">
@@ -682,7 +715,6 @@
       </div>
     </div>
   </div>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="rules.js"></script>
