@@ -118,6 +118,32 @@
           font-family:inherit; font-size:0.92rem; line-height:1.5; }
   .dmc-text:focus{ outline:none; border-color:var(--ember); }
   .dmc-actions{ display:flex; gap:9px; justify-content:flex-end; margin-top:9px; }
+  /* Roteiro da Campanha (Tela do Mestre) */
+  .guide-card{ max-width:680px; width:94%; max-height:88vh; display:flex; flex-direction:column; }
+  .guide-card .g-body{ overflow-y:auto; padding-right:4px; }
+  .g-act{ border:1px solid var(--basalt-600); border-radius:10px; margin-bottom:10px; overflow:hidden; background:rgba(20,16,18,0.35); }
+  .g-act-head{ display:flex; align-items:center; gap:9px; padding:11px 13px; cursor:pointer; font-weight:700; color:var(--parch); user-select:none; }
+  .g-act-head:hover{ background:var(--basalt-700); }
+  .g-act-head > span:first-child{ flex:1; }
+  .g-cur{ font-size:0.66rem; font-weight:600; color:var(--ember); border:1px solid var(--ember); border-radius:20px; padding:1px 8px; }
+  .g-caret{ transition:transform .15s; opacity:0.6; }
+  .g-act.open .g-caret{ transform:rotate(180deg); }
+  .g-act-body{ display:none; padding:2px 14px 14px; border-top:1px solid var(--basalt-600); }
+  .g-act.open .g-act-body{ display:block; }
+  .g-sum{ color:var(--parch); opacity:0.92; line-height:1.55; margin:11px 0; font-size:0.9rem; }
+  .g-block{ margin:13px 0; }
+  .g-block h5{ margin:0 0 6px; color:var(--ember); font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; }
+  .g-block ul{ margin:0; padding-left:18px; } .g-block li{ margin:3px 0; line-height:1.5; font-size:0.88rem; }
+  .g-block.secret{ background:rgba(196,72,90,0.08); border:1px solid var(--blood); border-radius:8px; padding:9px 11px; }
+  .g-block.secret h5{ color:var(--blood); }
+  .g-npc{ margin:4px 0; line-height:1.5; font-size:0.88rem; } .g-npc b{ color:var(--myco,#7fb27f); }
+  .g-enc{ border:1px solid var(--basalt-600); border-radius:8px; padding:9px 11px; margin:7px 0; }
+  .g-enc-name{ font-weight:700; color:var(--blood); margin-bottom:5px; }
+  .g-foe{ font-size:0.86rem; margin:4px 0; line-height:1.45; }
+  .g-trait{ font-size:0.78rem; opacity:0.78; font-style:italic; margin-top:2px; }
+  .g-tactic{ font-size:0.82rem; opacity:0.85; margin-top:6px; border-top:1px dashed var(--basalt-600); padding-top:6px; }
+  .g-item{ margin:7px 0; line-height:1.45; font-size:0.88rem; } .g-item b{ color:var(--ember); }
+  .g-rar{ font-size:0.72rem; opacity:0.7; margin-left:5px; }
   .mic-btn{ background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:10px;
           padding:0 14px; font-size:1.1rem; cursor:pointer; transition:border-color .15s; }
   .mic-btn:hover{ border-color:var(--ember); }
@@ -633,6 +659,7 @@
           <button class="btn ghost" id="sfxBtn" style="padding:8px 12px;font-size:0.82rem" title="Efeitos sonoros (teste)">🔇</button>
           <button class="btn ghost chars-btn" id="charsBtn" style="padding:8px 12px;font-size:0.82rem" title="Ver fichas do grupo">👥</button>
           <button class="btn ghost" id="gmCtrlBtn" style="padding:8px 12px;font-size:0.82rem;display:none" title="Controles do Mestre">⚙ Mestre</button>
+          <button class="btn ghost" id="guideBtn" style="padding:8px 12px;font-size:0.82rem;display:none" title="Roteiro da campanha (só Mestre)">📖 Roteiro</button>
           <button class="btn ghost" id="mapBtn" style="padding:8px 12px;font-size:0.82rem" title="Mapa da ilha">🗺️</button>
           <button class="btn ghost" id="rollsToggleBtn" style="padding:8px 12px;font-size:0.82rem" title="Mostrar/esconder rolagens">⚄</button>
           <button class="btn ghost" id="gLeaveBtn" style="padding:8px 14px;font-size:0.82rem">Sair</button>
@@ -701,6 +728,9 @@
 
   <!-- ===== mapa da ilha (névoa de guerra, igual ao V1) ===== -->
   <div class="sheet-modal hide" id="mapModal"><div class="sheet-card map-card" id="mapCard"></div></div>
+
+  <!-- ===== Roteiro da campanha — Tela do Mestre (só Mestre-puro) ===== -->
+  <div class="sheet-modal hide" id="guideModal"><div class="sheet-card guide-card" id="guideCard"></div></div>
 
   <!-- ===== subida de nível (escolha de subclasse/estilo) ===== -->
   <div class="sheet-modal hide" id="levelupModal"><div class="sheet-card lu-card" id="levelupCard"></div></div>

@@ -143,6 +143,58 @@ function openMapMp(){
 }
 function closeMapMp(){ $('#mapModal').classList.add('hide'); }
 
+// ---------------- ROTEIRO DA CAMPANHA — Tela do Mestre (só Mestre-puro) ----------------
+function guideActOf(sceneId){
+  const acts = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.guide && CAMPAIGN.guide.acts) || [];
+  return acts.find(a => (a.scenes||[]).includes(sceneId)) || null;
+}
+function openGuide(){
+  const g = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.guide) || null;
+  if (!g){ toast('Roteiro indisponível.'); return; }
+  const st = ROOM.state || {};
+  const curAct = guideActOf(st.sceneId);
+  const actsHtml = (g.acts||[]).map(a => {
+    const open = !!(curAct && a.n === curAct.n);
+    // NPCs agregados das cenas do ato
+    const npcs = {};
+    (a.scenes||[]).forEach(sid => { const sc = CAMPAIGN.scenes[sid]; if (sc && sc.npcs) Object.assign(npcs, sc.npcs); });
+    const npcHtml = Object.keys(npcs).length
+      ? `<div class="g-block"><h5>NPCs</h5>${Object.entries(npcs).map(([n,d])=>`<div class="g-npc"><b>${escapeHtml(n)}</b> — ${escapeHtml(d)}</div>`).join('')}</div>` : '';
+    // monstros: encontros das cenas do ato
+    const encIds = [...new Set((a.scenes||[]).map(sid => (CAMPAIGN.scenes[sid]||{}).combat).filter(Boolean))];
+    const monHtml = encIds.length ? `<div class="g-block"><h5>Monstros</h5>${encIds.map(eid=>{
+      const e = CAMPAIGN.encounters[eid]; if (!e) return '';
+      const foes = (e.enemies||[]).map(en=>`<div class="g-foe"><b>${escapeHtml(en.name)}</b> — HP ${en.hp} · CA ${en.ca} · ataque ${fmtMod(en.mod)} · dano ${escapeHtml(en.dmg||'—')}${en.traits?`<div class="g-trait">${escapeHtml(en.traits)}</div>`:''}</div>`).join('');
+      return `<div class="g-enc"><div class="g-enc-name">⚔️ ${escapeHtml(e.name)}</div>${foes}${e.tactics?`<div class="g-tactic">Tática: ${escapeHtml(e.tactics)}</div>`:''}</div>`;
+    }).join('')}</div>` : '';
+    // itens & tesouro
+    const itemHtml = (a.items||[]).length ? `<div class="g-block"><h5>Itens & Tesouro</h5>${(a.items||[]).map(iid=>{
+      const it = g.items[iid]; if (!it) return '';
+      return `<div class="g-item"><b>${escapeHtml(it.name)}</b><span class="g-rar">${escapeHtml(it.rarity)}${it.type?` · ${escapeHtml(it.type)}`:''}</span><div>${escapeHtml(it.effect)}</div></div>`;
+    }).join('')}</div>` : '';
+    const kp = (a.keyPoints||[]).map(p=>`<li>${escapeHtml(p)}</li>`).join('');
+    const sec = (a.secrets||[]).map(p=>`<li>${escapeHtml(p)}</li>`).join('');
+    return `<div class="g-act ${open?'open':''}">
+      <div class="g-act-head" data-acthead="${a.n}"><span>${escapeHtml(a.chapter||('Ato '+a.n))} — ${escapeHtml(a.title)}</span>${open?'<span class="g-cur">cena atual</span>':''}<span class="g-caret">▾</span></div>
+      <div class="g-act-body">
+        <p class="g-sum">${escapeHtml(a.summary||'')}</p>
+        ${kp?`<div class="g-block"><h5>Pontos-chave</h5><ul>${kp}</ul></div>`:''}
+        ${npcHtml}${monHtml}${itemHtml}
+        ${sec?`<div class="g-block secret"><h5>🔒 Segredos do Mestre</h5><ul>${sec}</ul></div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  $('#guideCard').innerHTML = `
+    <div class="map-head"><div><h3>📖 Roteiro da Campanha</h3><span class="map-sub">Guia do Mestre — só você vê; não vai para a IA.</span></div>
+      <button class="rp-close" id="guideCloseBtn" title="Fechar">✕</button></div>
+    <div class="g-body">${actsHtml}</div>`;
+  $('#guideModal').classList.remove('hide');
+  $('#guideModal').onclick = e => { if (e.target.id === 'guideModal') closeGuide(); };
+  $('#guideCloseBtn').onclick = closeGuide;
+  $$('#guideCard [data-acthead]').forEach(h => h.onclick = () => h.parentElement.classList.toggle('open'));
+}
+function closeGuide(){ $('#guideModal').classList.add('hide'); }
+
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 function show(id){ $$('.screen').forEach(s=>s.classList.remove('active')); $('#'+id).classList.add('active'); }
@@ -687,6 +739,7 @@ function enterGame(){
     $('#gmEndBtn').onclick = gmEndMatch;
     $('#micBtn').onclick = toggleDictation;   // ditado por voz
     $('#mapBtn').onclick = openMapMp;          // mapa da ilha
+    $('#guideBtn').onclick = openGuide;        // roteiro (só Mestre-puro)
     $('#charsBtn').onclick = () => $('#sidebar').classList.toggle('mobile-open');   // fichas no mobile
     $('#sidebarCloseBtn').onclick = () => $('#sidebar').classList.remove('mobile-open');
     $('#sfxBtn').onclick = toggleSfx;          // efeitos (teste)
@@ -976,6 +1029,8 @@ function renderGame(){
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
   // console do Mestre (modo comando): só alterna visibilidade — não reconstrói (preserva a digitação)
   const dc = $('#dmConsole'); if (dc) dc.style.display = DM_DRAFT ? '' : 'none';
+  // botão do Roteiro: só para o Mestre-puro (tem spoilers; some pro admin-jogador)
+  const gb = $('#guideBtn'); if (gb) gb.style.display = isCommandMode() ? '' : 'none';
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
 }
 

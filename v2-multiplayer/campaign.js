@@ -217,5 +217,89 @@ const CAMPAIGN = {
       xpTotal: 1800,
       negotiable: true
     }
+  },
+
+  // ===================================================
+  // GUIA DO MESTRE — "tela do DM" só de referência.
+  // NÃO vai para o prompt da IA (custo de token zero).
+  // Cruzeia com scenes/encounters; acrescenta resumo,
+  // pontos-chave, segredos e os ITENS MÁGICOS da campanha.
+  // ===================================================
+  guide: {
+    // catálogo de itens/tesouro (fiéis ao módulo, mecânica padrão)
+    items: {
+      'pocao_cura':       { name:'Poção de Cura',              rarity:'Comum',   type:'Poção',                  effect:'Recupera 2d4+2 PV ao beber (uma ação).' },
+      'pocao_cura_maior': { name:'Poção de Cura Maior',        rarity:'Incomum', type:'Poção',                  effect:'Recupera 4d4+4 PV ao beber (uma ação).' },
+      'bencao_runara':    { name:'Escama de Bronze de Runara', rarity:'Comum',   type:'Maravilha (amuleto)',    effect:'Presente de Runara. Vantagem em saves para não ficar Amedrontado. Aquece de leve perto de magia dracônica.' },
+      'lamina_mare':      { name:'Lâmina da Maré +1',          rarity:'Incomum', type:'Arma (espada)',          effect:'+1 em ataque e dano. Achada no naufrágio; pinga água salgada que nunca seca.' },
+      'talisma_morte':    { name:'Talismã contra os Mortos',   rarity:'Incomum', type:'Maravilha',              effect:'Vantagem em saves contra Paralisia e contra efeitos de mortos-vivos enquanto carregado.' },
+      'lagrima_sharruth': { name:'Lágrima de Sharruth',        rarity:'Incomum', type:'Gema mágica',            effect:'Cristal de fogo da tumba. 1×/dia: rajada de calor (1d8 fogo, 9m) ou ilumina/aquece por horas. Vale ~250 po.' },
+      'covil_dragao':     { name:'Tesouro do Covil',           rarity:'—',       type:'Tesouro',                effect:'No clímax: ~300 po em moedas e gemas espalhadas pelo observatório, além do item mágico do ato.' }
+    },
+    // a campanha em ATOS (cada ato cruza com as cenas indicadas)
+    acts: [
+      {
+        n:1, chapter:"Capítulo 1", title:"Dragon's Rest",
+        scenes:['chegada','praia','claustro'],
+        summary:"Os heróis chegam à ilha numa tempestade antinatural, enfrentam mortos-vivos na praia e sobem ao claustro de Dragon's Rest — refúgio da dragã de bronze Runara, que aponta os três problemas da ilha.",
+        keyPoints:[
+          "A tempestade é eco da magia de Sharruth. O capitão Sabast (meio-orc) quer largar a carga e fugir.",
+          "Na praia, marinheiros afogados de OUTRO naufrágio se erguem como zumbis (1º combate — assustador mas vencível).",
+          "No claustro: Runara, Irmão Clavel e Tibor. Runara abre 3 ganchos: o silêncio dos myconids (Seagrow), o naufrágio amaldiçoado ao norte, e um wyrmling perdido.",
+          "O claustro é porto seguro: descanso longo automático ao chegar."
+        ],
+        secrets:[
+          "Runara é uma dragã de bronze milenar em forma humana — revela isso aos poucos.",
+          "Diz a lenda que a ilha foi formada pela fúria de Sharruth, dragã vermelha aprisionada sob a terra."
+        ],
+        items:['pocao_cura','bencao_runara']
+      },
+      {
+        n:2, chapter:"Capítulo 2", title:"Cavernas Seagrow",
+        scenes:['cavernas','sharruth','claustro_volta'],
+        summary:"Investigação das Cavernas Seagrow: um polvo-fungo morto-vivo guarda a entrada, os myconids estão aterrorizados, e fendas para o Plano do Fogo vazam da tumba de Sharruth, soltando fume drakes. O grupo volta ao claustro e sobe ao nível 2.",
+        keyPoints:[
+          "Na poça da entrada, um polvo-fungo morto-vivo agarra e puxa para a água (combate). Foge se muito ferido.",
+          "Sinensa, líder myconid, fala por esporos (telepatia limitada): algo despertou na tumba.",
+          "No fundo, fendas planares de fogo e fume drakes (sub-chefe do capítulo). O calor cresce.",
+          "De volta ao claustro: recompensa de Runara + subida para o nível 2 + gancho do naufrágio."
+        ],
+        secrets:[
+          "As fendas conectam ao Plano Elemental do Fogo; a tumba/prisão de Sharruth fica sob a ilha.",
+          "Deixe ambíguo se Sharruth está viva ou morta — é assunto para outra aventura, longe daqui."
+        ],
+        items:['pocao_cura']
+      },
+      {
+        n:3, chapter:"Capítulo 3", title:"Naufrágio Amaldiçoado",
+        scenes:['naufragio'],
+        summary:"O navio fantasma encalhado na costa norte: uma película negra que suga a luz, zumbis e um ghoul paralisante. A origem da maldição é um culto a Orcus.",
+        keyPoints:[
+          "Pegadas molhadas levam ao porão escuro; o ar cheira a sal e podridão.",
+          "Combate: 1 Ghoul (garras paralisam — CON save DC 10) + 2 zumbis. O escuro favorece emboscada.",
+          "Na parede, um símbolo: cabeça de carneiro com maça — o emblema de Orcus.",
+          "Limpar o navio sobe o grupo para o nível 3."
+        ],
+        secrets:[
+          "A maldição vem de um efígie deixada por um cultista de Orcus, Príncipe Demônio dos Mortos-Vivos (reino de Thanatos)."
+        ],
+        items:['lamina_mare','talisma_morte']
+      },
+      {
+        n:4, chapter:"Capítulo 4 + Epílogo", title:"Observatório do Penhasco",
+        scenes:['observatorio','epilogo'],
+        summary:"Clímax no observatório do penhasco: a jovem dragã cromática que move as ameaças da ilha. Pode haver batalha final OU paz negociada (com Runara). Depois, o epílogo em Dragon's Rest.",
+        keyPoints:[
+          "A dragã jovem é o clímax (HP 75 · CA 17 · sopro elemental DEX save DC 14 · voa · multiataque).",
+          "ELA É NEGOCIÁVEL: Persuasão DC 16 + ajuda de Runara pode selar a paz entre as famílias de dragões — honre a escolha do grupo.",
+          "Subir a este ato já leva o grupo ao nível 3.",
+          "Epílogo: Runara assume a verdadeira forma por um instante; gancho para a Costa da Espada."
+        ],
+        secrets:[
+          "A paz é um final tão válido quanto o combate. Se negociarem bem, a dragã vira aliada relutante com a intervenção de Runara."
+        ],
+        items:['pocao_cura_maior','lagrima_sharruth','covil_dragao']
+      }
+    ]
   }
 };
