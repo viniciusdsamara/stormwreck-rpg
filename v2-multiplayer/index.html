@@ -135,6 +135,15 @@
   .dmc-roll input[type=number]{ width:52px; padding:5px; }
   .dmc-roll label{ display:flex; align-items:center; gap:3px; }
   .dmc-x{ background:none; border:none; color:var(--blood); cursor:pointer; font-size:0.95rem; padding:2px 4px; }
+  .dmc-foes{ display:flex; flex-direction:column; gap:7px; margin:4px 0 2px; }
+  .dmc-foe{ display:flex; align-items:center; justify-content:space-between; gap:9px; flex-wrap:wrap;
+          background:var(--basalt-700); border:1px solid var(--basalt-600); border-radius:9px; padding:8px 11px; }
+  .dmc-foe-info{ flex:1; min-width:160px; }
+  .dmc-foe-info b{ color:var(--blood); }
+  .dmc-foe-sub{ font-size:0.78rem; opacity:0.82; }
+  .dmc-foe-tr{ font-size:0.74rem; opacity:0.72; font-style:italic; margin-top:2px; }
+  .dmc-foe select{ background:var(--basalt-800,#15171c); border:1px solid var(--basalt-600); color:var(--parch);
+          border-radius:7px; padding:6px 8px; font-family:inherit; font-size:0.82rem; }
   /* Roteiro da Campanha (Tela do Mestre) */
   .guide-card{ max-width:680px; width:94%; max-height:88vh; display:flex; flex-direction:column; }
   .guide-card .g-body{ overflow-y:auto; padding-right:4px; }

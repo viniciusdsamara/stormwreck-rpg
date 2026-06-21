@@ -941,6 +941,20 @@ function mpRollAttackDamage(ap, crit){
   if (ap.bonus){ total += ap.bonus; parts.push(fmtMod(ap.bonus)); }
   return { total, detail: parts.join(' + ') };
 }
+// rola uma expressão de dano de inimigo ("1d6+1", "2d6+4", "1d4+2 +1d4 fogo"); crit dobra os dados
+function mpRollDmgExpr(expr, crit){
+  const s = String(expr || '1d6').toLowerCase();
+  let total = 0; const detail = [];
+  for (const m of s.matchAll(/(\d*)d(\d+)/g)){
+    let n = +(m[1] || 1) * (crit ? 2 : 1); const sides = +m[2]; let sub = 0; const r = [];
+    for (let i=0;i<n;i++){ const v = mpRollDie(sides); sub += v; r.push(v); }
+    total += sub; detail.push(`${n}d${sides}(${r.join(',')})`);
+  }
+  for (const m of s.replace(/\d*d\d+/g,' ').matchAll(/([+-]?\s*\d+)/g)){
+    const v = +String(m[1]).replace(/\s+/g,''); if (v){ total += v; detail.push(`${v>=0?'+':''}${v}`); }
+  }
+  return { total: Math.max(0, total), detail: detail.join(' ') };
+}
 // resolve uma [ROLL] para o personagem 'c'; devolve o card (espelhado no estado)
 function doMpRoll(c, rollM){
   const [, tipo, atr, cd, tag] = rollM;
@@ -1606,6 +1620,7 @@ function dmcSeed(instruction){ if (!DM_DRAFT) return; DM_DRAFT.seed = instructio
 function renderDmConsole(){
   const box = $('#dmConsole'); if (!box) return;
   if (!DM_DRAFT){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  if (DM_DRAFT.enemy){ renderEnemyCommand(box); return; }   // Fase 3: comando dos inimigos
   const d = DM_DRAFT;
   const st = ROOM.state || {};
   const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || {};
@@ -1678,7 +1693,8 @@ async function sendDraft(){
   const sd = $('#dmcSend'); if (sd) sd.disabled = true;
   try {
     // combate é decidido pelo CHIP do Mestre (d.combatStart), não pelo marcador cru → ele pode vetar a sugestão da IA
-    const replyForMarkers = d.reply.replace(/\[COMBAT_START:[^\]]*\]/gi, '');
+    let replyForMarkers = d.reply.replace(/\[COMBAT_START:[^\]]*\]/gi, '');
+    if (d.fromEnemy) replyForMarkers = replyForMarkers.replace(/\[(DANO|HIT):[^\]]*\]/gi, '');  // dano dos inimigos já aplicado pelo código
     applyMpMarkers(replyForMarkers, st);                          // condições/dano/mapa/sugestões (sem auto-combate)
     if (d.combatStart && !mpCombatActive(st)) mpStartCombat(st, d.combatStart);
     let sceneComplete = !!d.sceneComplete;                        // idem: avanço pelo chip, não pelo marcador
@@ -1703,8 +1719,15 @@ async function sendDraft(){
     if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); await finalizeDraft(st); return; }
     // 4) turno normal
     if (!text) st.history.push({ role:'dm', text:'…' });
-    if (mpCombatActive(st)){ if (d.hadCombat) advanceTurn(st); await mpRunEnemyTurns(st); }
-    else advanceTurn(st);
+    if (mpCombatActive(st)){
+      if (d.hadCombat) advanceTurn(st);                          // passa o ponteiro do PC que agiu
+      if (mpAllEnemiesDead(st)){ mpEndCombat(st, true); await finalizeDraft(st); return; }
+      if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); await finalizeDraft(st); return; }
+      const acting = mpCollectEnemyCluster(st);                  // inimigos que agem agora (até o próximo PC vivo)
+      if (acting.length){ await openEnemyCommand(st, acting); return; }   // o Mestre comanda → não finaliza ainda
+      await finalizeDraft(st); return;                           // já é a vez de um PC
+    }
+    advanceTurn(st);
     await finalizeDraft(st);
   } catch(e){
     toast('Erro ao enviar: ' + e.message);
@@ -1721,6 +1744,85 @@ async function finalizeDraft(st){
   DM_DRAFT = null;
   renderDmConsole();
   renderGame();
+}
+
+// ---- Fase 3: COMANDO DOS INIMIGOS (modo Mestre) ----
+// junta os inimigos vivos que agem agora até o próximo PC vivo (avança o ponteiro)
+function mpCollectEnemyCluster(st){
+  const acting = [];
+  while (mpCombatActive(st)){
+    const cur = mpCurrentActor(st); if (!cur) break;
+    if (cur.kind === 'pc'){ if ((st.characters[cur.idx]||{}).hp > 0) break; mpAdvanceCombat(st); continue; }
+    const e = st.combat.enemies[cur.idx];
+    if (e.curHp > 0) acting.push(e);
+    mpAdvanceCombat(st);
+  }
+  return acting;
+}
+// abre o painel onde o Mestre escolhe o alvo de cada inimigo (não finaliza a ação)
+async function openEnemyCommand(st, acting){
+  if (!DM_DRAFT) return;
+  const pcs = (st.characters||[]).filter(c => c.hp > 0);
+  const firstIdx = pcs.length ? (st.characters||[]).indexOf(pcs[0]) : null;
+  const targets = {};
+  acting.forEach(e => { targets[e.id] = firstIdx; });          // alvo padrão: 1º herói vivo
+  DM_DRAFT.enemy = { acting, targets };
+  st.busy = true; await saveState(st); renderGame();           // jogadores: narração do PC visível, ainda travados
+  renderDmConsole();
+}
+function renderEnemyCommand(box){
+  const st = ROOM.state || {};
+  const en = DM_DRAFT.enemy;
+  const enc = st.combat && CAMPAIGN.encounters[st.combat.enc];
+  const pcs = (st.characters||[]).map((c,idx)=>({ idx, name:c.name, ca:c.ca, hp:c.hp })).filter(p => p.hp > 0);
+  const rows = en.acting.map(e => {
+    const opts = pcs.map(p => `<option value="${p.idx}" ${en.targets[e.id]===p.idx?'selected':''}>${escapeHtml(p.name)} (CA ${p.ca})</option>`).join('')
+      + `<option value="" ${en.targets[e.id]==null?'selected':''}>— não agir —</option>`;
+    return `<div class="dmc-foe">
+      <div class="dmc-foe-info"><b>${escapeHtml(e.name)}</b> <span class="dmc-foe-sub">HP ${e.curHp}/${e.hp} · ataque ${fmtMod(e.mod||0)} · dano ${escapeHtml(e.dmg||'—')}</span>${e.traits?`<div class="dmc-foe-tr">${escapeHtml(e.traits)}</div>`:''}</div>
+      <select data-foe="${escapeHtml(e.id)}">${opts}</select>
+    </div>`;
+  }).join('');
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="dmc-head">⚔️ Turno dos inimigos <span class="dmc-sub">você comanda — escolha os alvos</span></div>
+    ${enc && enc.tactics ? `<div class="dmc-hint combat">Tática: ${escapeHtml(enc.tactics)}</div>` : ''}
+    <div class="dmc-foes">${rows}</div>
+    <div class="dmc-actions"><button class="btn" id="dmcResolve">⚔️ Resolver ataques</button></div>`;
+  $$('#dmConsole [data-foe]').forEach(s => s.onchange = e => { const v = e.target.value; DM_DRAFT.enemy.targets[e.target.dataset.foe] = (v==='') ? null : +v; });
+  $('#dmcResolve').onclick = resolveEnemyCommand;
+}
+// o CÓDIGO rola os ataques (justo), aplica dano e devolve o resumo para a IA narrar (com aprovação)
+async function resolveEnemyCommand(){
+  if (!DM_DRAFT || !DM_DRAFT.enemy) return;
+  const st = ROOM.state || {};
+  const en = DM_DRAFT.enemy;
+  const btn = $('#dmcResolve'); if (btn) btn.disabled = true;
+  const results = [];
+  for (const e of en.acting){
+    if ((e.curHp||0) <= 0) continue;
+    const tIdx = en.targets[e.id];
+    const target = (tIdx!=null) ? st.characters[tIdx] : null;
+    if (!target || target.hp <= 0){ results.push(`${e.name} recua e não ataca.`); continue; }
+    const atk = mpD20(null, e.mod||0);
+    const hit = atk.crit || (!atk.fumble && atk.total >= (target.ca||10));
+    st.history.push({ role:'roll', label:`${e.name} ataca ${target.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.ca, tipo:'ataque', nat:atk.nat });
+    if (hit){
+      const dmg = mpRollDmgExpr(e.dmg||'1d6', atk.crit);
+      target.hp = Math.max(0, target.hp - dmg.total);
+      results.push(`${e.name} ACERTOU ${target.name}: ${dmg.total} de dano${atk.crit?' (CRÍTICO)':''}.`);
+    } else {
+      results.push(`${e.name} ERROU ${target.name} (rolou ${atk.total} vs CA ${target.ca}).`);
+    }
+  }
+  await saveState(st); renderGame();                            // espelha os cards de ataque + HP a todos
+  DM_DRAFT.enemy = null;
+  if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); }
+  await mpSleep(500);
+  DM_DRAFT.fromEnemy = true;                                    // marca: dano já aplicado pelo código (não reaplicar)
+  DM_DRAFT.seed = `[TURNO DOS INIMIGOS — RESULTADO] ${results.join(' ')} Narre as ações deles AGORA em 1-3 frases, coerente com a cena. NÃO peça rolagem nem fale como sistema.`;
+  try { const reply = await callDm(st, DM_DRAFT.seed); stageDraft(reply); }
+  catch(e){ toast('Erro ao narrar inimigos: ' + e.message); await finalizeDraft(st); }
 }
 const mpSleep = ms => new Promise(r => setTimeout(r, ms));
 function buildMpHistory(st){
