@@ -464,11 +464,12 @@ function mpCharCard(c, active, idx){
 }
 
 // --- digitação do Mestre (efeito "sendo escrito", local em cada cliente) ---
-let TYPING = false, typeTimer = null, revealedCount = -1, localBusy = false;
+let TYPING = false, typeTimer = null, revealedCount = -1, localBusy = false, typingLen = 0;
 function clearTyping(){ if (typeTimer){ clearInterval(typeTimer); typeTimer = null; } TYPING = false; }
 function msgHtml(m){
   if (m.role==='scene') return `<div style="align-self:center;font-family:var(--font-mono);font-size:0.74rem;letter-spacing:0.1em;color:var(--ember)">${escapeHtml(m.text)}</div>`;
   if (m.role==='player') return `<div class="msg player"><div class="who">${escapeHtml(m.who||'')}</div><div class="body">${escapeHtml(m.text)}</div></div>`;
+  if (m.role==='roll') return rollCardHtml(m);
   return `<div class="msg dm"><div class="body">${fmtNarr(escapeHtml(m.text))}</div></div>`;
 }
 function renderNarrative(st){
@@ -476,16 +477,18 @@ function renderNarrative(st){
   const hist = st.history || [];
   const lastIdx = hist.length - 1;
   const last = hist[lastIdx];
-  const animate = !!last && last.role==='dm' && revealedCount < hist.length && !st.busy;
-  // já estou digitando exatamente esta última fala? não reconstruo (preservo o que já apareceu)
-  if (TYPING && animate) return;
+  // anima a última fala do Mestre (mesmo durante "busy", para a narração ser digitada)
+  const animate = !!last && last.role==='dm' && revealedCount < hist.length;
+  // já estou digitando exatamente esta fala? não reconstruo (preservo o que apareceu)
+  if (TYPING && animate && typingLen === hist.length) return;
+  clearTyping();   // para qualquer timer órfão antes de reconstruir
   narr.innerHTML = hist.map((m,i)=> (animate && i===lastIdx) ? `<div class="msg dm"><div class="body"></div></div>` : msgHtml(m)).join('');
   narr.scrollTop = narr.scrollHeight;
   if (animate) startTyping(narr.lastElementChild.querySelector('.body'), last.text, hist.length);
 }
 function startTyping(bodyEl, full, count){
   clearTyping();
-  TYPING = true;
+  TYPING = true; typingLen = count;
   const narr = $('#narrative');
   const perTick = Math.max(2, Math.ceil(full.length / 180));   // longas terminam em ~3s
   let i = 0;
@@ -504,6 +507,100 @@ function startTyping(bodyEl, full, count){
   }, 16);
 }
 
+// ---------------- ROLAGENS (cards espelhados a todos via estado) ----------------
+// card grande na narrativa (estilo V1 showRollCard)
+function rollCardHtml(card){
+  let outcome = '';
+  if (card.dc != null){
+    const ok = !card.autoFail && card.total >= card.dc;
+    outcome = `<div class="rout ${ok?'success':'fail'}">${card.autoFail?'FALHA AUTOMÁTICA':(ok?'SUCESSO':'FALHA')} (CD ${card.dc})</div>`;
+  }
+  const numClass = card.crit ? 'crit' : card.fumble ? 'fumble' : '';
+  const diceStr = (card.dice||[]).join(', ');
+  const dmgLine = card.dmg ? `<div class="rbreak" style="margin-top:6px;color:var(--blood)">⚔ Dano se acertar <b style="color:var(--parch)">${card.dmg.total}</b> [${card.dmg.type}]</div>` : '';
+  return `<div class="roll-card"><div class="rtype">${escapeHtml(card.label)}</div>
+    <div class="rnum ${numClass}">${card.autoFail?'✗':card.total}</div>
+    <div class="rbreak">d20 [${diceStr}] ${card.mod>=0?'+':''}${card.mod}${card.crit?' · CRÍTICO!':''}${card.fumble?' · FALHA CRÍTICA':''}</div>
+    ${outcome}${dmgLine}</div>`;
+}
+// entrada no painel direito (estilo V1 logRoll)
+function rollLogEntryHtml(card){
+  const auto = card.autoFail || !card.dice || !card.dice.length;
+  let cls = card.crit ? 'crit' : card.fumble ? 'fumble' : '';
+  let out = '';
+  if (card.dc != null){ const ok = !auto && card.total >= card.dc; if (!cls) cls = ok?'ok':'fail'; out = `${ok?'✓':'✗'} CD ${card.dc}`; }
+  if (card.crit) out = 'CRÍTICO! ' + out;
+  const breakLine = auto ? 'falha automática (condição)' : `d20 [${(card.dice||[]).join(', ')}] ${fmtMod(card.mod)} = ${card.total}`;
+  const dmgLine = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">${card.dmg.detail} [${card.dmg.type}]</span></div>` : '';
+  return `<div class="rl-entry ${cls}"><div class="rl-head">${escapeHtml(card.label)}</div>
+    <div class="rl-line"><span class="rl-num">${auto?'✗':card.total}</span><span class="rl-out">${out.trim()}</span></div>
+    <div class="rl-break">${breakLine}</div>${dmgLine}</div>`;
+}
+function renderRollLog(st){
+  const rolls = (st.history||[]).filter(m => m.role==='roll');
+  const list = $('#rollLogList'); if (!list) return;
+  list.innerHTML = rolls.length ? rolls.slice().reverse().map(rollLogEntryHtml).join('') : '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
+}
+// dados justos (rolados pelo CÓDIGO, nunca pela IA)
+function mpRollDie(s){ return Math.floor(Math.random()*s)+1; }
+function mpD20(c, mod=0, opts={}){
+  const roll = () => {
+    let a = mpRollDie(20), b = null, chosen = a;
+    if (opts.adv || opts.dis){ b = mpRollDie(20); chosen = opts.adv ? Math.max(a,b) : Math.min(a,b); }
+    return { nat: chosen, total: chosen+mod, mod, dice:[a,b].filter(x=>x!==null), crit: chosen===20, fumble: chosen===1 };
+  };
+  let r = roll();
+  const lucky = c && c.racialEffects && c.racialEffects.flags && c.racialEffects.flags.rerollNat1;  // Sortudo (Halfling)
+  if (lucky && r.nat === 1){ r = roll(); r.lucky = true; }
+  return r;
+}
+function mpRollAttackDamage(ap, crit){
+  let total = 0; const parts = [];
+  if (ap.dmg){
+    const m = ap.dmg.match(/(\d+)d(\d+)/); let n = +m[1]; const sides = +m[2];
+    if (crit) n *= 2; if (crit && ap.savage) n += 1;
+    const r = []; for (let k=0;k<n;k++){ let v = mpRollDie(sides); if (ap.gwf && (v===1||v===2)) v = mpRollDie(sides); r.push(v); }
+    total += r.reduce((a,b)=>a+b,0); parts.push(`${n}d${sides}(${r.join(',')})`);
+  } else { total += (ap.flat||1); parts.push(`${ap.flat||1}`); }
+  if (ap.sneak){ let n = ap.sneak; if (crit) n *= 2; const r = []; for (let k=0;k<n;k++) r.push(mpRollDie(6)); total += r.reduce((a,b)=>a+b,0); parts.push(`Furtivo ${n}d6(${r.join(',')})`); }
+  if (ap.bonus){ total += ap.bonus; parts.push(fmtMod(ap.bonus)); }
+  return { total, detail: parts.join(' + ') };
+}
+// resolve uma [ROLL] para o personagem 'c'; devolve o card (espelhado no estado)
+function doMpRoll(c, rollM){
+  const [, tipo, atr, cd, tag] = rollM;
+  const abr = atr.toUpperCase().slice(0,3);
+  const rm = rollModifiers(c, tipo, abr, tag);
+  const { adv, dis, prof } = rm;
+  const cdNum = +cd > 0 ? +cd : null;
+  const result = rm.autoFail
+    ? { nat:'—', total:0, mod:rm.mod, dice:[], crit:false, fumble:true }
+    : mpD20(c, rm.mod, { adv, dis });
+  let dmg = null;
+  if ((tipo.toLowerCase()==='ataque' || tipo.toLowerCase()==='attack') && !rm.autoFail){
+    const ap = attackProfile(c, abr, adv && !dis);
+    const d = mpRollAttackDamage(ap, result.crit);
+    dmg = { total: d.total, detail: d.detail, type: ap.type };
+  }
+  const advNote = adv&&!dis ? ' · vantagem' : dis&&!adv ? ' · desvantagem' : '';
+  const condNote = rm.autoFail ? ' · falha automática' : '';
+  const outcome = rm.autoFail ? 'FALHA AUTOMÁTICA' : (cdNum ? (result.total>=cdNum?'SUCESSO':'FALHA') : null);
+  return {
+    role:'roll', label:`${c.name} · ${tipo} (${abr})${advNote}${condNote}`,
+    total: result.total, mod: result.mod, dice: result.dice, crit: result.crit, fumble: result.fumble,
+    dc: cdNum, outcome, dmg, prof, tipo, abr, advNote, autoFail: rm.autoFail, nat: result.nat, lucky: !!result.lucky
+  };
+}
+// texto do resultado devolvido ao Mestre para ele narrar a consequência
+function mpRollResultText(c, card){
+  const base = card.autoFail
+    ? 'FALHA AUTOMÁTICA por condição'
+    : `d20=${card.nat} ${fmtMod(card.mod)} = ${card.total}${card.dc?` vs CD ${card.dc} → ${card.outcome}`:''}`;
+  const flags = `${card.crit?' (CRÍTICO!)':''}${card.fumble&&!card.autoFail?' (FALHA CRÍTICA!)':''}${card.lucky?' (Sortudo: re-rolou o 1)':''}`;
+  const dmg = card.dmg ? ` Dano se acertar: ${card.dmg.total} [${card.dmg.type}] (${card.dmg.detail}).` : '';
+  return `[RESULTADO DA ROLAGEM] ${c.name} rolou ${card.tipo} (${card.abr})${card.prof?' [proficiente]':''}${card.advNote}: ${base}${flags}.${dmg} Narre a consequência e continue (não peça outra rolagem para a mesma ação).`;
+}
+
 function renderGame(){
   const st = ROOM.state || {};
   if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
@@ -515,8 +612,9 @@ function renderGame(){
   // grupo (sidebar) — cards clicáveis abrem a ficha completa
   $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===turnIdx, idx)).join('');
   $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
-  // narrativa (com digitação do Mestre)
+  // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
+  renderRollLog(st);
   // vez / compositor — trava para TODOS enquanto o Mestre pensa (st.busy) ou digita (TYPING)
   const turnChar = (st.characters||[])[turnIdx];
   const locked = !!st.busy || TYPING || localBusy;
@@ -795,16 +893,33 @@ async function onPlayerAction(action){
     st.busy = true;                                       // trava TODOS (via Realtime) enquanto o Mestre pensa
     await saveState(st);                                  // mostra a ação a todos já + estado "pensando"
     renderGame();
-    let reply;
-    try { reply = await callClaudeMp(buildMpHistory(st), buildMpSystemPrompt(st), 700); }
-    catch (e) { reply = `*(O Mestre tropeçou: ${e.message})*`; }
-    const sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
-    applyMpMarkers(reply, st);                                // condições + sugestões + mapa antes de limpar
-    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();    // remove os marcadores do texto exibido
-    if (clean) st.history.push({ role:'dm', text: clean });
-    else if (!sceneComplete) st.history.push({ role:'dm', text:'…' });
-    if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); }   // transição de cena pelo roteiro
-    else advanceTurn(st);
+    const actor = (st.characters||[])[st.turnIndex||0];   // quem age é quem rola
+    let reply = await callDm(st);
+    let rolls = 0;
+    // ciclo do Mestre: pode pedir uma rolagem [ROLL]; o CÓDIGO rola e devolve o número
+    while (true){
+      const sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
+      const rollM = (rolls < 4) ? reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)(?::([^:\]]+))?\]/) : null;
+      applyMpMarkers(reply, st);                             // condições + sugestões + mapa
+      const clean = reply.replace(/\[[^\]]*\]/g, '').trim(); // remove marcadores do texto exibido
+      if (clean) st.history.push({ role:'dm', text: clean });
+      if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); break; }
+      if (rollM && actor){
+        rolls++;
+        await saveState(st);                                // mostra o pedido do Mestre já
+        renderGame();
+        await mpSleep(750);                                 // um respiro antes do dado cair
+        const card = doMpRoll(actor, rollM);                // o CÓDIGO rola (justo)
+        st.history.push(card);
+        await saveState(st);                                // espelha o card a todos (ainda "busy")
+        renderGame();
+        reply = await callDm(st, mpRollResultText(actor, card));   // devolve o número ao Mestre
+        continue;
+      }
+      if (!clean) st.history.push({ role:'dm', text:'…' });
+      advanceTurn(st);
+      break;
+    }
     st.busy = false;                                       // libera; cada cliente ainda digita a fala localmente
     await saveState(st);
   } finally {
@@ -814,6 +929,7 @@ async function onPlayerAction(action){
     renderGame();
   }
 }
+const mpSleep = ms => new Promise(r => setTimeout(r, ms));
 function buildMpHistory(st){
   const msgs = [];
   (st.history||[]).slice(-16).forEach(m => {
@@ -822,6 +938,16 @@ function buildMpHistory(st){
   });
   if (!msgs.length || msgs[0].role !== 'user') msgs.unshift({ role:'user', content:'(Apresente a cena e abra para a ação dos jogadores.)' });
   return msgs;
+}
+// chama o Mestre; extraUser injeta o resultado de uma rolagem mantendo a alternância
+async function callDm(st, extraUser){
+  const msgs = buildMpHistory(st);
+  if (extraUser){
+    if (msgs.length && msgs[msgs.length-1].role === 'user') msgs[msgs.length-1].content += '\n\n' + extraUser;
+    else msgs.push({ role:'user', content: extraUser });
+  }
+  try { return await callClaudeMp(msgs, buildMpSystemPrompt(st), 700); }
+  catch (e){ return `*(O Mestre tropeçou: ${e.message})*`; }
 }
 function buildMpSystemPrompt(st){
   const sc = CAMPAIGN.scenes[st.sceneId] || {};
@@ -844,7 +970,12 @@ REGRAS DE IMERSÃO (siga à risca):
 - Quando a ação do jogador tem consequência clara (ex.: beber veneno, enfiar a mão no fogo, provocar um inimigo), DECIDA a consequência mais plausível e NARRE-A já acontecendo. Se for o caso, aplique a condição pelo marcador. Não peça permissão.
 - Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias (ex.: "Em qual dos dois guardas você mira?"). Nunca pergunte sobre mecânica.
 - COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário, magias, recursos listados abaixo) e o que a CENA oferece. Se o jogador descrever usar um item, magia ou recurso que ele NÃO possui (ex.: beber um veneno que não está no inventário), corrija DENTRO da ficção — narre que ele procura mas não há tal item, ou que a tentativa falha — em vez de aceitar a invenção. Nunca dê itens que não existem.
-- NÃO role dados nem decida sucesso/falha de testes incertos — isso é do sistema. Para o resto, narre de forma plausível.
+- NÃO role dados nem invente números. Quando uma ação tiver resultado INCERTO (pode dar certo ou errado: escalar, furtividade, persuadir, atacar, resistir a algo), PEÇA a rolagem com o marcador [ROLL:tipo:ATRIBUTO:CD] e PARE a narração ali — o sistema rola o d20 justo e te devolve o número; só então você narra a consequência. NUNCA decida sozinho se passou ou falhou.
+  • tipo = nome da perícia (ex.: Atletismo, Furtividade, Persuasão), ou 'save', ou 'ataque'.
+  • ATRIBUTO = FOR, DES, CON, INT, SAB ou CAR.
+  • CD = dificuldade: 10 fácil, 12-13 médio, 15 difícil, 18+ muito difícil. Para 'ataque' use CD 0 (compara com a CA do alvo, que você decide narrativamente).
+  • Exemplos: [ROLL:Atletismo:FOR:12]  ·  [ROLL:save:DES:14]  ·  [ROLL:ataque:DES:0]
+  • Uma rolagem por vez. Ações triviais/automáticas NÃO precisam de rolagem — narre direto.
 
 ## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
 ${sc.summary||''}
