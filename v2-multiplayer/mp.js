@@ -243,6 +243,7 @@ async function leaveRoomQuietly(){
       else { await supa.from('room_members').delete().eq('room_id', ROOM.id).eq('user_id', ME.id); }
     }
   } catch(e){}
+  clearTyping(); revealedCount = -1; localBusy = false;
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -311,31 +312,71 @@ function mpCharCard(c, active){
   </div>`;
 }
 
+// --- digitação do Mestre (efeito "sendo escrito", local em cada cliente) ---
+let TYPING = false, typeTimer = null, revealedCount = -1, localBusy = false;
+function clearTyping(){ if (typeTimer){ clearInterval(typeTimer); typeTimer = null; } TYPING = false; }
+function msgHtml(m){
+  if (m.role==='scene') return `<div style="align-self:center;font-family:var(--font-mono);font-size:0.74rem;letter-spacing:0.1em;color:var(--ember)">${escapeHtml(m.text)}</div>`;
+  if (m.role==='player') return `<div class="msg player"><div class="who">${escapeHtml(m.who||'')}</div><div class="body">${escapeHtml(m.text)}</div></div>`;
+  return `<div class="msg dm"><div class="body">${fmtNarr(escapeHtml(m.text))}</div></div>`;
+}
+function renderNarrative(st){
+  const narr = $('#narrative');
+  const hist = st.history || [];
+  const lastIdx = hist.length - 1;
+  const last = hist[lastIdx];
+  const animate = !!last && last.role==='dm' && revealedCount < hist.length && !st.busy;
+  // já estou digitando exatamente esta última fala? não reconstruo (preservo o que já apareceu)
+  if (TYPING && animate) return;
+  narr.innerHTML = hist.map((m,i)=> (animate && i===lastIdx) ? `<div class="msg dm"><div class="body"></div></div>` : msgHtml(m)).join('');
+  narr.scrollTop = narr.scrollHeight;
+  if (animate) startTyping(narr.lastElementChild.querySelector('.body'), last.text, hist.length);
+}
+function startTyping(bodyEl, full, count){
+  clearTyping();
+  TYPING = true;
+  const narr = $('#narrative');
+  const perTick = Math.max(2, Math.ceil(full.length / 180));   // longas terminam em ~3s
+  let i = 0;
+  typeTimer = setInterval(()=>{
+    i += perTick;
+    if (i >= full.length){
+      bodyEl.innerHTML = fmtNarr(escapeHtml(full));
+      narr.scrollTop = narr.scrollHeight;
+      clearTyping();
+      revealedCount = count;
+      renderGame();                 // libera o input de quem é a vez
+      return;
+    }
+    bodyEl.innerHTML = fmtNarr(escapeHtml(full.slice(0, i)));
+    narr.scrollTop = narr.scrollHeight;
+  }, 16);
+}
+
 function renderGame(){
   const st = ROOM.state || {};
+  if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
+  if (st.busy) localBusy = false;                                   // a engine assumiu: solta o lock otimista
   const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || null;
   $('#chapterLabel').textContent = sc ? sc.chapter : '';
   $('#locationLabel').textContent = sc ? sc.location : '—';
   const turnIdx = st.turnIndex||0;
   // grupo (sidebar)
   $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===turnIdx)).join('');
-  // narrativa (balões do V1)
-  $('#narrative').innerHTML = (st.history||[]).map(m=>{
-    if (m.role==='scene') return `<div style="align-self:center;font-family:var(--font-mono);font-size:0.74rem;letter-spacing:0.1em;color:var(--ember)">${escapeHtml(m.text)}</div>`;
-    if (m.role==='player') return `<div class="msg player"><div class="who">${escapeHtml(m.who||'')}</div><div class="body">${escapeHtml(m.text)}</div></div>`;
-    return `<div class="msg dm"><div class="body">${fmtNarr(escapeHtml(m.text))}</div></div>`;
-  }).join('');
-  $('#narrative').scrollTop = $('#narrative').scrollHeight;
-  // vez / compositor
+  // narrativa (com digitação do Mestre)
+  renderNarrative(st);
+  // vez / compositor — trava para TODOS enquanto o Mestre pensa (st.busy) ou digita (TYPING)
   const turnChar = (st.characters||[])[turnIdx];
-  const myTurn = turnChar && turnChar.owner === ME.id && !ROOM._engineBusy;
-  $('#turnIndicator').innerHTML = ROOM._engineBusy
-    ? 'O Mestre está narrando…'
-    : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
-      : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…'));
+  const locked = !!st.busy || TYPING || localBusy;
+  const myTurn = turnChar && turnChar.owner === ME.id && !locked;
+  $('#turnIndicator').innerHTML = st.busy
+    ? 'O Mestre está pensando…'
+    : (TYPING ? 'O Mestre está narrando…'
+      : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
+        : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
-  inp.placeholder = myTurn ? 'O que você faz?' : 'Aguarde sua vez…';
+  inp.placeholder = myTurn ? 'O que você faz?' : (locked ? 'O Mestre está narrando…' : 'Aguarde sua vez…');
   // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
@@ -357,7 +398,7 @@ function renderGmModal(){
   $('#gmTurnNote').innerHTML = turnChar
     ? `Vez de <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')}).`
     : 'Sem personagens na vez.';
-  $('#gmSkipBtn').disabled = chars.length < 2 || ROOM._engineBusy;
+  $('#gmSkipBtn').disabled = chars.length < 2 || !!st.busy;
   // editor de HP
   $('#gmHpList').innerHTML = chars.map((c,idx)=>`
     <div class="gm-hp-row">
@@ -415,12 +456,11 @@ async function submitAction(){
   const inp = $('#actionInput'); const txt = inp.value.trim(); if (!txt) return;
   const st = ROOM.state || {}; const active = (st.characters||[])[st.turnIndex||0];
   if (!active || active.owner !== ME.id){ toast('Não é sua vez.'); return; }
-  inp.value = ''; $('#sendBtn').disabled = true;
+  inp.value = ''; localBusy = true; renderGame();   // trava já, antes da engine confirmar
   const { error } = await supa.from('room_actions').insert({
     room_id: ROOM.id, user_id: ME.id, display_name: active.name, text: txt
   });
-  $('#sendBtn').disabled = false;
-  if (error) toast('Erro ao enviar: '+error.message);
+  if (error){ localBusy = false; toast('Erro ao enviar: '+error.message); renderGame(); }
 }
 // admin processa a ação: registra, chama a IA, narra e passa a vez
 let engineBusy = false;
@@ -428,21 +468,25 @@ async function onPlayerAction(action){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
   if (action.processed) return;
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
-  engineBusy = true; ROOM._engineBusy = true; renderGame();
+  engineBusy = true;
+  const st = ROOM.state || {};
   try {
-    const st = ROOM.state || {};
     st.history = st.history || [];
     st.history.push({ role:'player', who: action.display_name, text: action.text });
-    await saveState(st);                                  // mostra a ação a todos já
+    st.busy = true;                                       // trava TODOS (via Realtime) enquanto o Mestre pensa
+    await saveState(st);                                  // mostra a ação a todos já + estado "pensando"
+    renderGame();
     let reply;
     try { reply = await callClaudeMp(buildMpHistory(st), buildMpSystemPrompt(st), 700); }
     catch (e) { reply = `*(O Mestre tropeçou: ${e.message})*`; }
     const clean = reply.replace(/\[[^\]]*\]/g, '').trim();  // marcadores mecânicos chegam depois
     st.history.push({ role:'dm', text: clean || '…' });
     advanceTurn(st);
+    st.busy = false;                                       // libera; cada cliente ainda digita a fala localmente
     await saveState(st);
   } finally {
-    engineBusy = false; ROOM._engineBusy = false;
+    engineBusy = false;
+    if (st.busy){ st.busy = false; try { await saveState(st); } catch(e){} }  // nunca deixa o grupo travado
     try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
     renderGame();
   }
