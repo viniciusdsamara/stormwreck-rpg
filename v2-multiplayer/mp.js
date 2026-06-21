@@ -330,6 +330,8 @@ async function processBacklog(){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing' || backlogRunning) return;
   backlogRunning = true;
   try {
+    const st = ROOM.state || {};
+    if (st.busy && !engineBusy){ st.busy = false; await saveState(st); renderGame(); }   // engine morreu no meio → destrava
     const { data: pend } = await supa.from('room_actions')
       .select('*').eq('room_id', ROOM.id).eq('processed', false).order('created_at', { ascending:true });
     for (const a of (pend||[])){ if (!PROCESSED_IDS.has(a.id)) onPlayerAction(a); }
