@@ -153,6 +153,8 @@ function toast(msg){
 function nameFromEmail(e){ return (e||'').split('@')[0] || 'Aventureiro'; }
 function amIAdmin(){ const m = MEMBERS.find(x=>x.user_id===ME?.id); return m && m.role==='admin'; }
 function myMember(){ return MEMBERS.find(x=>x.user_id===ME?.id); }
+// Mestre-puro (admin NÃO joga) → modo "Mestre no Comando": a IA sugere, o humano aprova/edita antes de enviar
+function isCommandMode(){ return amIAdmin() && !!ROOM && !ROOM.admin_plays; }
 
 // ---------------- AUTH ----------------
 async function initAuth(){
@@ -622,6 +624,7 @@ async function leaveRoomQuietly(opts){
   } catch(e){}
   if (reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
   clearTyping(); revealedCount = -1; localBusy = false; MESTRE_PRESENTE = true;
+  DM_DRAFT = null; engineBusy = false;
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -971,6 +974,8 @@ function renderGame(){
   // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
+  // console do Mestre (modo comando): só alterna visibilidade — não reconstrói (preserva a digitação)
+  const dc = $('#dmConsole'); if (dc) dc.style.display = DM_DRAFT ? '' : 'none';
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
 }
 
@@ -1414,6 +1419,7 @@ async function submitAction(){
 }
 // admin processa a ação: registra, chama a IA, narra e passa a vez
 let engineBusy = false;
+let DM_DRAFT = null;   // rascunho privado do Mestre (modo comando) — NUNCA vai para rooms.state
 async function onPlayerAction(action){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
   if (action.processed || PROCESSED_IDS.has(action.id)) return;   // dedup backlog × Realtime
@@ -1436,6 +1442,8 @@ async function onPlayerAction(action){
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
   engineBusy = true; PROCESSED_IDS.add(action.id);
   const st = ROOM.state || {};
+  // MODO COMANDO (Mestre-puro): segura o reply da IA num rascunho até o ✓ do Mestre
+  if (isCommandMode()){ await startCommandDraft(action, st); return; }
   try {
     st.history = st.history || [];
     st.history.push({ role:'player', who: action.display_name, text: action.text });
@@ -1486,6 +1494,127 @@ async function onPlayerAction(action){
     try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
     renderGame();
   }
+}
+// ============================================================
+//  MODO "MESTRE NO COMANDO" (Mestre-puro) — a IA propõe, o humano dispõe.
+//  O reply da IA é encenado num RASCUNHO PRIVADO (DM_DRAFT, só no cliente
+//  do admin); nada chega aos jogadores antes do ✓ Enviar. engineBusy fica
+//  ligado durante a composição → a ação só vira 'processed' no finalize.
+// ============================================================
+function rollLabel(m){ return m ? `${(m[1]||'').trim()} (${(m[2]||'').trim()})${+m[3]>0?` CD ${m[3]}`:''}` : ''; }
+
+// recebeu a ação de um jogador: registra, chama a IA e ABRE o console (não commita)
+async function startCommandDraft(action, st){
+  try {
+    st.history = st.history || [];
+    st.history.push({ role:'player', who: action.display_name, text: action.text });
+    st.busy = true; await saveState(st); renderGame();          // jogadores: ação visível + travados
+    DM_DRAFT = { action, actor: mpActivePc(st), hadCombat: mpCombatActive(st), rolls: 0, seed: undefined };
+    const reply = await callDm(st);
+    stageDraft(reply);
+  } catch(e){
+    DM_DRAFT = null; engineBusy = false;
+    st.busy = false; try { await saveState(st); } catch(_){}
+    toast('Erro ao preparar a cena: ' + e.message); renderGame();
+  }
+}
+// encena um reply da IA no rascunho (marcadores só são aplicados no envio)
+function stageDraft(reply){
+  if (!DM_DRAFT) return;
+  const d = DM_DRAFT;
+  const rawRoll = reply.match(ROLL_RE);
+  d.reply = reply;
+  d.rawRoll = rawRoll;
+  d.rollM = (d.rolls < 4) ? rawRoll : null;
+  d.sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
+  d.combatStart = (reply.match(/\[COMBAT_START:([A-Za-z0-9_]+)\]/) || [])[1] || null;
+  d.text = reply.replace(/\[[^\]]*\]/g, '').trim();
+  renderDmConsole();
+  renderGame();
+}
+// painel privado do Mestre (só admin em modo comando)
+function renderDmConsole(){
+  const box = $('#dmConsole'); if (!box) return;
+  if (!DM_DRAFT){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  const d = DM_DRAFT;
+  let hint = '';
+  if (d.rollM)              hint = `<div class="dmc-hint roll">🎲 A IA sugere uma rolagem: <b>${escapeHtml(rollLabel(d.rollM))}</b> — o código rola (justo) ao enviar.</div>`;
+  else if (d.rawRoll)       hint = `<div class="dmc-hint">A IA pediu mais uma rolagem, mas o limite da ação foi atingido. Enviar encerra a vez.</div>`;
+  else if (d.sceneComplete) hint = `<div class="dmc-hint scene">➡️ A IA sugere que a cena cumpriu o objetivo e deve avançar.</div>`;
+  else if (d.combatStart)   hint = `<div class="dmc-hint combat">⚔️ A IA sugere iniciar combate.</div>`;
+  const sendLabel = d.rollM ? '✓ Enviar e rolar' : (d.sceneComplete ? '✓ Enviar e avançar' : '✓ Enviar');
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="dmc-head">🎬 Console do Mestre <span class="dmc-sub">só você vê — os jogadores aguardam</span></div>
+    ${hint}
+    <textarea id="dmcText" class="dmc-text" rows="6" placeholder="A narração que os jogadores vão ler…">${escapeHtml(d.text)}</textarea>
+    <div class="dmc-actions">
+      <button class="btn ghost" id="dmcRedraft" title="A IA gera outra versão">↻ Refazer</button>
+      <button class="btn" id="dmcSend">${sendLabel}</button>
+    </div>`;
+  $('#dmcText').oninput = e => { DM_DRAFT.text = e.target.value; };
+  $('#dmcRedraft').onclick = redraftDm;
+  $('#dmcSend').onclick = sendDraft;
+}
+// pede outra versão à IA (mantém o mesmo ponto do histórico/semente da rolagem)
+async function redraftDm(){
+  if (!DM_DRAFT) return;
+  const st = ROOM.state || {};
+  const rd = $('#dmcRedraft'), sd = $('#dmcSend');
+  if (rd) rd.disabled = true;
+  if (sd) sd.disabled = true;
+  try { const reply = await callDm(st, DM_DRAFT.seed); stageDraft(reply); }
+  catch(e){ toast('Erro ao refazer: ' + e.message); renderDmConsole(); }
+}
+// ✓ aprova: commita o texto editado, aplica marcadores e avança (igual ao fluxo autônomo)
+async function sendDraft(){
+  if (!DM_DRAFT) return;
+  const st = ROOM.state || {};
+  const d = DM_DRAFT;
+  const text = (d.text || '').trim();
+  const sd = $('#dmcSend'); if (sd) sd.disabled = true;
+  try {
+    applyMpMarkers(d.reply, st);                                  // condições/sugestões/mapa/combate (do reply cru)
+    let sceneComplete = /\[SCENE_COMPLETE\]/.test(d.reply);
+    if (sceneComplete && mpCombatActive(st) && !mpAllEnemiesDead(st)) sceneComplete = false;
+    if (text) st.history.push({ role:'dm', text });
+    // 1) rolagem tem prioridade: commita o pedido, o código rola, e a CONSEQUÊNCIA volta ao console
+    if (d.rollM && d.actor){
+      d.rolls++;
+      await saveState(st); renderGame();
+      await mpSleep(750);
+      const card = doMpRoll(d.actor, d.rollM);
+      st.history.push(card);
+      await saveState(st); renderGame();
+      d.seed = mpRollResultText(d.actor, card);
+      const reply2 = await callDm(st, d.seed);
+      stageDraft(reply2);
+      return;                                                     // espera o próximo ✓
+    }
+    // 2) pediu rolagem além do teto: não perde a vez, só encerra
+    if (d.rawRoll && !d.rollM){ if (!text) st.history.push({ role:'dm', text:'…' }); await finalizeDraft(st); return; }
+    // 3) fim de cena
+    if (sceneComplete){ st.suggestions = []; mpAdvanceScene(st); await finalizeDraft(st); return; }
+    // 4) turno normal
+    if (!text) st.history.push({ role:'dm', text:'…' });
+    if (mpCombatActive(st)){ if (d.hadCombat) advanceTurn(st); await mpRunEnemyTurns(st); }
+    else advanceTurn(st);
+    await finalizeDraft(st);
+  } catch(e){
+    toast('Erro ao enviar: ' + e.message);
+    await finalizeDraft(st);
+  }
+}
+// fecha o ciclo da ação: destrava o grupo, marca processada e limpa o rascunho
+async function finalizeDraft(st){
+  const action = DM_DRAFT && DM_DRAFT.action;
+  st.busy = false;
+  try { await saveState(st); } catch(e){}
+  engineBusy = false;
+  if (action){ try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} }
+  DM_DRAFT = null;
+  renderDmConsole();
+  renderGame();
 }
 const mpSleep = ms => new Promise(r => setTimeout(r, ms));
 function buildMpHistory(st){

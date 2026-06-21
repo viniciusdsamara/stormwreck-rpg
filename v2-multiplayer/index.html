@@ -104,6 +104,20 @@
           padding:7px 13px; font-size:0.82rem; cursor:pointer; text-align:left; transition:border-color .15s,filter .15s; }
   .sugg-chip:hover{ border-color:var(--ember); filter:brightness(1.08); }
   .sugg-chip .sg{ color:var(--ember); font-weight:700; margin-right:5px; }
+  /* Console do Mestre (modo "Mestre no Comando" — só o admin vê) */
+  .dm-console{ background:linear-gradient(180deg, rgba(214,158,74,0.10), rgba(20,16,18,0.4));
+          border:1px solid var(--ember); border-radius:12px; padding:12px 13px; margin-bottom:11px; }
+  .dmc-head{ font-weight:700; color:var(--ember); font-size:0.92rem; margin-bottom:9px; }
+  .dmc-head .dmc-sub{ font-weight:400; color:var(--parch); opacity:0.6; font-size:0.72rem; margin-left:6px; }
+  .dmc-hint{ font-size:0.78rem; color:var(--parch); background:var(--basalt-700); border:1px solid var(--basalt-600);
+          border-radius:8px; padding:6px 10px; margin-bottom:9px; }
+  .dmc-hint.roll{ border-color:#6a8fae; } .dmc-hint.scene{ border-color:var(--myco,#7fb27f); } .dmc-hint.combat{ border-color:var(--blood); }
+  .dmc-hint b{ color:var(--ember); }
+  .dmc-text{ width:100%; box-sizing:border-box; min-height:120px; resize:vertical; background:var(--basalt-700);
+          border:1px solid var(--basalt-600); color:var(--parch); border-radius:9px; padding:9px 11px;
+          font-family:inherit; font-size:0.92rem; line-height:1.5; }
+  .dmc-text:focus{ outline:none; border-color:var(--ember); }
+  .dmc-actions{ display:flex; gap:9px; justify-content:flex-end; margin-top:9px; }
   .mic-btn{ background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:10px;
           padding:0 14px; font-size:1.1rem; cursor:pointer; transition:border-color .15s; }
   .mic-btn:hover{ border-color:var(--ember); }
@@ -627,6 +641,7 @@
       <div class="combat-bar hide" id="combatBar"></div>
       <div class="narrative" id="narrative"></div>
       <div class="composer">
+        <div class="dm-console" id="dmConsole" style="display:none"></div>
         <div class="turn-indicator" id="turnIndicator"></div>
         <div class="suggestions" id="suggestions" style="display:none"></div>
         <div class="composer-row">
