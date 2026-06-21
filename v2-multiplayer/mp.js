@@ -9,6 +9,9 @@ const SUPA_KEY = 'sb_publishable_7Pnila08_CO32ae28pIM5g_3WACbxV1';
 let supa, ME = null, ROOM = null, MEMBERS = [], roomChannel = null;
 // código de convite vindo no link (?sala=XXXXXX) — entra direto após login
 let PENDING_CODE = (new URLSearchParams(location.search).get('sala') || '').toUpperCase() || null;
+// robustez: presença do Mestre, estado de conexão e reconexão
+let MESTRE_PRESENTE = true, CONN = 'live', reconnectTimer = null, reconnectDelay = 1000, backlogRunning = false;
+const PROCESSED_IDS = new Set();   // evita reprocessar a mesma ação (backlog × Realtime)
 
 function roomLink(){ return `${location.origin}${location.pathname}?sala=${ROOM.code}`; }
 function clearUrlCode(){ try { history.replaceState(null, '', location.pathname); } catch(e){} }
@@ -192,6 +195,24 @@ async function enterHub(){
   $('#joinBtn').onclick = joinRoom;
   $('#hubLogout').onclick = doLogout;
   $('#joinCode').addEventListener('keydown', e=>{ if(e.key==='Enter') joinRoom(); });
+  loadMyRooms();
+}
+// lista salas retomáveis (em que sou membro e que não foram encerradas)
+async function loadMyRooms(){
+  const box = $('#myRooms'); if (!box) return;
+  box.style.display = 'none';
+  try {
+    const { data: mems } = await supa.from('room_members').select('room_id').eq('user_id', ME.id);
+    const ids = [...new Set((mems||[]).map(m=>m.room_id))];
+    if (!ids.length) return;
+    const { data: rooms } = await supa.from('rooms').select('*').in('id', ids).neq('status','ended').order('created_at', { ascending:false });
+    if (!rooms || !rooms.length) return;
+    box.style.display = '';
+    $('#myRoomsList').innerHTML = rooms.map(r =>
+      `<div class="member"><div><span class="mname">${escapeHtml(r.name||'Sala')}</span><div class="mchar">código ${r.code} · ${r.status==='playing'?'em jogo':'no lobby'}</div></div>` +
+      `<button class="btn" data-resume="${r.id}" style="padding:6px 12px;font-size:0.82rem">Retomar</button></div>`).join('');
+    $$('#myRooms [data-resume]').forEach(b => b.onclick = () => { const r = rooms.find(x=>x.id===b.dataset.resume); if (r){ ROOM = r; enterRoom(); } });
+  } catch(e){}
 }
 function genCode(){
   const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem caracteres ambíguos
@@ -257,12 +278,63 @@ async function refreshRoom(){
   renderRoom();
 }
 function subscribeRoom(){
-  if (roomChannel) supa.removeChannel(roomChannel);
-  roomChannel = supa.channel('room-'+ROOM.id)
+  if (roomChannel){ try { supa.removeChannel(roomChannel); } catch(e){} roomChannel = null; }
+  roomChannel = supa.channel('room-'+ROOM.id, { config:{ presence:{ key: ME.id } } })
     .on('postgres_changes', { event:'*', schema:'public', table:'room_members', filter:`room_id=eq.${ROOM.id}` }, refreshRoom)
     .on('postgres_changes', { event:'*', schema:'public', table:'rooms', filter:`id=eq.${ROOM.id}` }, refreshRoom)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'room_actions', filter:`room_id=eq.${ROOM.id}` }, p => onPlayerAction(p.new))
-    .subscribe();
+    .on('presence', { event:'sync' }, onPresenceSync)
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED'){
+        reconnectDelay = 1000; setConn('live');
+        try { await roomChannel.track({ role: amIAdmin() ? 'admin' : 'player', user_id: ME.id, name: myMember()?.display_name || nameFromEmail(ME?.email) }); } catch(e){}
+        await refreshRoom();
+        if (amIAdmin()) processBacklog();   // processa ações que chegaram enquanto o Mestre estava fora
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED'){
+        setConn('reconnecting'); scheduleReconnect();
+      }
+    });
+}
+// reconexão com backoff exponencial (1→2→4→8→16 s)
+function scheduleReconnect(){
+  if (reconnectTimer || !ROOM) return;
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; if (ROOM){ subscribeRoom(); reconnectDelay = Math.min(reconnectDelay * 2, 16000); } }, reconnectDelay);
+}
+function reconnectNow(){
+  if (!ROOM) return;
+  reconnectDelay = 1000;
+  if (reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+  subscribeRoom();
+}
+// presença: o Mestre (admin) está online no canal?
+function onPresenceSync(){
+  if (!roomChannel) return;
+  let adminPresent = false;
+  try {
+    const state = roomChannel.presenceState() || {};
+    for (const k in state){ if ((state[k]||[]).some(p => p && p.role === 'admin')){ adminPresent = true; break; } }
+  } catch(e){ adminPresent = true; }
+  MESTRE_PRESENTE = adminPresent;
+  if (ROOM && ROOM.status === 'playing') renderGame();
+}
+// selo de conexão na topbar do jogo
+function setConn(s){
+  CONN = s;
+  const el = document.getElementById('connDot'); if (!el) return;
+  el.className = 'conn ' + s;
+  el.textContent = s === 'live' ? '● ao vivo' : s === 'reconnecting' ? '◐ reconectando…' : '⏸ pausado';
+  el.style.display = (ROOM && ROOM.status === 'playing') ? '' : 'none';
+}
+// admin: reprocessa ações pendentes (processed=false) na ordem de criação
+async function processBacklog(){
+  if (!amIAdmin() || !ROOM || ROOM.status !== 'playing' || backlogRunning) return;
+  backlogRunning = true;
+  try {
+    const { data: pend } = await supa.from('room_actions')
+      .select('*').eq('room_id', ROOM.id).eq('processed', false).order('created_at', { ascending:true });
+    for (const a of (pend||[])){ if (!PROCESSED_IDS.has(a.id)) onPlayerAction(a); }
+  } catch(e){}
+  finally { backlogRunning = false; }
 }
 function renderRoom(){
   const admin = amIAdmin();
@@ -358,22 +430,42 @@ async function kickMember(uid){
   if (!confirm('Remover este jogador da sala?')) return;
   await supa.from('room_members').delete().eq('room_id', ROOM.id).eq('user_id', uid);
 }
-async function leaveRoomQuietly(){
+async function leaveRoomQuietly(opts){
+  opts = opts || {};
   try {
-    if (roomChannel){ await supa.removeChannel(roomChannel); roomChannel=null; }
+    if (roomChannel){ try { await roomChannel.untrack(); } catch(e){} await supa.removeChannel(roomChannel); roomChannel=null; }
     if (ROOM && ME){
-      if (amIAdmin()) { await supa.from('rooms').update({ status:'ended' }).eq('id', ROOM.id); }
-      else { await supa.from('room_members').delete().eq('room_id', ROOM.id).eq('user_id', ME.id); }
+      if (amIAdmin()){
+        if (opts.end) await supa.from('rooms').update({ status:'ended' }).eq('id', ROOM.id);
+        // sem opts.end = só PAUSA: a sala segue 'playing' com o state salvo (retomável)
+      } else {
+        // jogador comum: no lobby libera a vaga; em jogo mantém a membership para poder voltar
+        if (ROOM.status !== 'playing') await supa.from('room_members').delete().eq('room_id', ROOM.id).eq('user_id', ME.id);
+      }
     }
   } catch(e){}
-  clearTyping(); revealedCount = -1; localBusy = false;
+  if (reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
+  clearTyping(); revealedCount = -1; localBusy = false; MESTRE_PRESENTE = true;
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
-  const admin = amIAdmin();
-  if (!confirm(admin ? 'Você é o admin — sair encerra a sala. Continuar?' : 'Sair desta sala?')) return;
+  if (amIAdmin()){
+    if (ROOM && ROOM.status === 'playing'){ openLeaveChoice(); return; }   // em jogo: pausar ou encerrar
+    if (!confirm('Sair encerra esta sala (a partida não começou). Continuar?')) return;
+    await leaveRoomQuietly({ end:true }); enterHub(); return;
+  }
+  if (!confirm('Sair desta sala? Você poderá voltar por "Minhas salas".')) return;
   await leaveRoomQuietly();
   enterHub();
+}
+// modal do admin ao sair durante a partida: pausar (retomável) ou encerrar
+function openLeaveChoice(){
+  const back = $('#leaveModalBack'); if (!back) return;
+  back.classList.add('open');
+  $('#leavePauseBtn').onclick = async () => { back.classList.remove('open'); await leaveRoomQuietly(); enterHub(); };
+  $('#leaveEndBtn').onclick = async () => { if (!confirm('Encerrar a partida para todos?')) return; back.classList.remove('open'); await leaveRoomQuietly({ end:true }); enterHub(); };
+  $('#leaveCancelBtn').onclick = () => back.classList.remove('open');
+  back.onclick = e => { if (e.target === back) back.classList.remove('open'); };
 }
 
 // ---------------- PARTIDA (M3: estado compartilhado) ----------------
@@ -421,6 +513,7 @@ function enterGame(){
     G_WIRED = true;
   }
   renderGame();
+  if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
 }
 
 // ---------------- DITADO POR VOZ (Web Speech API, sem servidor) ----------------
@@ -640,17 +733,22 @@ function renderGame(){
   // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
   renderRollLog(st);
-  // vez / compositor — trava para TODOS enquanto o Mestre pensa/digita ou há level-up pendente
+  // selo de conexão (mostra/atualiza visibilidade)
+  setConn(CONN);
+  // vez / compositor — trava para TODOS enquanto o Mestre pensa/digita, há level-up, ou o Mestre saiu
   const levelingUp = !!Object.keys(luPend).length;
-  const locked = !!st.busy || TYPING || localBusy || levelingUp;
+  const mestreAusente = !amIAdmin() && !MESTRE_PRESENTE;
+  const locked = !!st.busy || TYPING || localBusy || levelingUp || mestreAusente;
   const myTurn = !enemyTurn && turnChar && turnChar.owner === ME.id && !locked;
-  $('#turnIndicator').innerHTML = levelingUp
-    ? '⬆ Subida de nível — quem tem o card pulsando deve tocar nele e escolher.'
-    : (st.busy ? 'O Mestre está pensando…'
-      : (TYPING ? 'O Mestre está narrando…'
-        : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
-          : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
-            : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')))));
+  $('#turnIndicator').innerHTML = mestreAusente
+    ? '⏸ <b style="color:var(--blood)">Mestre ausente</b> — partida pausada. Aguardando o Mestre voltar…'
+    : (levelingUp
+      ? '⬆ Subida de nível — quem tem o card pulsando deve tocar nele e escolher.'
+      : (st.busy ? 'O Mestre está pensando…'
+        : (TYPING ? 'O Mestre está narrando…'
+          : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
+            : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
+              : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…'))))));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
   $('#micBtn').disabled = !myTurn;
@@ -1094,11 +1192,11 @@ async function submitAction(){
 let engineBusy = false;
 async function onPlayerAction(action){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
-  if (action.processed) return;
+  if (action.processed || PROCESSED_IDS.has(action.id)) return;   // dedup backlog × Realtime
   // escolha de level-up de um jogador (não passa pelo Mestre)
   if (typeof action.text === 'string' && action.text.startsWith(LU_PREFIX)){
     if (engineBusy){ setTimeout(()=>onPlayerAction(action), 500); return; }
-    engineBusy = true;
+    engineBusy = true; PROCESSED_IDS.add(action.id);
     const st = ROOM.state || {};
     try {
       let data = {}; try { data = JSON.parse(action.text.slice(LU_PREFIX.length)); } catch(e){}
@@ -1112,7 +1210,7 @@ async function onPlayerAction(action){
     return;
   }
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
-  engineBusy = true;
+  engineBusy = true; PROCESSED_IDS.add(action.id);
   const st = ROOM.state || {};
   try {
     st.history = st.history || [];
@@ -1251,4 +1349,10 @@ Responda à ação do jogador. Se houver QUALQUER incerteza, peça [ROLL:...] e 
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });
+// reconexão ao recuperar rede/foco
+window.addEventListener('online', () => { if (ROOM) reconnectNow(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !ROOM) return;
+  if (CONN !== 'live') reconnectNow(); else refreshRoom();
+});
 initAuth();

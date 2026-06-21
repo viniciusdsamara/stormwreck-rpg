@@ -316,6 +316,10 @@
   .composer textarea:focus{ outline:none; border-color:var(--ember); }
   .composer textarea:disabled{ opacity:0.5; }
   .thinking{ align-self:flex-start; color:var(--stone-400); font-style:italic; font-family:var(--font-display); }
+  .conn{ font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.06em; padding:4px 9px; border-radius:20px; white-space:nowrap; }
+  .conn.live{ color:var(--myco); border:1px solid rgba(90,143,107,0.5); }
+  .conn.reconnecting{ color:var(--gold); border:1px solid rgba(217,196,138,0.5); }
+  .conn.paused{ color:var(--blood); border:1px solid rgba(196,72,90,0.5); }
   .combat-bar{ background:var(--basalt-900); border-bottom:1px solid var(--blood); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:0.84rem; }
   .cb-round{ font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--blood); white-space:nowrap; }
   .cb-list{ display:flex; gap:6px; flex-wrap:wrap; flex:1; }
@@ -368,6 +372,11 @@
       <div style="text-align:right"><small id="hubEmail"></small><br>
         <a id="hubAdmin" href="../admin.html" style="display:none;color:var(--ember);font-size:0.78rem;text-decoration:none;margin-right:10px">🛡️ Painel</a>
         <button class="btn ghost" id="hubLogout" style="margin-top:6px;padding:6px 12px;font-size:0.78rem">Sair</button></div>
+    </div>
+
+    <div class="panel" id="myRooms" style="display:none">
+      <h4>Minhas salas (retomar)</h4>
+      <div id="myRoomsList"></div>
     </div>
 
     <div class="panel">
@@ -588,6 +597,7 @@
       <div class="topbar">
         <div class="loc"><span class="chapter" id="chapterLabel">Capítulo 1</span><span id="locationLabel">—</span></div>
         <div class="row">
+          <span class="conn live" id="connDot" style="display:none">● ao vivo</span>
           <button class="btn ghost chars-btn" id="charsBtn" style="padding:8px 12px;font-size:0.82rem" title="Ver fichas do grupo">👥</button>
           <button class="btn ghost" id="gmCtrlBtn" style="padding:8px 12px;font-size:0.82rem;display:none" title="Controles do Mestre">⚙ Mestre</button>
           <button class="btn ghost" id="mapBtn" style="padding:8px 12px;font-size:0.82rem" title="Mapa da ilha">🗺️</button>
@@ -658,6 +668,19 @@
 
   <!-- ===== subida de nível (escolha de subclasse/estilo) ===== -->
   <div class="sheet-modal hide" id="levelupModal"><div class="sheet-card lu-card" id="levelupCard"></div></div>
+
+  <!-- ===== sair (admin): pausar ou encerrar ===== -->
+  <div class="gm-modal-back" id="leaveModalBack">
+    <div class="gm-modal" style="max-width:380px">
+      <h3>Sair da sala</h3>
+      <div class="note" style="margin-top:0">A sala e o progresso ficam salvos — você pode retomar depois em "Minhas salas".</div>
+      <div class="gm-sec">
+        <button class="btn ghost block" id="leavePauseBtn">⏸ Pausar e sair (retomável)</button>
+        <button class="btn danger block" id="leaveEndBtn" style="margin-top:8px">⛔ Encerrar a partida</button>
+        <button class="btn ghost block" id="leaveCancelBtn" style="margin-top:8px">Cancelar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
