@@ -290,25 +290,51 @@ function enterGame(){
     $('#gmModel').onchange = () => updateRoom({ model: $('#gmModel').value });
     $('#gmSkipBtn').onclick = gmSkipTurn;
     $('#gmEndBtn').onclick = gmEndMatch;
+    $('#micBtn').onclick = toggleDictation;   // ditado por voz
     G_WIRED = true;
   }
   renderGame();
 }
 
-// card de ficha no estilo do V1
-function mpCharCard(c, active){
+// ---------------- DITADO POR VOZ (Web Speech API, sem servidor) ----------------
+let recog = null, recording = false;
+function toggleDictation(){
+  if (recording){ try { recog && recog.stop(); } catch(e){} return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR){ toast('Seu navegador não suporta ditado por voz. Use Chrome/Edge.'); return; }
+  recog = new SR();
+  recog.lang = 'pt-BR'; recog.interimResults = true; recog.continuous = false;
+  const inp = $('#actionInput');
+  const base = inp.value ? inp.value.trim() + ' ' : '';
+  recog.onstart = () => { recording = true; $('#micBtn').classList.add('rec'); $('#micBtn').textContent = '⏺'; };
+  recog.onresult = (ev) => {
+    let txt = '';
+    for (let i=0;i<ev.results.length;i++) txt += ev.results[i][0].transcript;
+    inp.value = base + txt;
+  };
+  recog.onerror = (ev) => { toast('Voz: ' + (ev.error||'erro')); };
+  recog.onend = () => { recording = false; $('#micBtn').classList.remove('rec'); $('#micBtn').textContent = '🎤'; inp.focus(); };
+  try { recog.start(); } catch(e){ toast('Não consegui iniciar o microfone.'); }
+}
+
+// card de ficha no estilo do V1 (clicável → abre a ficha completa)
+function mpCharCard(c, active, idx){
   const pct = Math.max(0, Math.round((c.hp/c.maxHp)*100));
   const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
   const minis = (typeof RULES!=='undefined' ? RULES.abilities : ['FOR','DES','CON','INT','SAB','CAR']).map(ab=>{
     const v = c.abilities ? c.abilities[ab] : '—';
     return `<div class="mini-ab"><div class="l">${ab}</div><div class="v">${v}</div></div>`;
   }).join('');
-  return `<div class="char-card ${active?'active-turn':''}">
+  const conds = (c.conditions||[]).length
+    ? `<div class="cond-chips">${c.conditions.map(n=>`<span class="cond-chip ro" title="${escapeHtml((((typeof RULES!=='undefined'&&RULES.conditions[n])||{}).desc)||'')}">${escapeHtml(n)}</span>`).join('')}</div>`
+    : '';
+  return `<div class="char-card ${active?'active-turn':''}" data-sheet="${idx}" title="Ver ficha completa">
     <div class="cc-name">${escapeHtml(c.name)}</div>
     <div class="cc-sub"><span class="player-tag ${active?'p1':'p2'}">${escapeHtml(c.ownerName||c.player||'')}</span> · ${sub}</div>
     <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
     <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
     <div class="mini-abilities">${minis}</div>
+    ${conds}
   </div>`;
 }
 
@@ -361,8 +387,9 @@ function renderGame(){
   $('#chapterLabel').textContent = sc ? sc.chapter : '';
   $('#locationLabel').textContent = sc ? sc.location : '—';
   const turnIdx = st.turnIndex||0;
-  // grupo (sidebar)
-  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===turnIdx)).join('');
+  // grupo (sidebar) — cards clicáveis abrem a ficha completa
+  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===turnIdx, idx)).join('');
+  $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
   // narrativa (com digitação do Mestre)
   renderNarrative(st);
   // vez / compositor — trava para TODOS enquanto o Mestre pensa (st.busy) ou digita (TYPING)
@@ -376,7 +403,15 @@ function renderGame(){
         : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
+  $('#micBtn').disabled = !myTurn;
   inp.placeholder = myTurn ? 'O que você faz?' : (locked ? 'O Mestre está narrando…' : 'Aguarde sua vez…');
+  // sugestões de ação (só para quem é a vez, fora de "pensando/narrando")
+  const sug = $('#suggestions'); const list = (myTurn && Array.isArray(st.suggestions)) ? st.suggestions : [];
+  if (list.length){
+    sug.style.display = '';
+    sug.innerHTML = list.map((s,n)=>`<button class="sugg-chip" data-sg="${n}"><span class="sg">${n+1}</span>${escapeHtml(s)}</button>`).join('');
+    $$('#suggestions [data-sg]').forEach(b => b.onclick = () => { inp.value = list[+b.dataset.sg]; inp.focus(); });
+  } else { sug.style.display = 'none'; sug.innerHTML = ''; }
   // M5 — botão do Mestre só para o admin; painel acompanha o estado ao vivo
   $('#gmCtrlBtn').style.display = amIAdmin() ? '' : 'none';
   if ($('#gmModalBack').classList.contains('open')) renderGmModal();
@@ -442,6 +477,105 @@ async function gmEndMatch(){
   // o Realtime leva todos (inclusive você) de volta ao hub via refreshRoom
 }
 
+// ---------------- FICHA COMPLETA (clique no card) ----------------
+function openSheet(i){
+  const c = ((ROOM.state||{}).characters||[])[i]; if (!c) return;
+  $('#sheetCard').innerHTML = mpSheetHtml(c, i);
+  $('#sheetModal').classList.remove('hide');
+  $('#sheetModal').onclick = e => { if (e.target.id === 'sheetModal') closeSheet(); };
+  $('#sheetCloseBtn').onclick = closeSheet;
+}
+function closeSheet(){ $('#sheetModal').classList.add('hide'); }
+// versão somente-leitura da ficha do V1 (atributos, perícias, magias, bolsa, perfil)
+function mpSheetHtml(c, i){
+  const A = (typeof RULES!=='undefined' ? RULES.abilities : ['FOR','DES','CON','INT','SAB','CAR']);
+  const SK = (typeof RULES!=='undefined' ? RULES.skills : {});
+  const abil = A.map(a => {
+    const save = (c.saves||[]).includes(a), sm = abilityMod(c.abilities[a]) + (save?c.prof:0);
+    return `<div class="sh-ab"><div class="l">${a}</div><div class="v">${c.abilities[a]}</div><div class="m">${fmtMod(abilityMod(c.abilities[a]))}</div><div class="sv ${save?'prof':''}">save ${fmtMod(sm)}</div></div>`;
+  }).join('');
+  const skills = Object.entries(SK).map(([name,ab]) => {
+    const prof = (c.skills||[]).includes(name), m = abilityMod(c.abilities[ab]) + (prof?c.prof:0);
+    return `<div class="sh-skill ${prof?'prof':''}"><span>${prof?'●':'○'} ${name} <small>(${ab})</small></span><b>${fmtMod(m)}</b></div>`;
+  }).join('');
+  const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
+  const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
+  const conds  = (c.conditions||[]).length ? `<h4>Condições</h4><div class="sh-tags">${c.conditions.map(t=>`<span class="sh-tag" title="${escapeHtml(((RULES.conditions[t]||{}).desc)||'')}">${escapeHtml(t)}</span>`).join('')}</div>` : '';
+  const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv${c.spellSlots.level||1} ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.spellSlots2&&c.spellSlots2.max?`, nv2 ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}`:''}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
+  const known  = ((c.cantripsChosen&&c.cantripsChosen.length)||(c.spellsChosen&&c.spellsChosen.length))
+    ? `<h4>Magias conhecidas</h4><div class="sh-tags">${(c.cantripsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)} <small>(truque)</small></span>`).join('')}${(c.spellsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)}</span>`).join('')}</div>` : '';
+  const exp    = (c.expertise&&c.expertise.length) ? `<div class="sh-line" style="color:var(--myco)">Especialização (proficiência dobrada): ${c.expertise.join(', ')}</div>` : '';
+  const inv    = (c.inventory||[]).map(it=>`<li>${escapeHtml(it)}</li>`).join('') || '<li>—</li>';
+  const p = c.profile || {};
+  const pf = (k,label) => `<div><span class="sh-prof-lbl">${label}</span><div class="sh-prof-txt">${escapeHtml(p[k]||'—')}</div></div>`;
+  return `
+  <div class="sh-top">
+    <div><div class="sh-name">${escapeHtml(c.name)}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${escapeHtml(c.ownerName||c.player||'')}</div></div>
+    <button class="rp-close" id="sheetCloseBtn">✕</button>
+  </div>
+  <div class="sh-stats">
+    <div class="sh-stat"><span>CA</span><b>${c.ca}</b></div>
+    <div class="sh-stat"><span>HP</span><b>${c.hp}/${c.maxHp}</b></div>
+    <div class="sh-stat"><span>Deslocamento</span><b>${c.speed}m</b></div>
+    <div class="sh-stat"><span>Iniciativa</span><b>${fmtMod(abilityMod(c.abilities.DES))}</b></div>
+    <div class="sh-stat"><span>Proficiência</span><b>+${c.prof}</b></div>
+    <div class="sh-stat"><span>Visão escuro</span><b>${c.darkvision?(c.darkvisionRange||18)+'m':'—'}</b></div>
+  </div>
+  <div class="sh-cols">
+    <div class="sh-col">
+      <h4>Atributos &amp; Saves</h4><div class="sh-abgrid">${abil}</div>
+      <h4>Perícias</h4><div class="sh-skills">${skills}</div>
+    </div>
+    <div class="sh-col">
+      <h4>Traços raciais</h4><div class="sh-tags">${traits}</div>
+      <h4>Características de classe</h4><div class="sh-tags">${feats}</div>
+      ${spell}${exp}${conds}${known}
+      <h4>Idiomas</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
+      <h4>Bolsa <span class="sh-gold">${c.gold!=null?c.gold:0} po</span></h4>
+      <ul class="sh-inv">${inv}</ul>
+    </div>
+  </div>
+  <h4>História do personagem</h4>
+  <div class="sh-prof-grid">
+    ${pf('appearance','Descrição física')}
+    ${pf('context','Por que está aqui')}
+    ${pf('motivation','Motivações')}
+    ${pf('flaw','Defeitos')}
+    ${pf('quality','Qualidades')}
+  </div>`;
+}
+
+// condições: casar nome com RULES.conditions e localizar personagem (tolerante a caixa/acento)
+function mpMatchCondition(name){
+  if (!name || typeof RULES==='undefined') return null;
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const q = norm(name), keys = Object.keys(RULES.conditions||{});
+  return keys.find(k=>norm(k)===q) || keys.find(k=>norm(k).startsWith(q)||q.startsWith(norm(k))) || null;
+}
+function mpFindChar(chars, name){
+  if (!name) return -1;
+  const q = name.trim().toLowerCase(), first = q.split(/\s+/)[0];
+  let i = chars.findIndex(c=>c.name.toLowerCase()===q);
+  if (i<0) i = chars.findIndex(c=>c.name.toLowerCase().split(/\s+/)[0]===first);
+  if (i<0) i = chars.findIndex(c=>c.name.toLowerCase().includes(q)||q.includes(c.name.toLowerCase()));
+  if (i<0) i = chars.findIndex(c=>(c.ownerName||'').toLowerCase()===q);
+  return i;
+}
+// processa os marcadores [CONDICAO]/[REMOVER_CONDICAO]/[SUGESTOES] de uma resposta do Mestre
+function applyMpMarkers(reply, st){
+  const chars = st.characters || [];
+  [...reply.matchAll(/\[CONDICAO:([^:\]]+):([^:\]]+)\]/gi)].forEach(m => {
+    const ci = mpFindChar(chars, m[1]), key = mpMatchCondition(m[2]);
+    if (ci>=0 && key){ chars[ci].conditions = chars[ci].conditions || []; if (!chars[ci].conditions.includes(key)) chars[ci].conditions.push(key); }
+  });
+  [...reply.matchAll(/\[REMOVER_CONDICAO:([^:\]]+):([^:\]]+)\]/gi)].forEach(m => {
+    const ci = mpFindChar(chars, m[1]), key = mpMatchCondition(m[2]);
+    if (ci>=0 && key && chars[ci].conditions) chars[ci].conditions = chars[ci].conditions.filter(n=>n!==key);
+  });
+  const sm = reply.match(/\[SUGESTOES:([^\]]+)\]/i);
+  st.suggestions = sm ? sm[1].split('|').map(s=>s.trim()).filter(Boolean).slice(0,3) : [];
+}
+
 // ---------------- ENGINE (roda no cliente do ADMIN) ----------------
 async function saveState(st){
   ROOM.state = st;
@@ -479,7 +613,8 @@ async function onPlayerAction(action){
     let reply;
     try { reply = await callClaudeMp(buildMpHistory(st), buildMpSystemPrompt(st), 700); }
     catch (e) { reply = `*(O Mestre tropeçou: ${e.message})*`; }
-    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();  // marcadores mecânicos chegam depois
+    applyMpMarkers(reply, st);                                // condições + sugestões antes de limpar
+    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();    // remove os marcadores do texto exibido
     st.history.push({ role:'dm', text: clean || '…' });
     advanceTurn(st);
     st.busy = false;                                       // libera; cada cliente ainda digita a fala localmente
@@ -512,7 +647,7 @@ function buildMpSystemPrompt(st){
   return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 ${CAMPAIGN.premise||''}
 
-Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês. NÃO use marcadores de sistema nem decida sucessos mecânicos por conta própria — por enquanto, narre de forma aberta e plausível.
+Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês. NÃO role dados nem decida sucesso/falha de testes incertos — isso é do sistema; narre de forma aberta e plausível.
 
 ## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
 ${sc.summary||''}
@@ -525,7 +660,11 @@ ${npcs}
 ## PERSONAGENS DO GRUPO
 ${sheets}
 
-Responda à ação do jogador, faça a história avançar e termine abrindo para a próxima ação do grupo.`;
+## MARCADORES (o sistema processa e REMOVE do texto exibido — não os explique)
+- Quando um personagem passar a sofrer uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:${(st.characters&&st.characters[0]?st.characters[0].name:'Garrett')}:Envenenado]. Quando a condição acabar: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
+- SEMPRE termine a resposta com 2 ou 3 sugestões curtas de ação para o próximo jogador, no formato exato: [SUGESTOES: ação curta 1 | ação curta 2 | ação curta 3]. São atalhos clicáveis; o jogador ainda pode digitar livremente.
+
+Responda à ação do jogador, faça a história avançar e termine abrindo para a próxima ação do grupo (com as sugestões no final).`;
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });
