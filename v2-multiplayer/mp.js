@@ -624,22 +624,28 @@ function renderGame(){
   const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || null;
   $('#chapterLabel').textContent = sc ? sc.chapter : '';
   $('#locationLabel').textContent = sc ? sc.location : '—';
-  const turnIdx = st.turnIndex||0;
+  // ator ativo (em combate, segue a iniciativa; fora dela, o rodízio turnIndex)
+  const cur = mpCurrentActor(st);
+  const enemyTurn = !!(st.combat && cur && cur.kind==='enemy');
+  const activeIdx = st.combat ? (cur && cur.kind==='pc' ? cur.idx : -1) : (st.turnIndex||0);
+  const turnChar = activeIdx >= 0 ? (st.characters||[])[activeIdx] : null;
   // grupo (sidebar) — cards clicáveis abrem a ficha completa
-  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===turnIdx, idx)).join('');
+  $('#charPanel').innerHTML = (st.characters||[]).map((c,idx)=> mpCharCard(c, idx===activeIdx, idx)).join('');
   $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => openSheet(+el.dataset.sheet));
+  // barra de combate (espelhada a todos)
+  renderCombatBar(st);
   // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
   renderRollLog(st);
   // vez / compositor — trava para TODOS enquanto o Mestre pensa (st.busy) ou digita (TYPING)
-  const turnChar = (st.characters||[])[turnIdx];
   const locked = !!st.busy || TYPING || localBusy;
-  const myTurn = turnChar && turnChar.owner === ME.id && !locked;
+  const myTurn = !enemyTurn && turnChar && turnChar.owner === ME.id && !locked;
   $('#turnIndicator').innerHTML = st.busy
     ? 'O Mestre está pensando…'
     : (TYPING ? 'O Mestre está narrando…'
-      : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
-        : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')));
+      : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
+        : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
+          : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…'))));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
   $('#micBtn').disabled = !myTurn;
@@ -817,6 +823,21 @@ function applyMpMarkers(reply, st){
     if (mpRevealLocation(st, id)){ st.history = st.history || []; st.history.push({ role:'scene', text:`🗺️ Novo local revelado: ${MAP_LOCS[id].label}` }); }
   });
   mpMarkSceneVisited(st);   // garante que o local da cena atual esteja marcado
+  // combate: iniciar, dano a inimigos [HIT] e dano a heróis [DANO]
+  if (!mpCombatActive(st)){
+    const cs = reply.match(/\[COMBAT_START:\s*([^\]]+?)\s*\]/i);
+    if (cs) mpStartCombat(st, cs[1].trim());
+  }
+  if (mpCombatActive(st)){
+    [...reply.matchAll(/\[HIT:\s*([^:\]]+?)\s*:\s*(-?\d+)\s*\]/gi)].forEach(m => {
+      const e = st.combat.enemies.find(x => x.id===m[1] || x.name.toLowerCase()===m[1].toLowerCase());
+      if (e) e.curHp = Math.max(0, e.curHp - Math.abs(+m[2]));
+    });
+  }
+  [...reply.matchAll(/\[DANO:\s*([^:\]]+?)\s*:\s*(-?\d+)\s*\]/gi)].forEach(m => {
+    const ci = mpFindChar(st.characters||[], m[1]);
+    if (ci >= 0) st.characters[ci].hp = Math.max(0, st.characters[ci].hp - Math.abs(+m[2]));
+  });
   const sm = reply.match(/\[SUGESTOES:([^\]]+)\]/i);
   st.suggestions = sm ? sm[1].split('|').map(s=>s.trim()).filter(Boolean).slice(0,3) : [];
 }
@@ -873,21 +894,118 @@ function mpAdvanceScene(st){
   if (nsc.readAloud) st.history.push({ role:'dm', text: nsc.readAloud });
   st.suggestions = [];
   st.turnIndex = 0;                                              // nova cena começa pelo 1º jogador
+  if (st.combat) st.combat = null;                              // cena nova encerra combate pendente
+}
+
+// ---------------- COMBATE (tracker de iniciativa + HP, espelhado a todos) ----------------
+function mpCombatActive(st){ return !!(st.combat && st.combat.order && st.combat.order.length); }
+function mpCurrentActor(st){ return mpCombatActive(st) ? st.combat.order[st.combat.turn] : null; }
+function mpAllEnemiesDead(st){ return !!st.combat && st.combat.enemies.every(e => e.curHp <= 0); }
+// o personagem que pode AGIR agora (em combate, o PC da iniciativa; fora dela, o do rodízio)
+function mpActivePc(st){
+  if (mpCombatActive(st)){ const cur = mpCurrentActor(st); return (cur && cur.kind==='pc') ? st.characters[cur.idx] : null; }
+  return (st.characters||[])[st.turnIndex||0];
+}
+// inicia combate a partir de um encontro do campaign.js; rola iniciativa (PCs e inimigos)
+function mpStartCombat(st, encId){
+  const enc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters[encId]);
+  if (!enc) return false;
+  st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp })), order:[], turn:0, round:1 };
+  const order = [];
+  (st.characters||[]).forEach((c,idx) => order.push({ kind:'pc', idx, name:c.name, init: mpD20(c, abilityMod(c.abilities.DES)).total }));
+  st.combat.enemies.forEach((e,idx) => order.push({ kind:'enemy', idx, name:e.name, init: mpD20(null, e.mod||0).total }));
+  order.sort((a,b) => b.init - a.init);
+  st.combat.order = order; st.combat.turn = 0; st.combat.round = 1;
+  st.history = st.history || [];
+  st.history.push({ role:'scene', text:`⚔ COMBATE: ${(enc.name||'').toUpperCase()} ⚔` });
+  return true;
+}
+// avança o ponteiro de iniciativa, pulando quem está caído; conta rodadas
+function mpAdvanceCombat(st){
+  const cb = st.combat; if (!cb || !cb.order.length) return;
+  let guard = 0;
+  do {
+    cb.turn++;
+    if (cb.turn >= cb.order.length){ cb.turn = 0; cb.round++; }
+    const o = cb.order[cb.turn];
+    const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
+    if (!dead) break;
+  } while (++guard < cb.order.length * 2);
+}
+function mpEndCombat(st, victory){
+  st.combat = null;
+  st.history = st.history || [];
+  st.history.push({ role:'scene', text: victory ? '— inimigos derrotados! fim do combate —' : '— fim do combate —' });
+}
+// barra de combate (lida do estado compartilhado → idêntica para todos)
+function renderCombatBar(st){
+  const bar = $('#combatBar'); if (!bar) return;
+  if (!mpCombatActive(st)){ bar.classList.add('hide'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hide');
+  const cb = st.combat;
+  const toks = cb.order.map((o,k) => {
+    let hp, dead;
+    if (o.kind==='enemy'){ const e = cb.enemies[o.idx]; hp = `${e.curHp}/${e.hp}`; dead = e.curHp <= 0; }
+    else { const c = st.characters[o.idx]||{}; hp = `${c.hp}/${c.maxHp}`; dead = (c.hp||0) <= 0; }
+    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}"><div class="cb-init">${o.init}</div><div>${escapeHtml(o.name)}</div><div class="cb-hp">${hp} HP</div></div>`;
+  }).join('');
+  const btns = amIAdmin() ? `<div class="cb-btns"><button class="cb-btn" id="cbSkipBtn" title="Pular o turno atual">Pular turno →</button><button class="cb-btn end" id="cbEndBtn">Encerrar</button></div>` : '';
+  bar.innerHTML = `<span class="cb-round">Rodada ${cb.round}</span><div class="cb-list">${toks}</div>${btns}`;
+  if (amIAdmin()){
+    const sk = $('#cbSkipBtn'), en = $('#cbEndBtn');
+    if (sk) sk.onclick = gmCombatSkip;
+    if (en) en.onclick = gmCombatEnd;
+  }
+}
+// admin: pular o turno atual (jogador AFK ou inimigo travado)
+async function gmCombatSkip(){
+  if (!amIAdmin() || !mpCombatActive(ROOM.state) || ROOM.state.busy) return;
+  const st = ROOM.state;
+  mpAdvanceCombat(st);
+  await saveState(st); renderGame();
+  if (mpCurrentActor(st) && mpCurrentActor(st).kind==='enemy'){ st.busy = true; await saveState(st); renderGame(); await mpRunEnemyTurns(st); st.busy = false; await saveState(st); renderGame(); }
+}
+async function gmCombatEnd(){
+  if (!amIAdmin() || !mpCombatActive(ROOM.state)) return;
+  if (!confirm('Encerrar o combate agora?')) return;
+  mpEndCombat(ROOM.state, false);
+  await saveState(ROOM.state); renderGame();
+}
+// auto-conduz os turnos de inimigos até chegar num PC vivo ou o combate acabar
+async function mpRunEnemyTurns(st){
+  let guard = 0;
+  while (mpCombatActive(st) && guard++ < 8){
+    if (mpAllEnemiesDead(st)){ mpEndCombat(st, true); break; }
+    const cur = mpCurrentActor(st);
+    if (!cur || cur.kind==='pc') break;                  // chegou num PC vivo → ele joga
+    const e = st.combat.enemies[cur.idx];
+    if (e.curHp <= 0){ mpAdvanceCombat(st); continue; }   // inimigo caído: pula
+    await saveState(st); renderGame();
+    await mpSleep(600);
+    const reply = await callDm(st, `[TURNO DO INIMIGO] É a vez de ${e.name} (HP ${e.curHp}/${e.hp}) na iniciativa. Narre a ação dele AGORA, em 1-2 frases, coerente com a cena. Se atacar um herói e acertar, aplique o dano com [DANO:NomeDoHeroi:quantidade] (use o dano ${e.dmg||'1d6'} do inimigo). NÃO peça rolagem ao jogador nem fale como sistema.`);
+    applyMpMarkers(reply, st);
+    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();
+    if (clean) st.history.push({ role:'dm', text: clean });
+    mpAdvanceCombat(st);
+    await saveState(st); renderGame();
+  }
 }
 
 // ---------------- ENGINE (roda no cliente do ADMIN) ----------------
 async function saveState(st){
   ROOM.state = st;
-  await supa.from('rooms').update({ state: st, scene_id: st.sceneId, turn_owner: (st.characters[st.turnIndex]||{}).owner || null }).eq('id', ROOM.id);
+  const ap = mpActivePc(st);
+  await supa.from('rooms').update({ state: st, scene_id: st.sceneId, turn_owner: (ap||{}).owner || null }).eq('id', ROOM.id);
 }
 function advanceTurn(st){
+  if (mpCombatActive(st)){ mpAdvanceCombat(st); return; }   // em combate, segue a iniciativa
   if (!st.characters || !st.characters.length) return;
   st.turnIndex = ((st.turnIndex||0) + 1) % st.characters.length;
 }
 // jogador envia ação → vai para a fila room_actions
 async function submitAction(){
   const inp = $('#actionInput'); const txt = inp.value.trim(); if (!txt) return;
-  const st = ROOM.state || {}; const active = (st.characters||[])[st.turnIndex||0];
+  const st = ROOM.state || {}; const active = mpActivePc(st);
   if (!active || active.owner !== ME.id){ toast('Não é sua vez.'); return; }
   inp.value = ''; localBusy = true; renderGame();   // trava já, antes da engine confirmar
   const { error } = await supa.from('room_actions').insert({
@@ -909,7 +1027,8 @@ async function onPlayerAction(action){
     st.busy = true;                                       // trava TODOS (via Realtime) enquanto o Mestre pensa
     await saveState(st);                                  // mostra a ação a todos já + estado "pensando"
     renderGame();
-    const actor = (st.characters||[])[st.turnIndex||0];   // quem age é quem rola
+    const actor = mpActivePc(st);                         // quem age é quem rola
+    const hadCombat = mpCombatActive(st);
     let reply = await callDm(st);
     let rolls = 0;
     // ciclo do Mestre: pode pedir uma rolagem [ROLL]; o CÓDIGO rola e devolve o número
@@ -933,7 +1052,10 @@ async function onPlayerAction(action){
         continue;
       }
       if (!clean) st.history.push({ role:'dm', text:'…' });
-      advanceTurn(st);
+      if (mpCombatActive(st)){
+        if (hadCombat) advanceTurn(st);                     // já estava em combate: passa o ponteiro do PC que agiu
+        await mpRunEnemyTurns(st);                          // auto-conduz inimigos até o próximo PC vivo
+      } else advanceTurn(st);
       break;
     }
     st.busy = false;                                       // libera; cada cliente ainda digita a fala localmente
@@ -976,6 +1098,15 @@ function buildMpSystemPrompt(st){
     ((c.conditions&&c.conditions.length)?` Condições ativas: ${c.conditions.join(', ')}.`:'')
   ).join('\n');
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
+  // bloco de combate: estado em andamento, ou encontro disponível na cena
+  const enc = sc.combat && CAMPAIGN.encounters[sc.combat];
+  let combatBlock = '';
+  if (mpCombatActive(st)){
+    const cb = st.combat;
+    combatBlock = `\n## COMBATE EM ANDAMENTO (rodada ${cb.round})\nOrdem de iniciativa: ${cb.order.map((o,k)=>`${k===cb.turn?'▶ ':''}${o.name}`).join(' > ')}\nInimigos: ${cb.enemies.map(e=>`${e.name}[id:${e.id}] HP ${e.curHp}/${e.hp}, CA ${e.ca}`).join('; ')}\nO sistema controla a iniciativa (de quem é a vez). Quando um inimigo levar dano, emita [HIT:id:quantidade] (ex.: [HIT:${cb.enemies[0]?cb.enemies[0].id:'e1'}:8]). Quando um inimigo atingir um herói, emita [DANO:NomeDoHeroi:quantidade]. Encerre quando todos os inimigos caírem.\n`;
+  } else if (enc){
+    combatBlock = `\n## ENCONTRO DESTA CENA\nSe a situação evoluir para luta, INICIE o combate com [COMBAT_START:${sc.combat}] — o sistema rola a iniciativa e mostra o tracker na tela. Encontro: "${enc.name}".${enc.negotiable?' Este combate é NEGOCIÁVEL: bons testes sociais podem evitá-lo.':''}\n`;
+  }
   return `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 ${CAMPAIGN.premise||''}
 
@@ -1003,8 +1134,9 @@ ${npcs}
 
 ## PERSONAGENS DO GRUPO
 ${sheets}
-
+${combatBlock}
 ## MARCADORES (o sistema processa e REMOVE do texto exibido — não os explique)
+- Combate: comece com [COMBAT_START:idDoEncontro] (o sistema rola iniciativa). Dano a inimigo: [HIT:idDoInimigo:quantidade]. Dano a herói: [DANO:NomeDoHeroi:quantidade]. Em combate, respeite a ordem de iniciativa — o sistema diz de quem é a vez.
 - Quando um personagem passar a sofrer uma CONDIÇÃO (Apêndice A): [CONDICAO:NomeDoPersonagem:Condição] — ex.: [CONDICAO:${(st.characters&&st.characters[0]?st.characters[0].name:'Garrett')}:Envenenado]. Quando a condição acabar: [REMOVER_CONDICAO:NomeDoPersonagem:Condição]. Condições válidas: ${Object.keys(RULES.conditions).join(', ')}.
 - Para revelar uma área do mapa que os heróis avistaram ou ouviram falar (mas ainda não alcançaram): [REVELAR_LOCAL:id]. As áreas só aparecem nomeadas no mapa quando reveladas ou alcançadas — NÃO mencione o nome de um local desconhecido antes de revelá-lo.
 - Quando os OBJETIVOS da cena atual estiverem cumpridos e for hora de a história seguir para o próximo local/capítulo, encerre sua narração com [SCENE_COMPLETE]. O sistema cuida da transição, do texto da próxima cena, da subida de nível e do descanso — você NÃO precisa narrar a viagem nem anunciar a mudança. Não use cedo demais: só quando a cena estiver de fato resolvida.
