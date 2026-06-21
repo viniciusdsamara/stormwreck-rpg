@@ -541,6 +541,20 @@ function renderRollLog(st){
   const list = $('#rollLogList'); if (!list) return;
   list.innerHTML = rolls.length ? rolls.slice().reverse().map(rollLogEntryHtml).join('') : '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
 }
+// detecção tolerante do pedido de rolagem: aceita ROLL/ROLAR/ROLE/TESTE/DADO,
+// espaços, prefixo CD/DC e atributo por extenso/inglês. Grupos: tipo, atributo, CD, tag?
+const ROLL_RE = /\[\s*(?:ROLL|ROLAR|ROLE|ROLAGEM|TESTE|DADO)\s*:\s*([^:\]]+?)\s*:\s*([^:\]]+?)\s*:\s*(?:CD|DC)?\s*(\d+)\s*(?::\s*([^\]]+?)\s*)?\]/i;
+// normaliza o atributo para as chaves do jogo (FOR/DES/CON/INT/SAB/CAR)
+function mpNormAbility(atr){
+  const q = String(atr||'').toUpperCase().trim();
+  const map = { STR:'FOR', FOR:'FOR', 'FORÇA':'FOR', FORCA:'FOR',
+    DEX:'DES', DES:'DES', DESTREZA:'DES',
+    CON:'CON', 'CONSTITUIÇÃO':'CON', CONSTITUICAO:'CON',
+    INT:'INT', 'INTELIGÊNCIA':'INT', INTELIGENCIA:'INT',
+    WIS:'SAB', SAB:'SAB', SABEDORIA:'SAB',
+    CHA:'CAR', CAR:'CAR', CARISMA:'CAR' };
+  return map[q] || q.slice(0,3);
+}
 // dados justos (rolados pelo CÓDIGO, nunca pela IA)
 function mpRollDie(s){ return Math.floor(Math.random()*s)+1; }
 function mpD20(c, mod=0, opts={}){
@@ -569,7 +583,7 @@ function mpRollAttackDamage(ap, crit){
 // resolve uma [ROLL] para o personagem 'c'; devolve o card (espelhado no estado)
 function doMpRoll(c, rollM){
   const [, tipo, atr, cd, tag] = rollM;
-  const abr = atr.toUpperCase().slice(0,3);
+  const abr = mpNormAbility(atr);
   const rm = rollModifiers(c, tipo, abr, tag);
   const { adv, dis, prof } = rm;
   const cdNum = +cd > 0 ? +cd : null;
@@ -899,7 +913,7 @@ async function onPlayerAction(action){
     // ciclo do Mestre: pode pedir uma rolagem [ROLL]; o CÓDIGO rola e devolve o número
     while (true){
       const sceneComplete = /\[SCENE_COMPLETE\]/.test(reply);
-      const rollM = (rolls < 4) ? reply.match(/\[ROLL:([^:\]]+):([^:\]]+):(\d+)(?::([^:\]]+))?\]/) : null;
+      const rollM = (rolls < 4) ? reply.match(ROLL_RE) : null;
       applyMpMarkers(reply, st);                             // condições + sugestões + mapa
       const clean = reply.replace(/\[[^\]]*\]/g, '').trim(); // remove marcadores do texto exibido
       if (clean) st.history.push({ role:'dm', text: clean });
@@ -967,15 +981,15 @@ Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personage
 
 REGRAS DE IMERSÃO (siga à risca):
 - Você é SEMPRE o narrador EM PERSONAGEM. NUNCA fale como sistema, IA ou assistente. NUNCA cite "Apêndice A", regras, "dano", "RP", "condição" como pergunta de bastidor, nem peça ao jogador para "escolher o efeito".
-- Quando a ação do jogador tem consequência clara (ex.: beber veneno, enfiar a mão no fogo, provocar um inimigo), DECIDA a consequência mais plausível e NARRE-A já acontecendo. Se for o caso, aplique a condição pelo marcador. Não peça permissão.
+- Quando a ação tem resultado CERTO/automático (ex.: beber um veneno que ele tem, abrir uma porta destrancada, conversar), NARRE direto. Mas quando o resultado é INCERTO (pode dar certo OU errado), você NÃO decide — peça uma rolagem (veja abaixo). Nunca anuncie sucesso ou fracasso de uma ação arriscada sem antes pedir o dado.
 - Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias (ex.: "Em qual dos dois guardas você mira?"). Nunca pergunte sobre mecânica.
 - COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário, magias, recursos listados abaixo) e o que a CENA oferece. Se o jogador descrever usar um item, magia ou recurso que ele NÃO possui (ex.: beber um veneno que não está no inventário), corrija DENTRO da ficção — narre que ele procura mas não há tal item, ou que a tentativa falha — em vez de aceitar a invenção. Nunca dê itens que não existem.
-- NÃO role dados nem invente números. Quando uma ação tiver resultado INCERTO (pode dar certo ou errado: escalar, furtividade, persuadir, atacar, resistir a algo), PEÇA a rolagem com o marcador [ROLL:tipo:ATRIBUTO:CD] e PARE a narração ali — o sistema rola o d20 justo e te devolve o número; só então você narra a consequência. NUNCA decida sozinho se passou ou falhou.
-  • tipo = nome da perícia (ex.: Atletismo, Furtividade, Persuasão), ou 'save', ou 'ataque'.
+- ★ REGRA MAIS IMPORTANTE: você NÃO rola dados nem inventa números, e NÃO decide se uma ação arriscada deu certo. Sempre que a ação puder falhar (escalar, saltar, esgueirar-se, persuadir/intimidar/enganar, investigar, atacar, resistir a algo, arrombar, equilibrar-se etc.), sua resposta DEVE conter o marcador [ROLL:tipo:ATRIBUTO:CD] e PARAR ali. O sistema rola o d20 justo e te devolve o número; só ENTÃO, na resposta seguinte, você narra o que aconteceu. Se você narrar o desfecho sem ter pedido o dado, está ERRADO.
+  • tipo = nome da perícia (Atletismo, Acrobacia, Furtividade, Percepção, Persuasão, Intimidação, Enganação, Investigação, Arcanismo...), ou 'save', ou 'ataque'.
   • ATRIBUTO = FOR, DES, CON, INT, SAB ou CAR.
-  • CD = dificuldade: 10 fácil, 12-13 médio, 15 difícil, 18+ muito difícil. Para 'ataque' use CD 0 (compara com a CA do alvo, que você decide narrativamente).
-  • Exemplos: [ROLL:Atletismo:FOR:12]  ·  [ROLL:save:DES:14]  ·  [ROLL:ataque:DES:0]
-  • Uma rolagem por vez. Ações triviais/automáticas NÃO precisam de rolagem — narre direto.
+  • CD = dificuldade: 10 fácil, 12-13 médio, 15 difícil, 18+ muito difícil. Para 'ataque' use CD 0.
+  • Formato EXATO, em colchetes, sem espaços extras: [ROLL:Atletismo:FOR:12]  ·  [ROLL:save:DES:14]  ·  [ROLL:ataque:DES:0]
+  • Uma rolagem por vez. Só dispense o dado em ações triviais sem risco.
 
 ## CENA ATUAL: ${sc.chapter||''} — ${sc.location||''}
 ${sc.summary||''}
@@ -997,7 +1011,16 @@ ${sheets}
 ## MAPA DA ILHA (ids para [REVELAR_LOCAL])
 ${Object.entries(MAP_LOCS).map(([id,m])=>`- ${id}: ${m.label} — ${mpMapKnown(st,id)?'JÁ CONHECIDO pelos jogadores':'desconhecido (não cite o nome até revelar/alcançar)'}`).join('\n')}
 
-Responda à ação do jogador, faça a história avançar e termine abrindo para a próxima ação do grupo (com as sugestões no final).`;
+## EXEMPLOS — siga este padrão SEMPRE que a ação for arriscada (peça o dado e PARE)
+Jogador [Bjorn]: "Tento escalar o mastro escorregadio durante a tempestade."
+Você: A madeira encharcada cede sob as botas; só a força bruta o levará ao topo. [ROLL:Atletismo:FOR:13]
+Jogador [Lia]: "Tento convencer o capitão a mudar de rota."
+Você: O capitão cruza os braços, o maxilar tenso. Suas palavras terão de ser muito boas. [ROLL:Persuasão:CAR:15]
+Jogador [Bjorn]: "Ataco o esqueleto com meu machado."
+Você: Bjorn ruge e desce a lâmina num arco selvagem. [ROLL:ataque:FOR:0]
+(Em todos os casos você PARA após o marcador. O sistema rola e devolve o número; aí você narra o sucesso ou a falha.)
+
+Responda à ação do jogador. Se houver QUALQUER incerteza, peça [ROLL:...] e pare. Caso contrário, narre e termine com as [SUGESTOES:...].`;
 }
 
 window.addEventListener('beforeunload', ()=>{ try{ if(roomChannel) supa.removeChannel(roomChannel); }catch(e){} });
