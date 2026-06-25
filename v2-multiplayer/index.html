@@ -154,28 +154,25 @@
   .roll-fab.hide{ display:none; }
   @keyframes fabPulse{ 0%,100%{ transform:translateX(-50%) scale(1); } 50%{ transform:translateX(-50%) scale(1.06); } }
   .dice-overlay{ position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center;
-          background:rgba(8,6,10,0.74); backdrop-filter:blur(3px); }
+          background:rgba(8,6,10,0.80); backdrop-filter:blur(4px); }
   .dice-overlay.hide{ display:none; }
-  .dice-box{ text-align:center; }
-  .dice-title{ color:var(--parch); opacity:0.85; margin-bottom:20px; font-size:0.95rem; }
-  .dice-stage{ position:relative; width:140px; height:140px; margin:0 auto; perspective:620px; }
-  .dice-cube{ position:absolute; inset:0; transform-style:preserve-3d; }
-  .dice-overlay.rolling .dice-cube{ animation:diceTumble .85s linear infinite; }
-  .dice-overlay.settled .dice-cube{ transform:rotateX(-22deg) rotateY(22deg); transition:transform .4s ease-out; }
-  @keyframes diceTumble{ 0%{ transform:rotateX(0) rotateY(0) rotateZ(0); } 100%{ transform:rotateX(360deg) rotateY(330deg) rotateZ(170deg); } }
-  .df{ position:absolute; width:140px; height:140px; background:linear-gradient(145deg,#2a2230,#171019);
-          border:2px solid var(--ember); border-radius:18px; box-shadow:inset 0 0 30px rgba(0,0,0,0.6); opacity:0.92; }
-  .df1{ transform:translateZ(70px); } .df2{ transform:rotateY(180deg) translateZ(70px); }
-  .df3{ transform:rotateY(90deg) translateZ(70px); } .df4{ transform:rotateY(-90deg) translateZ(70px); }
-  .df5{ transform:rotateX(90deg) translateZ(70px); } .df6{ transform:rotateX(-90deg) translateZ(70px); }
+  .dice-box{ text-align:center; max-width:92%; }
+  .dice-title{ color:var(--parch); opacity:0.8; font-size:0.9rem; margin-bottom:6px; }
+  .dice-target{ color:var(--ember); font-weight:700; letter-spacing:0.05em; font-size:0.82rem; text-transform:uppercase; margin-bottom:8px; min-height:1em; }
+  .dice-stage{ position:relative; width:210px; height:210px; margin:0 auto; }
+  .dice-canvas{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .dice-canvas canvas{ filter:drop-shadow(0 12px 26px rgba(0,0,0,0.6)); }
   .dice-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-          font-size:3.6rem; font-weight:800; color:var(--ember); text-shadow:0 2px 12px rgba(0,0,0,0.8); z-index:2; pointer-events:none; }
-  .dice-num.crit{ color:#7fe08a; } .dice-num.fumble{ color:var(--blood); }
-  .dice-result{ margin-top:22px; min-height:26px; }
-  .dice-mods{ color:var(--parch); font-size:1.05rem; } .dice-mods b{ color:#fff; }
-  .dice-verdict{ margin-top:8px; font-weight:700; font-size:1.12rem; }
-  .dice-verdict.ok{ color:#7fe08a; } .dice-verdict.fail{ color:var(--blood); }
-  .dice-dmg{ margin-top:6px; color:var(--blood); }
+          font-size:3rem; font-weight:800; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,0.95), 0 0 20px rgba(0,0,0,0.6);
+          z-index:2; pointer-events:none; transition:transform .2s ease-out; }
+  .dice-overlay.settled .dice-num{ transform:scale(1.18); }
+  .dice-num.crit{ color:#8ff0a0; text-shadow:0 0 22px rgba(110,224,127,0.85), 0 2px 6px rgba(0,0,0,0.8); }
+  .dice-num.fumble{ color:#ff6f80; text-shadow:0 0 22px rgba(196,72,90,0.85), 0 2px 6px rgba(0,0,0,0.8); }
+  .dice-result{ margin-top:18px; min-height:24px; }
+  .dice-mods{ color:var(--parch); font-size:1.02rem; } .dice-mods b{ color:#fff; font-size:1.25rem; }
+  .dice-verdict{ margin-top:8px; font-weight:800; font-size:1.18rem; letter-spacing:0.03em; }
+  .dice-verdict.ok{ color:#8ff0a0; } .dice-verdict.fail{ color:#ff6f80; }
+  .dice-dmg{ margin-top:6px; color:#ff9a86; }
   /* Roteiro da Campanha (Tela do Mestre) */
   .guide-card{ max-width:680px; width:94%; max-height:88vh; display:flex; flex-direction:column; }
   .guide-card .g-body{ overflow-y:auto; padding-right:4px; }
@@ -795,8 +792,9 @@
   <div id="diceOverlay" class="dice-overlay hide">
     <div class="dice-box">
       <div class="dice-title" id="diceTitle"></div>
+      <div class="dice-target" id="diceTarget"></div>
       <div class="dice-stage">
-        <div class="dice-cube"><span class="df df1"></span><span class="df df2"></span><span class="df df3"></span><span class="df df4"></span><span class="df df5"></span><span class="df df6"></span></div>
+        <div class="dice-canvas" id="diceCanvasWrap"></div>
         <div class="dice-num" id="diceNum">?</div>
       </div>
       <div class="dice-result" id="diceResult"></div>
@@ -833,6 +831,7 @@
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="rules.js"></script>
 <script src="campaign.js"></script>
 <script src="creation-mp.js"></script>

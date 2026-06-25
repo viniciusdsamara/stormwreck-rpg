@@ -679,7 +679,7 @@ async function leaveRoomQuietly(opts){
   DM_DRAFT = null; engineBusy = false;
   ROLL_RESOLVER = null; LAST_PENDING = false; DICE_SPINNING = false;
   if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
-  hideRollFab(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
+  hideRollFab(); stopDice3D(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -998,8 +998,45 @@ function mpRollResultText(c, card){
 //  A engine pausa (st.pendingRoll); quem rola clica → @@ROLL@@ → a engine
 //  rola e espelha o card → o dado 3D assenta no resultado em TODOS.
 // ============================================================
-let DICE_TIMER = null, DICE_SPINNING = false, LAST_PENDING = false;
+let DICE_TIMER = null, DICE_SPINNING = false, LAST_PENDING = false, DICE3D = null;
 function lastRollCard(st){ const h = st.history||[]; for (let i=h.length-1;i>=0;i--){ if (h[i].role==='roll') return h[i]; } return null; }
+// d20 3D (three.js, via CDN) — degrada para só-número se WebGL/THREE faltar
+function ensureDice3D(){
+  if (DICE3D) return DICE3D;
+  if (typeof THREE === 'undefined') return null;
+  const wrap = $('#diceCanvasWrap'); if (!wrap) return null;
+  try {
+    const S = 210;
+    const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+    renderer.setSize(S, S); wrap.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100); camera.position.z = 4.2;
+    const geo = new THREE.IcosahedronGeometry(1.5, 0);   // d20: 20 faces triangulares
+    const mat = new THREE.MeshStandardMaterial({ color:0xd69e4a, metalness:0.75, roughness:0.32, flatShading:true });
+    const die = new THREE.Mesh(geo, mat);
+    die.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x241509 })));
+    scene.add(die);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const d1 = new THREE.DirectionalLight(0xfff0d2, 1.15); d1.position.set(3, 5, 4); scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0x88a0ff, 0.45); d2.position.set(-4, -2, 2); scene.add(d2);
+    DICE3D = { renderer, scene, camera, die, mat, raf:null, spinning:false, settling:false, vel:{x:0,y:0,z:0} };
+  } catch(e){ DICE3D = null; }
+  return DICE3D;
+}
+function diceLoop(){
+  const d = DICE3D; if (!d) return;
+  if (d.spinning){
+    if (d.settling){
+      d.vel.x *= 0.93; d.vel.y *= 0.93; d.vel.z *= 0.93;
+      if (Math.abs(d.vel.x) + Math.abs(d.vel.y) + Math.abs(d.vel.z) < 0.012) d.spinning = false;
+    }
+    d.die.rotation.x += d.vel.x; d.die.rotation.y += d.vel.y; d.die.rotation.z += d.vel.z;
+  }
+  try { d.renderer.render(d.scene, d.camera); } catch(e){}
+  d.raf = requestAnimationFrame(diceLoop);
+}
+function stopDice3D(){ const d = DICE3D; if (d && d.raf){ cancelAnimationFrame(d.raf); d.raf = null; } }
 function showRollFab(pr){
   const b = $('#rollFab'); if (!b) return;
   const mine = pr.owner === ME.id;
@@ -1022,16 +1059,25 @@ function startDiceAnim(pr){
   const ov = $('#diceOverlay'); if (!ov) return;
   if (ov._t){ clearTimeout(ov._t); ov._t = null; }
   ov.classList.remove('hide','settled'); ov.classList.add('rolling');
-  $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` — ${pr.tipo}`:''}${pr.cd?` (CD ${pr.cd})`:''}`;
+  $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` · ${pr.tipo}`:''}`;
+  $('#diceTarget').textContent = pr.cd ? `Alvo: CD ${pr.cd}` : '';
   $('#diceResult').innerHTML = '';
   const num = $('#diceNum'); num.className = 'dice-num';
   DICE_SPINNING = true;
   if (DICE_TIMER) clearInterval(DICE_TIMER);
-  DICE_TIMER = setInterval(()=>{ num.textContent = 1 + Math.floor(Math.random()*20); }, 70);
+  DICE_TIMER = setInterval(()=>{ num.textContent = 1 + Math.floor(Math.random()*20); }, 60);
+  const d = ensureDice3D();
+  if (d){
+    d.mat.color.set(0xd69e4a); d.mat.emissive && d.mat.emissive.set(0x000000);
+    d.vel = { x: 0.20 + Math.random()*0.16, y: 0.24 + Math.random()*0.18, z: 0.10 + Math.random()*0.10 };
+    d.settling = false; d.spinning = true;
+    if (!d.raf) diceLoop();
+  }
 }
 function settleDiceAnim(card){
   const ov = $('#diceOverlay'); if (!ov || !card) return;
   if (!DICE_SPINNING) startDiceAnim({ name: card.label||'', tipo:'', cd: card.dc });   // não-rolador: gira rápido e assenta
+  const d = DICE3D; if (d) d.settling = true;                                           // o dado 3D desacelera
   setTimeout(()=>{
     if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
     DICE_SPINNING = false;
@@ -1039,15 +1085,16 @@ function settleDiceAnim(card){
     const num = $('#diceNum');
     num.textContent = card.autoFail ? '✗' : card.nat;
     num.className = 'dice-num ' + (card.crit ? 'crit' : card.fumble ? 'fumble' : '');
+    if (d){ d.mat.color.set(card.crit ? 0x6ee07f : card.fumble ? 0xc4485a : 0xd69e4a); }
     const ok = card.dc != null ? (!card.autoFail && card.total >= card.dc) : null;
-    const mods = card.autoFail ? 'falha automática (condição)' : `d20 [${card.nat}] ${fmtMod(card.mod)} = <b>${card.total}</b>`;
+    const mods = card.autoFail ? 'falha automática (condição)' : `🎲 ${card.nat} ${fmtMod(card.mod)} = <b>${card.total}</b>`;
     const crit = card.crit ? ' · CRÍTICO!' : (card.fumble && !card.autoFail) ? ' · FALHA CRÍTICA' : '';
     const verdict = card.dc != null ? `<div class="dice-verdict ${ok?'ok':'fail'}">${ok?'SUCESSO':'FALHA'} · CD ${card.dc}</div>` : '';
     const dmg = card.dmg ? `<div class="dice-dmg">⚔ Dano ${card.dmg.total} [${card.dmg.type}]</div>` : '';
     $('#diceResult').innerHTML = `<div class="dice-mods">${mods}${crit}</div>${verdict}${dmg}`;
-  }, 650);
-  ov._t = setTimeout(()=> ov.classList.add('hide'), 3800);
-  ov.onclick = ()=>{ if (!DICE_SPINNING) ov.classList.add('hide'); };
+  }, 700);
+  ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, 3900);
+  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); stopDice3D(); } };
 }
 
 function renderGame(){
