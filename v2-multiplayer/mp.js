@@ -677,6 +677,9 @@ async function leaveRoomQuietly(opts){
   if (reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
   clearTyping(); revealedCount = -1; localBusy = false; MESTRE_PRESENTE = true;
   DM_DRAFT = null; engineBusy = false;
+  ROLL_RESOLVER = null; LAST_PENDING = false; DICE_SPINNING = false;
+  if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
+  hideRollFab(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -990,6 +993,63 @@ function mpRollResultText(c, card){
   return `[RESULTADO DA ROLAGEM] ${c.name} rolou ${card.tipo} (${card.abr})${card.prof?' [proficiente]':''}${card.advNote}: ${base}${flags}.${dmg} Narre a consequência e continue (não peça outra rolagem para a mesma ação).`;
 }
 
+// ============================================================
+//  ROLAGEM COM BOTÃO FLUTUANTE + DADO 3D
+//  A engine pausa (st.pendingRoll); quem rola clica → @@ROLL@@ → a engine
+//  rola e espelha o card → o dado 3D assenta no resultado em TODOS.
+// ============================================================
+let DICE_TIMER = null, DICE_SPINNING = false, LAST_PENDING = false;
+function lastRollCard(st){ const h = st.history||[]; for (let i=h.length-1;i>=0;i--){ if (h[i].role==='roll') return h[i]; } return null; }
+function showRollFab(pr){
+  const b = $('#rollFab'); if (!b) return;
+  const mine = pr.owner === ME.id;
+  if ((!mine && !amIAdmin()) || DICE_SPINNING){ b.classList.add('hide'); return; }
+  b.classList.remove('hide');
+  b.innerHTML = mine ? `🎲 Rolar <b>${escapeHtml(pr.tipo)}</b>${pr.cd?` · CD ${pr.cd}`:''}` : `🎲 Rolar por ${escapeHtml(pr.name)}`;
+  b.onclick = triggerRoll;
+}
+function hideRollFab(){ const b = $('#rollFab'); if (b) b.classList.add('hide'); }
+async function triggerRoll(){
+  const st = ROOM.state || {}; const pr = st.pendingRoll; if (!pr) return;
+  if (typeof SFX !== 'undefined') SFX.unlock();
+  hideRollFab();
+  startDiceAnim(pr);                                        // a animação local começa a girar já
+  if (amIAdmin() && ROLL_RESOLVER){ ROLL_RESOLVER(); return; }   // admin é a engine: resolve direto
+  try { await supa.from('room_actions').insert({ room_id: ROOM.id, user_id: ME.id, display_name: pr.name, text: ROLL_PREFIX }); }
+  catch(e){ toast('Erro ao rolar: ' + e.message); }
+}
+function startDiceAnim(pr){
+  const ov = $('#diceOverlay'); if (!ov) return;
+  if (ov._t){ clearTimeout(ov._t); ov._t = null; }
+  ov.classList.remove('hide','settled'); ov.classList.add('rolling');
+  $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` — ${pr.tipo}`:''}${pr.cd?` (CD ${pr.cd})`:''}`;
+  $('#diceResult').innerHTML = '';
+  const num = $('#diceNum'); num.className = 'dice-num';
+  DICE_SPINNING = true;
+  if (DICE_TIMER) clearInterval(DICE_TIMER);
+  DICE_TIMER = setInterval(()=>{ num.textContent = 1 + Math.floor(Math.random()*20); }, 70);
+}
+function settleDiceAnim(card){
+  const ov = $('#diceOverlay'); if (!ov || !card) return;
+  if (!DICE_SPINNING) startDiceAnim({ name: card.label||'', tipo:'', cd: card.dc });   // não-rolador: gira rápido e assenta
+  setTimeout(()=>{
+    if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
+    DICE_SPINNING = false;
+    ov.classList.remove('rolling'); ov.classList.add('settled');
+    const num = $('#diceNum');
+    num.textContent = card.autoFail ? '✗' : card.nat;
+    num.className = 'dice-num ' + (card.crit ? 'crit' : card.fumble ? 'fumble' : '');
+    const ok = card.dc != null ? (!card.autoFail && card.total >= card.dc) : null;
+    const mods = card.autoFail ? 'falha automática (condição)' : `d20 [${card.nat}] ${fmtMod(card.mod)} = <b>${card.total}</b>`;
+    const crit = card.crit ? ' · CRÍTICO!' : (card.fumble && !card.autoFail) ? ' · FALHA CRÍTICA' : '';
+    const verdict = card.dc != null ? `<div class="dice-verdict ${ok?'ok':'fail'}">${ok?'SUCESSO':'FALHA'} · CD ${card.dc}</div>` : '';
+    const dmg = card.dmg ? `<div class="dice-dmg">⚔ Dano ${card.dmg.total} [${card.dmg.type}]</div>` : '';
+    $('#diceResult').innerHTML = `<div class="dice-mods">${mods}${crit}</div>${verdict}${dmg}`;
+  }, 650);
+  ov._t = setTimeout(()=> ov.classList.add('hide'), 3800);
+  ov.onclick = ()=>{ if (!DICE_SPINNING) ov.classList.add('hide'); };
+}
+
 function renderGame(){
   const st = ROOM.state || {};
   if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
@@ -1022,11 +1082,12 @@ function renderGame(){
     ? '⏸ <b style="color:var(--blood)">Mestre ausente</b> — partida pausada. Aguardando o Mestre voltar…'
     : (levelingUp
       ? `⬆ Subida de nível — toque no card pulsando e escolha.${amIAdmin()?' (o Mestre pode escolher por um jogador ausente)':''}`
-      : (st.busy ? 'O Mestre está pensando…'
+      : (st.pendingRoll ? `🎲 ${st.pendingRoll.owner===ME.id ? 'Sua vez de rolar o dado!' : `Aguardando <b style="color:var(--ember)">${escapeHtml(st.pendingRoll.name)}</b> rolar…`}`
+        : (st.busy ? 'O Mestre está pensando…'
         : (TYPING ? 'O Mestre está narrando…'
           : (enemyTurn ? `Turno de <b style="color:var(--blood)">${escapeHtml(cur.name)}</b>…`
             : (myTurn ? `Sua vez, <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b>`
-              : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…'))))));
+              : (turnChar ? `Aguardando <b style="color:var(--ember)">${escapeHtml(turnChar.name)}</b> (${escapeHtml(turnChar.ownerName||'')})…` : 'Aguardando o Mestre…')))))));
   const inp = $('#actionInput'), btn = $('#sendBtn');
   inp.disabled = !myTurn; btn.disabled = !myTurn;
   $('#micBtn').disabled = !myTurn;
@@ -1045,6 +1106,10 @@ function renderGame(){
   const dc = $('#dmConsole'); if (dc) dc.style.display = DM_DRAFT ? '' : 'none';
   // botão do Roteiro: só para o Mestre-puro (tem spoilers; some pro admin-jogador)
   const gb = $('#guideBtn'); if (gb) gb.style.display = isCommandMode() ? '' : 'none';
+  // rolagem: botão flutuante para quem rola + dado 3D quando a rolagem resolve
+  if (st.pendingRoll) showRollFab(st.pendingRoll); else hideRollFab();
+  if (LAST_PENDING && !st.pendingRoll) settleDiceAnim(lastRollCard(st));
+  LAST_PENDING = !!st.pendingRoll;
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
 }
 
@@ -1498,6 +1563,14 @@ async function submitAction(){
 // admin processa a ação: registra, chama a IA, narra e passa a vez
 let engineBusy = false;
 let DM_DRAFT = null;   // rascunho privado do Mestre (modo comando) — NUNCA vai para rooms.state
+const ROLL_PREFIX = '@@ROLL@@';   // sinal do jogador "rolei o dado" (botão flutuante)
+let ROLL_RESOLVER = null;         // resolve a Promise da engine que espera o clique de rolagem
+// engine: pausa pedindo a rolagem ao jogador; resolve quando ele clica (ação @@ROLL@@)
+function mpAwaitRollClick(st, actor, rollM){
+  const cd = +rollM[3] > 0 ? +rollM[3] : 0;
+  st.pendingRoll = { owner: actor.owner, name: actor.name, ownerName: actor.ownerName || actor.name, tipo: (rollM[1]||'Teste').trim(), atr: mpNormAbility(rollM[2]), cd };
+  return new Promise(resolve => { ROLL_RESOLVER = () => { ROLL_RESOLVER = null; resolve(); }; });
+}
 async function onPlayerAction(action){
   if (!amIAdmin() || !ROOM || ROOM.status !== 'playing') return;
   if (action.processed || PROCESSED_IDS.has(action.id)) return;   // dedup backlog × Realtime
@@ -1515,6 +1588,13 @@ async function onPlayerAction(action){
       try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
       renderGame();
     }
+    return;
+  }
+  // sinal de rolagem do jogador: destrava a engine que está esperando o clique no botão flutuante
+  if (action.text === ROLL_PREFIX){
+    PROCESSED_IDS.add(action.id);
+    if (ROLL_RESOLVER) ROLL_RESOLVER();
+    try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
     return;
   }
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
@@ -1544,11 +1624,13 @@ async function onPlayerAction(action){
       // 1) rolagem tem PRIORIDADE (mesmo se o Mestre mandar [SCENE_COMPLETE] junto)
       if (rollM && actor){
         rolls++;
-        await saveState(st); renderGame();                  // mostra o pedido do Mestre já
-        await mpSleep(750);                                 // um respiro antes do dado cair
+        const wait = mpAwaitRollClick(st, actor, rollM);    // pede a rolagem ao jogador (botão flutuante)
+        await saveState(st); renderGame();                  // mostra o pedido + botão a quem rola
+        await wait;                                          // espera o clique (@@ROLL@@)
+        st.pendingRoll = null;
         const card = doMpRoll(actor, rollM);                // o CÓDIGO rola (justo)
         st.history.push(card);
-        await saveState(st); renderGame();                  // espelha o card a todos (ainda "busy")
+        await saveState(st); renderGame();                  // espelha o card → dado 3D anima em todos
         reply = await callDm(st, mpRollResultText(actor, card));   // devolve o número ao Mestre
         continue;
       }
@@ -1712,11 +1794,13 @@ async function sendDraft(){
     // 1) rolagem tem prioridade: commita o pedido, o código rola, e a CONSEQUÊNCIA volta ao console
     if (d.rollM && d.actor){
       d.rolls++;
+      const wait = mpAwaitRollClick(st, d.actor, d.rollM);        // pede a rolagem ao jogador (botão flutuante)
       await saveState(st); renderGame();
-      await mpSleep(750);
+      await wait;                                                 // espera o clique (@@ROLL@@)
+      st.pendingRoll = null;
       const card = doMpRoll(d.actor, d.rollM);
       st.history.push(card);
-      await saveState(st); renderGame();
+      await saveState(st); renderGame();                         // espelha o card → dado 3D anima em todos
       d.seed = mpRollResultText(d.actor, card);
       const reply2 = await callDm(st, d.seed);
       stageDraft(reply2);

@@ -144,6 +144,38 @@
   .dmc-foe-tr{ font-size:0.74rem; opacity:0.72; font-style:italic; margin-top:2px; }
   .dmc-foe select{ background:var(--basalt-800,#15171c); border:1px solid var(--basalt-600); color:var(--parch);
           border-radius:7px; padding:6px 8px; font-family:inherit; font-size:0.82rem; }
+  /* Rolagem: botão flutuante + dado 3D */
+  .roll-fab{ position:fixed; left:50%; bottom:92px; transform:translateX(-50%); z-index:60;
+          background:linear-gradient(180deg,var(--ember),#b67e2e); color:#1a130c; border:none; border-radius:30px;
+          padding:14px 26px; font-size:1.05rem; font-weight:700; cursor:pointer; font-family:inherit;
+          box-shadow:0 8px 26px rgba(0,0,0,0.5), 0 0 0 3px rgba(214,158,74,0.25); animation:fabPulse 1.4s ease-in-out infinite; }
+  .roll-fab b{ color:#000; }
+  .roll-fab:hover{ filter:brightness(1.08); }
+  .roll-fab.hide{ display:none; }
+  @keyframes fabPulse{ 0%,100%{ transform:translateX(-50%) scale(1); } 50%{ transform:translateX(-50%) scale(1.06); } }
+  .dice-overlay{ position:fixed; inset:0; z-index:70; display:flex; align-items:center; justify-content:center;
+          background:rgba(8,6,10,0.74); backdrop-filter:blur(3px); }
+  .dice-overlay.hide{ display:none; }
+  .dice-box{ text-align:center; }
+  .dice-title{ color:var(--parch); opacity:0.85; margin-bottom:20px; font-size:0.95rem; }
+  .dice-stage{ position:relative; width:140px; height:140px; margin:0 auto; perspective:620px; }
+  .dice-cube{ position:absolute; inset:0; transform-style:preserve-3d; }
+  .dice-overlay.rolling .dice-cube{ animation:diceTumble .85s linear infinite; }
+  .dice-overlay.settled .dice-cube{ transform:rotateX(-22deg) rotateY(22deg); transition:transform .4s ease-out; }
+  @keyframes diceTumble{ 0%{ transform:rotateX(0) rotateY(0) rotateZ(0); } 100%{ transform:rotateX(360deg) rotateY(330deg) rotateZ(170deg); } }
+  .df{ position:absolute; width:140px; height:140px; background:linear-gradient(145deg,#2a2230,#171019);
+          border:2px solid var(--ember); border-radius:18px; box-shadow:inset 0 0 30px rgba(0,0,0,0.6); opacity:0.92; }
+  .df1{ transform:translateZ(70px); } .df2{ transform:rotateY(180deg) translateZ(70px); }
+  .df3{ transform:rotateY(90deg) translateZ(70px); } .df4{ transform:rotateY(-90deg) translateZ(70px); }
+  .df5{ transform:rotateX(90deg) translateZ(70px); } .df6{ transform:rotateX(-90deg) translateZ(70px); }
+  .dice-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+          font-size:3.6rem; font-weight:800; color:var(--ember); text-shadow:0 2px 12px rgba(0,0,0,0.8); z-index:2; pointer-events:none; }
+  .dice-num.crit{ color:#7fe08a; } .dice-num.fumble{ color:var(--blood); }
+  .dice-result{ margin-top:22px; min-height:26px; }
+  .dice-mods{ color:var(--parch); font-size:1.05rem; } .dice-mods b{ color:#fff; }
+  .dice-verdict{ margin-top:8px; font-weight:700; font-size:1.12rem; }
+  .dice-verdict.ok{ color:#7fe08a; } .dice-verdict.fail{ color:var(--blood); }
+  .dice-dmg{ margin-top:6px; color:var(--blood); }
   /* Roteiro da Campanha (Tela do Mestre) */
   .guide-card{ max-width:680px; width:94%; max-height:88vh; display:flex; flex-direction:column; }
   .guide-card .g-body{ overflow-y:auto; padding-right:4px; }
@@ -757,6 +789,19 @@
 
   <!-- ===== Roteiro da campanha — Tela do Mestre (só Mestre-puro) ===== -->
   <div class="sheet-modal hide" id="guideModal"><div class="sheet-card guide-card" id="guideCard"></div></div>
+
+  <!-- ===== rolagem: botão flutuante + dado 3D ===== -->
+  <button id="rollFab" class="roll-fab hide"></button>
+  <div id="diceOverlay" class="dice-overlay hide">
+    <div class="dice-box">
+      <div class="dice-title" id="diceTitle"></div>
+      <div class="dice-stage">
+        <div class="dice-cube"><span class="df df1"></span><span class="df df2"></span><span class="df df3"></span><span class="df df4"></span><span class="df df5"></span><span class="df df6"></span></div>
+        <div class="dice-num" id="diceNum">?</div>
+      </div>
+      <div class="dice-result" id="diceResult"></div>
+    </div>
+  </div>
 
   <!-- ===== subida de nível (escolha de subclasse/estilo) ===== -->
   <div class="sheet-modal hide" id="levelupModal"><div class="sheet-card lu-card" id="levelupCard"></div></div>
