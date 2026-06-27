@@ -1779,7 +1779,17 @@ async function enterRoom(){
 async function refreshRoom(){
   if (!ROOM) return;
   const { data: room } = await supa.from('rooms').select('*').eq('id', ROOM.id).single();
-  if (room) ROOM = room;
+  if (room){
+    // O Mestre (admin) é o ÚNICO que grava rooms.state — ele NÃO pode reler o próprio estado do
+    // banco durante o jogo. Se relesse, um snapshot velho (ex.: busy:true de um turno de inimigo
+    // em andamento, ou de um save que expirou no timeout) RESSUSCITA e trava tudo ao voltar de um
+    // alt+tab; além disso, trocar o objeto ROOM órfã o `st` que o motor está mutando. Então,
+    // jogando como admin, preservamos o estado LOCAL (mesma referência) e só atualizamos os metadados.
+    const keepLocal = (typeof amIAdmin==='function' && amIAdmin()) && ROOM.state && room.status === 'playing';
+    const localState = ROOM.state;
+    ROOM = room;
+    if (keepLocal) ROOM.state = localState;
+  }
   const { data: members } = await supa.from('room_members').select('*').eq('room_id', ROOM.id).order('joined_at');
   MEMBERS = members || [];
   if (ROOM.status === 'ended'){ toast('A sala foi encerrada pelo mestre.'); await leaveRoomQuietly(); enterHub(); return; }
@@ -3943,7 +3953,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ap';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627aq';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
