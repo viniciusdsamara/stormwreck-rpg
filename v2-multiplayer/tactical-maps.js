@@ -10,6 +10,7 @@ const TACTICAL_MAPS = {
   // 1) PRAIA — praia_zumbis: enseada de areia preta, ressaca, o Próspero encalhado.
   'praia': {
     w: 12, h: 9, fogR: 6,
+    bg: { seed: 71, prompt: 'top-down overhead tabletop RPG battle map, black volcanic sand beach cove, wrecked sailing ship hull half-buried in sand, scattered wooden debris and crates, crashing grey surf meeting dark stormy sea, jagged rocky cliffs, fantasy dnd battlemap, gloomy overcast, no grid lines, no text, no labels' },
     cells: [
       '~~~~~~~~~~~~',
       '~~~~PP~~~~~~',
@@ -38,6 +39,7 @@ const TACTICAL_MAPS = {
   // 2) CAVERNAS — polvo_fungo: boca da caverna, fungos brilhantes, poça escura.
   'cavernas': {
     w: 12, h: 9, fogR: 3,
+    bg: { seed: 24, prompt: 'top-down overhead tabletop RPG battle map, dark sea cave interior, rocky cavern floor, glowing bioluminescent fungus clusters in teal and green, still black water pool in the center, wet stone, fantasy dnd battlemap, moody dim light, no grid lines, no text, no labels' },
     cells: [
       '############',
       '#FF..~~~~.F#',
@@ -64,6 +66,7 @@ const TACTICAL_MAPS = {
   // 3) SHARRUTH — fume_drakes: câmara da tumba cortada por fendas de lava; drakes voam.
   'sharruth': {
     w: 12, h: 9, fogR: 6,
+    bg: { seed: 53, prompt: 'top-down overhead tabletop RPG battle map, ancient ruined tomb chamber, cracked dark stone floor, glowing molten lava fissures cutting across, mounds of grey ash, scorched obsidian, fantasy dnd battlemap, ominous red glow, no grid lines, no text, no labels' },
     cells: [
       '############',
       '#..LL....f.#',
@@ -90,6 +93,7 @@ const TACTICAL_MAPS = {
   // 4) NAUFRAGIO — naufragio_undead: porão do navio amaldiçoado, fenda do porão, sigilo de Orcus.
   'naufragio': {
     w: 12, h: 9, fogR: 3,
+    bg: { seed: 38, prompt: 'top-down overhead tabletop RPG battle map, interior of a cursed shipwreck cargo hold, broken weathered wooden deck planks, dark gaping holes into the bilge, scattered debris and barrels, a glowing red demonic Orcus sigil burned into the floor, fantasy dnd battlemap, eerie dark, no grid lines, no text, no labels' },
     cells: [
       '############',
       '#DDDDDDDDDO#',
@@ -119,6 +123,7 @@ const TACTICAL_MAPS = {
   // 5) OBSERVATORIO — final_dragon: cúpula rachada aberta ao céu; a dragã coila no centro.
   'observatorio': {
     w: 13, h: 10, fogR: 6,
+    bg: { seed: 96, prompt: 'top-down overhead tabletop RPG battle map, ruined circular domed observatory open to the night sky, cracked marble stone floor, scattered rubble and broken columns, a raised stone altar in the center, starlight, fantasy dnd battlemap, cold blue moonlight, no grid lines, no text, no labels' },
     cells: [
       '####,,,,,####',
       '##.r.....r.##',

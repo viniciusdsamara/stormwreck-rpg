@@ -125,6 +125,13 @@ function tacTokenRef(st,id){
   if (mpCombatActive(st)){ const e=(st.combat.enemies||[]).find(e=>e.id===id); if (e) return { kind:'enemy', name:e.name, img:monsterArt(e.name), hp:e.curHp, maxHp:e.hp }; }
   return null;
 }
+// URL estável (seed fixa) de um battlemap gerado por IA p/ a cena — "arte fixa":
+// mesma seed = mesma imagem sempre; o navegador busca no Pollinations e cacheia.
+function tacBgUrl(m){
+  if (!m || !m.bg || !m.bg.prompt) return null;
+  const w = m.w*64, h = m.h*64;   // mantém a proporção do grid, resolução decente
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(m.bg.prompt)}?width=${w}&height=${h}&seed=${m.bg.seed||1}&nologo=true&model=flux`;
+}
 function tacCssId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
 function tacInitials(n){ return (n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase(); }
 function renderTacticalMap(st,m){
@@ -143,10 +150,15 @@ function renderTacticalMap(st,m){
   if (canAtk && mpCombatActive(st)){ const rng = pcAttackRange(meChar);
     (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if (!ep||e.curHp<=0) return;
       if (!visible.has(tacKey(ep[0],ep[1]))) return; if (tacDist(myPos,ep)<=rng) foeTargets.add(e.id); }); }
-  let terrain='',fog='',moves='';
+  const bg = tacBgUrl(m);   // textura de fundo (battlemap gerado por IA); terreno vira só marcação por cima
+  let terrain='',marks='',fog='',moves='';
   for (let y=0;y<H;y++) for (let x=0;x<W;x++){
-    const px=x*TAC_CELL,py=y*TAC_CELL,k=tacKey(x,y); const tl=TAC_TILE[tacTileType(m,x,y)]||TAC_TILE.cave_floor;
+    const px=x*TAC_CELL,py=y*TAC_CELL,k=tacKey(x,y); const lg=tacLegendAt(m,x,y)||{}; const tl=TAC_TILE[tacTileType(m,x,y)]||TAC_TILE.cave_floor;
     terrain+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" fill="${tl.f}" stroke="${tl.s}" stroke-width="1"/>`;
+    if (bg){   // marca células bloqueadas/perigosas POR CIMA da arte (sempre visível, mesmo com a textura)
+      if (lg.impassable) marks+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" fill="rgba(8,6,12,0.5)"/>`;
+      else if (lg.hazard) marks+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" fill="rgba(196,72,90,0.30)"/>`;
+    }
     if (!seen.has(k)) fog+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" class="tac-fog"/>`;
     else if (!visible.has(k)) fog+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" class="tac-fog remembered"/>`;
     if (reach.has(k)&&visible.has(k)) moves+=`<rect x="${px+3}" y="${py+3}" width="${TAC_CELL-6}" height="${TAC_CELL-6}" rx="6" class="tac-move" data-xy="${k}" tabindex="0" role="button"/>`;
@@ -169,7 +181,9 @@ function renderTacticalMap(st,m){
     const ring = targetable ? `<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-foe-ring"/>` : '';
     tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${targetable?'tac-foe-target':''}"${tAttr} data-id="${escapeHtml(id)}" data-cx="${cx}" data-cy="${cy}">${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
   }
-  return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
+  // camadas: terreno (base/fallback) → textura IA → marcações de bloqueio → grade → névoa → movimento → tokens
+  const bgImg = bg ? `<image href="${bg}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid slice"/>` : '';
+  return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${bgImg}<g>${marks}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
 }
 function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
