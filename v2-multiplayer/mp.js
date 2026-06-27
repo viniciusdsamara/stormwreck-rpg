@@ -277,10 +277,92 @@ const MONSTER_AI = {
   'Polvo de Fungo':{ speed:3, reach:1, fly:false, multiattack:2, flee:0.25, trait:'grapple', anchor:true },
   'Fume Drake':    { speed:5, reach:3, fly:true,  multiattack:1, flee:0.5, kite:true },
   'Ghoul':         { speed:5, reach:1, fly:false, multiattack:2, flee:0, trait:'paralyze', saveDC:10 },
-  'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6' } },
+  'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'fogo' } },
 };
 const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0 };
 function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[e.name]||{}); }
+
+// ============================================================
+//  P0 — TIPOS DE DANO, STAT BLOCKS E PIPELINE ÚNICO DE DANO
+//  (resistências/imunidades/vulnerabilidades, HP temporário,
+//   Fortitude Morta-Viva). Determinístico; roda só no admin.
+// ============================================================
+function dmgNorm(type){
+  let t = String(type||'').toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const MAP = { cortante:'cortante', slashing:'cortante', perfurante:'perfurante', piercing:'perfurante',
+    concussao:'concussão', contundente:'concussão', bludgeoning:'concussão', fogo:'fogo', fire:'fogo',
+    frio:'frio', gelo:'frio', cold:'frio', necrotico:'necrótico', necrotic:'necrótico', radiante:'radiante', radiant:'radiante',
+    forca:'força', force:'força', psiquico:'psíquico', psychic:'psíquico', veneno:'veneno', poison:'veneno',
+    acido:'ácido', acid:'ácido', eletrico:'elétrico', relampago:'elétrico', raio:'elétrico', lightning:'elétrico',
+    trovao:'trovão', thunder:'trovão' };
+  return MAP[t] || t || null;   // null = arma sem tipo declarado → não dispara resist/vuln (seguro)
+}
+// MONSTER_FX — estende MONSTER_AI por e.name. type: gancho p/ Expulsar/Sono/charme.
+// physType: tipo do golpe corpo-a-corpo. resist/vuln/immune: tipos de dano. condImmune: condições.
+// (Vulnerabilidade a radiante NÃO é dada aos mortos-vivos: fora do SRD e desbalancearia o Cap.1.)
+const MONSTER_FX = {
+  'Zumbi Afogado': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+    traits:{ undeadFortitude:{ saveBonus:3, baseDC:5, exceptDtypes:['radiante'], failOnCrit:true } } },
+  'Zumbi': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+    traits:{ undeadFortitude:{ saveBonus:3, baseDC:5, exceptDtypes:['radiante'], failOnCrit:true } } },
+  'Ghoul': { type:'morto-vivo', physType:'cortante', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+    traits:{ paralyzingClaws:{ dc:10, elfImmune:true } } },
+  'Polvo de Fungo': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'] },
+  'Fume Drake': { type:'dragão', physType:'fogo', immune:['fogo'], vuln:['frio'] },
+  'Dragão Jovem': { type:'dragão', physType:'perfurante', element:'fogo', immune:['fogo'], condImmune:['Amedrontado'] },
+};
+const MONSTER_FX_DEFAULT = { type:'humanoide', physType:'concussão', resist:[], immune:[], vuln:[], condImmune:[], traits:{} };
+function fxProfile(e){ return Object.assign({}, MONSTER_FX_DEFAULT, MONSTER_FX[(e&&e.name)]||{}); }
+function enemyDmgType(e){ return fxProfile(e).physType || 'concussão'; }
+function enemyCondImmune(e, cond){ return (fxProfile(e).condImmune||[]).includes(cond); }
+function enemyType(e){ return fxProfile(e).type; }
+function targetIsEnemy(t){ return t && t.curHp !== undefined && !t.racialEffects; }
+function pcResist(c){
+  const raw = (c.racialEffects && c.racialEffects.resist) || [];
+  return raw.map(r => r==='ancestral' ? null : dmgNorm(r)).filter(Boolean);   // 'ancestral' não resolvido → sem resist (P0)
+}
+function targetDmgLists(t){
+  if (targetIsEnemy(t)){ const fx = fxProfile(t);
+    return { resist:(fx.resist||[]).map(dmgNorm), vuln:(fx.vuln||[]).map(dmgNorm), immune:(fx.immune||[]).map(dmgNorm) }; }
+  return { resist: pcResist(t), vuln:[], immune:[] };
+}
+// ÚNICO ponto que remove HP: imune/resist/vuln (por tipo) → HP temp → HP real → gatilhos pós-dano.
+function applyDamage(target, amount, type, st, opts){
+  opts = opts || {};
+  const t = dmgNorm(type);
+  let dmg = Math.max(0, Math.floor(amount||0)); let mult='normal';
+  if (t){ const L = targetDmgLists(target);
+    if (L.immune.includes(t)){ dmg=0; mult='imune'; }
+    else if (L.vuln.includes(t)){ dmg=dmg*2; mult='vulnerável'; }
+    else if (L.resist.includes(t)){ dmg=Math.floor(dmg/2); mult='resistência'; } }
+  let absorbed=0;
+  if (target.tempHp>0 && dmg>0){ absorbed=Math.min(target.tempHp,dmg); target.tempHp-=absorbed; dmg-=absorbed; }
+  if (targetIsEnemy(target)){
+    const before=target.curHp; target.curHp=Math.max(0,target.curHp-dmg);
+    if (mult==='imune' && st) st.history.push({ role:'scene', text:`✦ ${target.name} é imune a dano de ${t} — sem efeito.` });
+    if (target.curHp<=0 && before>0){
+      if (mpUndeadFortitude(st,target,dmg,t,opts)) return { applied:dmg, mult, down:false, absorbed };
+      tacKill(st,target.id); }
+    return { applied:dmg, mult, down:target.curHp<=0, absorbed };
+  } else {
+    const before=target.hp; target.hp=Math.max(0,target.hp-dmg);
+    if (target.hp<=0 && before>0) tacKill(st,target.owner);
+    if (!opts.noConc && (dmg+absorbed)>0 && typeof concentrationCheckOnDamage==='function') concentrationCheckOnDamage(st,target,dmg+absorbed);
+    return { applied:dmg, mult, down:target.hp<=0, absorbed };
+  }
+}
+// Fortitude Morta-Viva: ao zerar, save CON DC 5+dano (exceto radiante/crítico) → fica com 1 HP.
+function mpUndeadFortitude(st, e, dmg, dtype, opts){
+  const tr = (fxProfile(e).traits||{}).undeadFortitude; if (!tr) return false;
+  if ((tr.exceptDtypes||[]).includes(dtype)) return false;
+  if (tr.failOnCrit && opts.crit) return false;
+  const dc = (tr.baseDC||5) + (dmg||0);
+  const sv = mpD20(null, tr.saveBonus||0); const ok = sv.total>=dc;
+  st.history.push({ role:'roll', tipo:'save', dc, total:sv.total, mod:tr.saveBonus||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, nat:sv.nat, label:`${e.name} · Fortitude Morta-Viva (CON)` });
+  if (ok){ e.curHp=1; st.history.push({ role:'scene', text:`✦ ${e.name} se recusa a cair — ergue-se com 1 HP!` }); return true; }
+  return false;
+}
+function dmgMultNote(mult){ return mult==='imune'?' (imune)':mult==='vulnerável'?' (vulnerável ×2)':mult==='resistência'?' (resistência ½)':''; }
 function tacDist(a,b){ return (a&&b) ? Math.max(Math.abs(a[0]-b[0]), Math.abs(a[1]-b[1])) : 0; }
 function tacLegendAt(m,x,y){ return m.legend[[...(m.cells[y]||'')][x]] || null; }
 function tacIsHazard(m,x,y){ const t=tacLegendAt(m,x,y); return !!(t&&t.hazard); }
@@ -320,9 +402,9 @@ function aiEnemyAttack(st,e,prof,target,ev){
     if((target.pc.hp||0)<=0) break;
     const atk=mpD20(null,e.mod||0); const hit=atk.crit||(!atk.fumble&&atk.total>=(target.pc.ca||10));
     st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.pc.ca, tipo:'ataque', nat:atk.nat });
-    if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); target.pc.hp=Math.max(0,target.pc.hp-d.total);
-      ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:d.total,down:target.pc.hp<=0});
-      if(target.pc.hp<=0){ tacKill(st,target.owner); break; } }
+    if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
+      ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
+      if(res.down){ break; } }
     else ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:false});
   }
 }
@@ -342,7 +424,7 @@ function aiDragonBreath(st,m,e,prof,ev){
   aiLivePcs(st).forEach(t=>{ if(!t.pos||tacDist(t.pos,center)>br.radius) return;
     const sv=mpD20(t.pc, abilityMod(t.pc.abilities.DES)), full=mpRollDmgExpr(br.dmg), dmg=sv.total>=br.dc?Math.floor(full.total/2):full.total;
     st.history.push({ role:'roll', label:`${t.pc.name} · save DES (sopro)`, total:sv.total, mod:abilityMod(t.pc.abilities.DES), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:br.dc, tipo:'save', nat:sv.nat });
-    t.pc.hp=Math.max(0,t.pc.hp-dmg); names.push(t.pc.name); if(t.pc.hp<=0) tacKill(st,t.owner); });
+    applyDamage(t.pc, dmg, (br.dtype||'fogo'), st, {}); names.push(t.pc.name); });
   ev.push({kind:'breath',srcName:e.name,tgtName:names.join(', ')||'ninguém'});
 }
 // ---- DURAÇÃO DAS CONDIÇÕES: no início do turno o combatente tenta se livrar ----
@@ -481,7 +563,7 @@ async function playerAttack(owner,enemyId,st){
   const card=doMpRoll(c, ['','ataque',atr,'0',e.name]); card.dc=e.ca;
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
   st.history.push(card);
-  if(hit&&card.dmg){ e.curHp=Math.max(0,e.curHp-card.dmg.total); if(e.curHp<=0) tacKill(st,e.id); }
+  if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult; }
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
 }
@@ -568,18 +650,18 @@ async function castAbility(owner, name, targetId, st){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const roll=mpD20(c, atk); const hit=roll.crit||(!roll.fumble&&roll.total>=e.ca);
     const card={ role:'roll', tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:roll.total, mod:atk, dice:roll.dice, crit:roll.crit, fumble:roll.fumble, dc:e.ca, nat:roll.nat, outcome:hit?'ACERTO':'ERRO' };
-    if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); card.dmg={ total:d.total, type:fx.dtype, detail:d.detail }; e.curHp=Math.max(0,e.curHp-d.total); if(e.curHp<=0) tacKill(st,e.id); }
+    if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); const res=applyDamage(e, d.total, fx.dtype, st, {crit:roll.crit}); card.dmg={ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult }; }
     st.history.push(card);
   } else if(fx.kind==='save'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const sv=mpD20(null, e.mod||0); const saved=sv.total>=dc;   // inimigo: save plano por e.mod (aprox.)
-    const full=mpRollDmgExpr(fx.dmg); const dmg=saved?(fx.half?Math.floor(full.total/2):0):full.total;
-    e.curHp=Math.max(0,e.curHp-dmg); if(e.curHp<=0) tacKill(st,e.id);
-    st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: dmg>0?{ total:dmg, type:fx.dtype, detail:fx.dmg }:null });
+    const full=mpRollDmgExpr(fx.dmg); const raw=saved?(fx.half?Math.floor(full.total/2):0):full.total;
+    const res=applyDamage(e, raw, fx.dtype, st, {});
+    st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
   } else if(fx.kind==='auto'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
-    const d=mpRollDmgExpr(fx.dmg); e.curHp=Math.max(0,e.curHp-d.total); if(e.curHp<=0) tacKill(st,e.id);
-    st.history.push({ role:'roll', noRoll:true, tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:d.total, outcome:'ACERTO AUTOMÁTICO', dmg:{ total:d.total, type:fx.dtype, detail:d.detail } });
+    const d=mpRollDmgExpr(fx.dmg); const res=applyDamage(e, d.total, fx.dtype, st, {});
+    st.history.push({ role:'roll', noRoll:true, tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:res.applied, outcome:'ACERTO AUTOMÁTICO', dmg:{ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult } });
   } else if(fx.kind==='heal'){
     const ally=(st.characters||[]).find(x=>x.owner===targetId) || c;
     const h=mpRollDmgExpr(fx.dmg).total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
@@ -1481,7 +1563,7 @@ function rollCardHtml(card){
   }
   const numClass = card.crit ? 'crit' : card.fumble ? 'fumble' : '';
   const diceStr = (card.dice||[]).join(', ');
-  const dmgLine = card.dmg ? `<div class="rbreak" style="margin-top:6px;color:var(--blood)">⚔ Dano se acertar <b style="color:var(--parch)">${card.dmg.total}</b> [${card.dmg.type}]</div>` : '';
+  const dmgLine = card.dmg ? `<div class="rbreak" style="margin-top:6px;color:var(--blood)">⚔ Dano se acertar <b style="color:var(--parch)">${card.dmg.total}</b> [${card.dmg.type}]${dmgMultNote(card.dmg.mult)}</div>` : '';
   return `<div class="roll-card"><div class="rtype">${escapeHtml(card.label)}</div>
     <div class="rnum ${numClass}">${card.autoFail?'✗':card.total}</div>
     <div class="rbreak">d20 [${diceStr}] ${card.mod>=0?'+':''}${card.mod}${card.crit?' · CRÍTICO!':''}${card.fumble?' · FALHA CRÍTICA':''}</div>
@@ -1490,7 +1572,7 @@ function rollCardHtml(card){
 // entrada no painel direito (estilo V1 logRoll)
 function rollLogEntryHtml(card){
   if (card.noRoll){
-    const dmg = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">[${card.dmg.type}]</span></div>` : '';
+    const dmg = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">[${card.dmg.type}]${dmgMultNote(card.dmg.mult)}</span></div>` : '';
     const heal = card.heal ? `<div class="rl-dmg" style="color:#6fae82">✚ Cura <b>${card.heal}</b> HP</div>` : '';
     return `<div class="rl-entry"><div class="rl-head">${escapeHtml(card.label)}</div>
       <div class="rl-line"><span class="rl-num">${card.dmg?card.dmg.total:(card.heal||card.total)}</span><span class="rl-out">${escapeHtml(card.outcome||'')}</span></div>${dmg}${heal}</div>`;
@@ -1501,7 +1583,7 @@ function rollLogEntryHtml(card){
   if (card.dc != null){ const ok = !auto && card.total >= card.dc; if (!cls) cls = ok?'ok':'fail'; out = `${ok?'✓':'✗'} CD ${card.dc}`; }
   if (card.crit) out = 'CRÍTICO! ' + out;
   const breakLine = auto ? 'falha automática (condição)' : `d20 [${(card.dice||[]).join(', ')}] ${fmtMod(card.mod)} = ${card.total}`;
-  const dmgLine = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">${card.dmg.detail} [${card.dmg.type}]</span></div>` : '';
+  const dmgLine = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">${card.dmg.detail} [${card.dmg.type}]${dmgMultNote(card.dmg.mult)}</span></div>` : '';
   return `<div class="rl-entry ${cls}"><div class="rl-head">${escapeHtml(card.label)}</div>
     <div class="rl-line"><span class="rl-num">${auto?'✗':card.total}</span><span class="rl-out">${out.trim()}</span></div>
     <div class="rl-break">${breakLine}</div>${dmgLine}</div>`;
@@ -1531,7 +1613,7 @@ function renderCombatBalloons(st){
       const totCls = last.crit ? 'crit' : (last.fumble && !last.autoFail) ? 'fumble' : '';
       const out = last.outcome ? `<span class="cbll-out ${/SUCESSO|ACERTO/i.test(last.outcome)?'ok':'bad'}">${escapeHtml(last.outcome)}</span>` : '';
       const det = last.autoFail ? 'falha automática' : `d20 ${last.nat!=null?last.nat:'—'} ${fmtMod(last.mod||0)}${last.dc?` · CD ${last.dc}`:''}`;
-      const dmg = last.dmg ? `<div class="cbll-dmg">✕ ${last.dmg.total} dano</div>` : '';
+      const dmg = last.dmg ? `<div class="cbll-dmg">✕ ${last.dmg.total} dano${dmgMultNote(last.dmg.mult)}</div>` : '';
       body = `<div class="cbll-row"><span class="cbll-total ${totCls}">${last.total}</span>${out}</div>`
            + `<div class="cbll-detail">${det}</div>${dmg}`
            + `<div class="cbll-label">${escapeHtml(last.label||'')}</div>`;
@@ -2069,12 +2151,12 @@ function applyMpMarkers(reply, st){
   if (mpCombatActive(st)){
     [...reply.matchAll(/\[HIT:\s*([^:\]]+?)\s*:\s*(-?\d+)\s*\]/gi)].forEach(m => {
       const e = st.combat.enemies.find(x => x.id===m[1] || x.name.toLowerCase()===m[1].toLowerCase());
-      if (e) e.curHp = Math.max(0, e.curHp - Math.abs(+m[2]));
+      if (e) applyDamage(e, Math.abs(+m[2]), null, st, {});   // tipo null → sem resist/vuln, mas passa por Fortitude Morta-Viva
     });
   }
   [...reply.matchAll(/\[DANO:\s*([^:\]]+?)\s*:\s*(-?\d+)\s*\]/gi)].forEach(m => {
     const ci = mpFindChar(st.characters||[], m[1]);
-    if (ci >= 0) st.characters[ci].hp = Math.max(0, st.characters[ci].hp - Math.abs(+m[2]));
+    if (ci >= 0) applyDamage(st.characters[ci], Math.abs(+m[2]), null, st, {});   // HP temp + (futuro) concentração
   });
   const sm = reply.match(/\[SUGESTOES:([^\]]+)\]/i);
   st.suggestions = sm ? sm[1].split('|').map(s=>s.trim()).filter(Boolean).slice(0,3) : [];
@@ -2172,7 +2254,7 @@ function mpActivePc(st){
 function mpStartCombat(st, encId){
   const enc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters[encId]);
   if (!enc) return false;
-  st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp })), order:[], turn:0, round:1 };
+  st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp, conditions: [], tempHp: 0 })), order:[], turn:0, round:1 };
   const order = [];
   (st.characters||[]).forEach((c,idx) => order.push({ kind:'pc', idx, name:c.name, init: mpD20(c, abilityMod(c.abilities.DES)).total }));
   st.combat.enemies.forEach((e,idx) => order.push({ kind:'enemy', idx, name:e.name, init: mpD20(null, e.mod||0).total }));
@@ -2669,8 +2751,8 @@ async function resolveEnemyCommand(){
     st.history.push({ role:'roll', label:`${e.name} ataca ${target.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.ca, tipo:'ataque', nat:atk.nat });
     if (hit){
       const dmg = mpRollDmgExpr(e.dmg||'1d6', atk.crit);
-      target.hp = Math.max(0, target.hp - dmg.total);
-      results.push(`${e.name} ACERTOU ${target.name}: ${dmg.total} de dano${atk.crit?' (CRÍTICO)':''}.`);
+      const res = applyDamage(target, dmg.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
+      results.push(`${e.name} ACERTOU ${target.name}: ${res.applied} de dano${dmgMultNote(res.mult)}${atk.crit?' (CRÍTICO)':''}.`);
     } else {
       results.push(`${e.name} ERROU ${target.name} (rolou ${atk.total} vs CA ${target.ca}).`);
     }
@@ -2958,7 +3040,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627s';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627t';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
