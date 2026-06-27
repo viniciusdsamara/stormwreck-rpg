@@ -73,6 +73,9 @@ function tacMoveBudget(c){
   if (cs.includes('Caído')) b = Math.floor(b/2);              // levantar-se custa metade do movimento
   return b;
 }
+// movimento RESTANTE nesta vez (total da Speed menos as casas já andadas)
+function tacMoveLeft(st, c){ if(!c) return 0; const used=(st.tactical&&st.tactical.moveUsed&&st.tactical.moveUsed[c.owner])||0; return Math.max(0, tacMoveBudget(c)-used); }
+function tacAddMoveUsed(st, owner, cells){ if(!st||!st.tactical) return; st.tactical.moveUsed=st.tactical.moveUsed||{}; st.tactical.moveUsed[owner]=(st.tactical.moveUsed[owner]||0)+cells; }
 const TAC_TILE = {
   sand:{f:'#2a2430',s:'#39313f'}, surf:{f:'#1b3e50',s:'#27566e'}, sea:{f:'#0e2533',s:'#143242'},
   debris:{f:'#2a2320',s:'#3a2f29'}, ship_hull:{f:'#0c0a10',s:'#1a1620'}, cliff:{f:'#0c0a10',s:'#1a1620'},
@@ -112,7 +115,7 @@ function tacSeed(st){
   const pos={}; let si=0;
   (st.characters||[]).forEach(c=>{ const sp=m.pcSpawn[si++ % m.pcSpawn.length]; if (sp) pos[c.owner]=[sp[0],sp[1]]; });
   (st.combat.enemies||[]).forEach(e=>{ const sp=m.enemySpawn[e.id]; if (sp) pos[e.id]=[sp[0],sp[1]]; });
-  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{}, acted:{}, bonused:{}, paths:{} };
+  st.tactical={ sceneId:st.sceneId, pos, seen:[], moveUsed:{}, reacted:{}, acted:{}, bonused:{}, paths:{} };
   tacReveal(st);
 }
 function tacLOS(m,x0,y0,x1,y1){ const dx=x1-x0,dy=y1-y0,steps=Math.max(Math.abs(dx),Math.abs(dy)); if (!steps) return true;
@@ -179,8 +182,8 @@ function renderTacticalMap(st,m){
   const seen=new Set((st.tactical&&st.tactical.seen)||[]); const visible=tacVisible(st,m);
   const activeId=tacActiveOwner(st); const pos=(st.tactical&&st.tactical.pos)||{};
   const activeChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
-  const moveBudget = tacMoveBudget(activeChar);   // alcance vem da Speed do PC, zerado por condições
-  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]) && moveBudget>0 && !PENDING_ABILITY;
+  const moveBudget = tacMoveLeft(st, activeChar);   // movimento RESTANTE (decrementa conforme anda)
+  const canMove = tacMyTurn(st) && activeId && pos[activeId] && moveBudget>0 && !PENDING_ABILITY;
   const reach = canMove ? tacReachable(st,m,pos[activeId],moveBudget) : new Map();
   // alvos de ação: durante meu turno, se puder agir (não incapacitado)
   const meChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
@@ -251,7 +254,9 @@ function renderTactical(st){
       const abBtn = (meC && pcHasAbilities(meC)) ? `<button class="tac-end ${ABILITY_MENU_OPEN?'on':''}" id="tacAbBtn">✨ Ações</button>` : '';
       const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC, pcActed(st, owner), pcBonused(st, owner)) : '';
       const mk = (used,label,icon)=>`<span class="tac-eco ${used?'used':'free'}">${icon} ${label}${used?' ✓':''}</span>`;
-      const eco = `<div class="tac-eco-row">${mk((st.tactical.moved||{})[owner],'Movimento','🏃')}${mk(pcActed(st,owner),'Ação','⚔')}${mk(pcBonused(st,owner),'Bônus','✦')}</div>`;
+      const mLeft = tacMoveLeft(st, meC), mTot = tacMoveBudget(meC);
+      const moveChip = `<span class="tac-eco ${mLeft<=0?'used':'free'}">🏃 Mov ${mLeft}/${mTot}</span>`;
+      const eco = `<div class="tac-eco-row">${moveChip}${mk(pcActed(st,owner),'Ação','⚔')}${mk(pcBonused(st,owner),'Bônus','✦')}</div>`;
       bar = `${eco}<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
     }
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
@@ -425,7 +430,8 @@ function fxDrawTethers(svg,st){
 async function tacRequestMove(x,y){
   const st=ROOM.state||{}, m=tacMap(st); if (!m||!st.tactical) return;
   const owner=tacActiveOwner(st);
-  if (!owner||owner!==ME.id||!tacMyTurn(st)||((st.tactical.moved||{})[owner])) return;
+  const c=(st.characters||[]).find(z=>z.owner===owner);
+  if (!owner||owner!==ME.id||!tacMyTurn(st)||tacMoveLeft(st,c)<=0) return;
   if (m._imp.has(tacKey(x,y))||tacOccupant(st,x,y)) return;
   if (amIAdmin()){ await tacMoveToken(st,owner,x,y); }
   else { try { await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(mov)', text: MOVE_PREFIX+JSON.stringify({owner,x,y}) }); } catch(e){} }
@@ -434,12 +440,13 @@ async function tacMoveToken(st,owner,x,y){
   const m=tacMap(st); if (!m||!st.tactical) return;
   if (m._imp.has(tacKey(x,y))||tacOccupant(st,x,y)) return;
   const from=st.tactical.pos[owner]; if (!from) return;
-  const ac=(st.characters||[]).find(c=>c.owner===owner); const budget=tacMoveBudget(ac);
-  if (budget<=0) return;                                            // condição impede o movimento
-  if (!tacReachable(st,m,from,budget).has(tacKey(x,y))) return;     // valida alcance (Speed) no servidor
+  const ac=(st.characters||[]).find(c=>c.owner===owner); const left=tacMoveLeft(st,ac);
+  if (left<=0) return;                                              // sem movimento restante
+  const reach=tacReachable(st,m,from,left); const cost=reach.get(tacKey(x,y));
+  if (cost==null) return;                                           // fora do alcance RESTANTE (servidor valida)
   tacSetMovePath(st, owner, from, [x,y], (a,b)=>!m._imp.has(tacKey(a,b)));   // caminho célula-a-célula p/ animar
   const fell = resolveOpportunity(st, owner, from, [x,y]);          // sair do alcance provoca ataque de oportunidade
-  st.tactical.moved=st.tactical.moved||{}; st.tactical.moved[owner]=true;
+  tacAddMoveUsed(st, owner, cost);                                  // gasta só as casas andadas (movimento parcial)
   if (st.tactical.pos[owner]) st.tactical.pos[owner]=[x,y];         // guard: tacKill apaga a pos se o PC caiu na OA
   tacReveal(st);
   await saveState(st); renderGame();
@@ -886,7 +893,7 @@ async function mpPresentEnemyTurn(st, e, ev){
       announceTurn(e.name, art, 'enemy', traitIntentText(prof.trait, tname));
       await saveState(st); renderGame(); await mpSleep(1600); tacHideTurnCard(); await mpSleep(900);
     } else if(phase==='breath' || phase==='done' || phase==='traitDone'){
-      await saveState(st); renderGame(); await mpSleep(4500);   // mostra o dado/efeito
+      await saveState(st); renderGame(); await mpSleep(6800);   // mostra o d20 e DEPOIS o dano (duas etapas)
     }
   });
   // 4) FINAL DO TURNO
@@ -951,16 +958,23 @@ async function tacAdvanceFromPc(st){
   await saveState(st); renderGame();
   await tacKickEnemiesIfNeeded(st);   // se for inimigo, ele age (e o tick do PC vem no fim do bloco)
 }
-// destrava o jogo ao voltar pra aba/janela (se algo travou st.busy/engineBusy sem loop ativo)
-function tacRecoverStuck(){
+// destrava o jogo se algo prendeu st.busy/engineBusy (ex.: trocar de aba/janela no meio de uma ação)
+let LAST_RENDER_AT = 0;
+function tacRecoverStuck(force){
   try { const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null; if(!st) return;
-    if (st.busy && !ENEMY_LOOP_RUNNING && !engineBusy){ st.busy = false; if(typeof saveState==='function') saveState(st); }
+    const idle = LAST_RENDER_AT ? (Date.now() - LAST_RENDER_AT) : 999999;
+    if ((st.busy || engineBusy) && !ENEMY_LOOP_RUNNING && (force || idle > 6000)){   // turno do PC travado → destrava tudo
+      st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
+    } else if ((st.busy || engineBusy) && ENEMY_LOOP_RUNNING && idle > 30000){        // último recurso: loop de inimigo congelado
+      ENEMY_LOOP_RUNNING = false; st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
+    }
     if (typeof renderGame==='function') renderGame();
   } catch(e){}
 }
 if (typeof document!=='undefined' && document.addEventListener){
-  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tacRecoverStuck(); });
-  if (typeof window!=='undefined' && window.addEventListener) window.addEventListener('focus', tacRecoverStuck);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tacRecoverStuck(true); });
+  if (typeof window!=='undefined' && window.addEventListener) window.addEventListener('focus', ()=>tacRecoverStuck(true));
+  try { const _wd=setInterval(()=>{ if(typeof document!=='undefined' && !document.hidden) tacRecoverStuck(false); }, 3000); if(_wd && _wd.unref) _wd.unref(); } catch(e){}   // vigia periódico (unref: não segura o processo nos testes Node)
 }
 // se a vez atual é de inimigo, conduz os inimigos por código até cair num PC vivo
 async function tacKickEnemiesIfNeeded(st){
@@ -2510,41 +2524,58 @@ function diceSummaryHtml(card){
   if (card.heal) html += `<div class="dice-dmg" style="color:#8ff0a0">✚ Cura <b>${card.heal}</b> HP</div>`;
   return html;
 }
-// gira e assenta TODOS os dados 3D da rolagem (d20 + dados de dano), cada um com sua FORMA
-function playDiceRoll(card){
-  const ov = $('#diceOverlay'); if (!ov || !card) return;
-  const dice = diceListFromCard(card);
-  if (!dice.length){ return; }
-  if (ov._t){ clearTimeout(ov._t); ov._t = null; }
+// gira e assenta UM grupo de dados (cada um com sua forma); chama onSettled ao parar
+function runDiceGroup(group, meta, onSettled){
+  const ov = $('#diceOverlay'); if (!ov || !group || !group.length){ if(onSettled) onSettled(); return; }
   if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
-  $('#diceTitle').textContent = card.label || '';
-  $('#diceTarget').textContent = card.dc != null ? `Alvo: CD ${card.dc}` : (card.dmg ? `Dano [${card.dmg.type}]` : (card.heal ? 'Cura' : ''));
-  $('#diceResult').innerHTML = '';
+  if (meta.title != null) $('#diceTitle').textContent = meta.title;
+  if (meta.target != null) $('#diceTarget').textContent = meta.target;
+  $('#diceResult').innerHTML = meta.preResult || '';
   ov.classList.remove('hide','settled'); ov.classList.add('rolling');
   DICE_SPINNING = true;
-  const use3d = spawnDice3d(dice);                 // 3D realista; cai p/ SVG se faltar WebGL/THREE
+  const use3d = spawnDice3d(group);                // 3D realista; cai p/ SVG se faltar WebGL/THREE
   const tray = $('#diceTray');
-  if (tray){ if (use3d){ tray.style.display = 'none'; } else { tray.style.display = ''; tray.innerHTML = dice.map(d => dieSvg(d.sides, '?', `rolling ${d.kind!=='d20'?d.kind:''}`)).join(''); } }
+  if (tray){ if (use3d){ tray.style.display = 'none'; } else { tray.style.display = ''; tray.innerHTML = group.map(d => dieSvg(d.sides, '?', `rolling ${d.kind!=='d20'?d.kind:''}`)).join(''); } }
   const D = DICE3D;
   DICE_TIMER = setInterval(()=>{   // números ciclam enquanto os dados giram
     if (use3d && D){ D.dice.forEach(dd=>{ if (!dd.settled) dd.label.textContent = 1 + Math.floor(Math.random()*dd.sides); }); }
-    else if (tray){ [...tray.querySelectorAll('.die-val')].forEach((v,i)=>{ v.textContent = 1 + Math.floor(Math.random()*dice[i].sides); }); }
+    else if (tray){ [...tray.querySelectorAll('.die-val')].forEach((v,i)=>{ v.textContent = 1 + Math.floor(Math.random()*group[i].sides); }); }
   }, 70);
-  const order = dice.map((d,i)=>i).sort((a,b)=> (dice[a].kind==='d20'?0:1) - (dice[b].kind==='d20'?0:1));   // d20 assenta primeiro
+  const order = group.map((d,i)=>i);
   setTimeout(()=>{
     if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
     order.forEach((idx,k)=> setTimeout(()=>{
-      const d = dice[idx];
-      if (use3d && D){ const e = D.dice[idx]; if (e){ e.settling = true; e.label.textContent = d.value;
-        if (d.kind==='d20'){ if (!d.chosen) e.label.classList.add('faded'); else if (card.crit) e.label.classList.add('crit'); else if (card.fumble) e.label.classList.add('fumble'); } } }
-      else if (tray){ const el = tray.querySelectorAll('.die')[idx]; if (el){ el.classList.remove('rolling'); el.classList.add('settle'); el.querySelector('.die-val').textContent = d.value;
-        if (d.kind==='d20'){ if (!d.chosen) el.classList.add('faded'); else if (card.crit) el.classList.add('crit'); else if (card.fumble) el.classList.add('fumble'); } } }
-    }, k*260));
-    setTimeout(()=>{ DICE_SPINNING = false; ov.classList.remove('rolling'); ov.classList.add('settled'); $('#diceResult').innerHTML = diceSummaryHtml(card); }, order.length*260 + 280);
-  }, 900);
-  const total = 900 + order.length*260 + 280 + 2600;   // mantém na tela ~2,6s após assentar
-  ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, total);
-  ov.onclick = null;   // clique NÃO pula a rolagem (espera o tempo)
+      const d = group[idx];
+      if (use3d && D){ const e = D.dice[idx]; if (e){ e.settling = true; e.label.textContent = d.value; if (d.cls) e.label.classList.add(d.cls); } }
+      else if (tray){ const el = tray.querySelectorAll('.die')[idx]; if (el){ el.classList.remove('rolling'); el.classList.add('settle'); el.querySelector('.die-val').textContent = d.value; if (d.cls) el.classList.add(d.cls); } }
+    }, k*230));
+    setTimeout(()=>{ DICE_SPINNING = false; ov.classList.remove('rolling'); ov.classList.add('settled'); if (meta.summary != null) $('#diceResult').innerHTML = meta.summary; if (onSettled) onSettled(); }, order.length*230 + 260);
+  }, 850);
+}
+// d20 do ataque/save PRIMEIRO; SÓ DEPOIS do resultado os dados de DANO rolam à parte
+function playDiceRoll(card){
+  const ov = $('#diceOverlay'); if (!ov || !card) return;
+  const all = diceListFromCard(card); if (!all.length) return;
+  if (ov._t){ clearTimeout(ov._t); ov._t = null; }
+  all.forEach(d=>{ if (d.kind==='d20'){ d.cls = !d.chosen ? 'faded' : (card.crit?'crit':card.fumble?'fumble':''); } });
+  const d20g = all.filter(d=>d.kind==='d20'), dmgg = all.filter(d=>d.kind!=='d20');
+  const title = card.label || '';
+  const verdict = (()=>{ if (card.autoFail) return `<div class="dice-mods">falha automática (condição)</div>`;
+    if (card.nat==null || !card.dice || !card.dice.length) return '';
+    const crit = card.crit?' · CRÍTICO!':(card.fumble?' · FALHA CRÍTICA':'');
+    let h = `<div class="dice-mods">🎲 ${card.nat} ${fmtMod(card.mod||0)} = <b>${card.total}</b>${crit}</div>`;
+    if (card.dc!=null){ const ok = !card.autoFail && card.total>=card.dc; const txt = card.outcome || (ok?'SUCESSO':'FALHA'); h += `<div class="dice-verdict ${ok?'ok':'fail'}">${txt} · CD ${card.dc}</div>`; }
+    return h; })();
+  const dmgHtml = (()=>{ let h=''; if (card.dmg) h += `<div class="dice-dmg">⚔ Dano <b>${card.dmg.total}</b> [${card.dmg.type}]${typeof dmgMultNote==='function'?dmgMultNote(card.dmg.mult):''}</div>`; if (card.heal) h += `<div class="dice-dmg" style="color:#8ff0a0">✚ Cura <b>${card.heal}</b> HP</div>`; return h; })();
+  const finish = ()=>{ ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, 2400); ov.onclick = null; };
+  if (d20g.length && dmgg.length){
+    // FASE 1: rola o d20 (acerto/save). FASE 2: depois do resultado, rola o DANO.
+    runDiceGroup(d20g, { title, target:(card.dc!=null?`Alvo: CD ${card.dc}`:''), summary:verdict }, ()=>{
+      setTimeout(()=> runDiceGroup(dmgg, { title, target:(card.dmg?`Dano [${card.dmg.type}]`:(card.heal?'Cura':'')), summary:verdict+dmgHtml }, finish), 1100);   // pausa entre acerto e dano
+    });
+  } else {
+    runDiceGroup(all, { title, target:(card.dc!=null?`Alvo: CD ${card.dc}`:(card.dmg?`Dano [${card.dmg.type}]`:(card.heal?'Cura':''))), summary:verdict+dmgHtml }, finish);
+  }
 }
 // quem clica em "Rolar": gira um d20 3D placeholder até o resultado chegar
 function startDiceAnim(pr){
@@ -2634,6 +2665,7 @@ function applyCombatLayout(st){
   }
 }
 function renderGame(){
+  try { LAST_RENDER_AT = Date.now(); } catch(e){}   // carimbo p/ o vigia de travamento
   const st = ROOM.state || {};
   applyCombatLayout(st);   // reflui o layout quando entra/sai de combate
   if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
@@ -3090,7 +3122,7 @@ function mpAdvanceCombat(st){
     const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
     if (!dead) break;
   } while (++guard < cb.order.length * 2);
-  if (st.tactical){ st.tactical.moved = {}; st.tactical.acted = {}; st.tactical.bonused = {};   // novo turno → renova deslocamento, ação E bônus
+  if (st.tactical){ st.tactical.moveUsed = {}; st.tactical.acted = {}; st.tactical.bonused = {};   // novo turno → renova deslocamento, ação E bônus
     const o = cb.order[cb.turn]; const id = o.kind==='pc' ? (st.characters[o.idx]||{}).owner : (cb.enemies[o.idx]||{}).id;
     if (id) resetReactionFor(st, id);          // renova a reação de quem entra no turno (ataque de oportunidade disponível)
   }
@@ -3880,7 +3912,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ak';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627al';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
