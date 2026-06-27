@@ -459,6 +459,9 @@ function applyDamage(target, amount, type, st, opts){
     else if (L.resist.includes(t)){ dmg=Math.floor(dmg/2); mult='resistência'; } }
   let absorbed=0;
   if (target.tempHp>0 && dmg>0){ absorbed=Math.min(target.tempHp,dmg); target.tempHp-=absorbed; dmg-=absorbed; }
+  if (target._asleep && (dmg+absorbed)>0){   // sono mágico: qualquer dano acorda
+    target._asleep=false; target.conditions=(target.conditions||[]).filter(n=>n!=='Inconsciente');
+    if(st) st.history.push({ role:'scene', text:`✦ ${target.name} desperta com o golpe!` }); }
   if (targetIsEnemy(target)){
     const px = (typeof fxPosOf==='function') ? fxPosOf(st, target.id) : null;   // posição antes do tacKill (p/ animação de morte)
     const before=target.curHp; target.curHp=Math.max(0,target.curHp-dmg);
@@ -819,8 +822,9 @@ const SPELL_FX = {
   'Zombaria Cruel':      { lvl:0, kind:'save',   range:6, save:'SAB', dmg:'1d4', dtype:'psíquico' },
   // magias de nível 1 (gastam slot)
   'Mísseis Mágicos':     { lvl:1, kind:'auto',   range:8, dmg:'3d4+3', dtype:'força' },
-  'Mãos Flamejantes':    { lvl:1, kind:'save',   range:2, save:'DES', dmg:'3d6', dtype:'fogo', half:true },
+  'Mãos Flamejantes':    { lvl:1, kind:'save',   range:2, save:'DES', dmg:'3d6', dtype:'fogo', half:true, area:{shape:'cone', size:3}, friendly:true },
   'Repreensão Infernal': { lvl:1, kind:'save',   range:8, save:'DES', dmg:'2d10', dtype:'fogo', half:true },
+  'Sono':                { lvl:1, kind:'sleep',  range:18, pool:'5d8', area:{shape:'sphere', radius:2}, friendly:true },
   'Curar Ferimentos':    { lvl:1, kind:'heal',   range:1, dmg:'1d8', addMod:true },
   'Palavra Curativa':    { lvl:1, kind:'heal',   range:8, dmg:'1d4', addMod:true },
   // efeitos contínuos / concentração (buffs e debuffs)
@@ -856,7 +860,7 @@ function castableFeatures(c){
 }
 function pcAllyAdjacentToEnemy(st, owner, e){ const pos=(st.tactical&&st.tactical.pos)||{}, ep=pos[e.id]; if(!ep) return false;
   return (st.characters||[]).some(a=>a.owner!==owner && (a.hp||0)>0 && pos[a.owner] && tacDist(pos[a.owner],ep)<=1); }
-function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; if(fx.kind==='effect') return true; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
+function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; if(fx.kind==='effect') return true; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'||fx.kind==='sleep'; }
 function abilityTargetSide(fx){ if(fx.side) return fx.side; if(fx.kind==='effect') return fx.aim||'ally'; return fx.kind==='heal' ? 'ally' : 'enemy'; }
 // lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot)
 function castableAbilities(c){
@@ -868,6 +872,34 @@ function castableAbilities(c){
   return out;
 }
 function pcHasAbilities(c){ return castableAbilities(c).length>0; }
+// ============================================================
+//  P3 — ÁREAS DE EFEITO + FOGO AMIGO
+//  O gabarito (cone/esfera) pega TODAS as criaturas: inimigos E aliados.
+//  Cada criatura faz seu próprio save; aliados na área sofrem fogo amigo.
+// ============================================================
+function tacCellInArea(origin, center, area){   // devolve um predicado(cell[x,y]) => bool
+  if(!area || !center) return ()=>false;
+  if((area.shape||'sphere')==='sphere'){ const r=area.radius||1; return (p)=> tacDist(center,p)<=r; }
+  // cone: ápice no conjurador (origin), na direção de center; meia-abertura ~45° (casa com o FX)
+  if(!origin) return ()=>false;
+  const ang0=Math.atan2(center[1]-origin[1], center[0]-origin[0]);
+  const size=area.size||3, half=Math.PI/4 + 0.18;   // folga para pegar células de borda
+  return (p)=>{ if(p[0]===origin[0]&&p[1]===origin[1]) return false;   // ápice (conjurador) nunca é atingido
+    const d=tacDist(origin,p); if(d<1||d>size) return false;
+    let a=Math.atan2(p[1]-origin[1], p[0]-origin[0])-ang0;
+    while(a>Math.PI)a-=2*Math.PI; while(a<-Math.PI)a+=2*Math.PI;
+    return Math.abs(a)<=half; };
+}
+function tacCreaturesInArea(st, origin, center, area, casterOwner){
+  const pos=(st.tactical&&st.tactical.pos)||{}; const inside=tacCellInArea(origin, center, area); const out=[];
+  (st.combat&&st.combat.enemies||[]).forEach(e=>{ if(e.curHp>0 && pos[e.id] && inside(pos[e.id])) out.push({isEnemy:true, e, id:e.id}); });
+  (st.characters||[]).forEach(c=>{ if((c.hp||0)>0 && c.owner!==casterOwner && pos[c.owner] && inside(pos[c.owner])) out.push({isEnemy:false, c, id:c.owner}); });
+  return out;
+}
+function pcSaveMod(c, save){ return abilityMod((c.abilities||{})[save]||10) + ((c.saves||[]).includes(save)?(c.prof||0):0); }
+// Sono não afeta mortos-vivos nem quem é imune a Enfeitiçado (SRD)
+function sleepImmune(crea){ const e=crea.e; if(e){ const pr=fxProfile(e); return pr.type==='morto-vivo' || (pr.condImmune||[]).includes('Enfeitiçado'); }
+  return false; }   // PCs não são imunes a Sono por padrão
 // resolve uma habilidade pelo CÓDIGO (rola os dados); targetId = inimigo ou aliado (cura)
 async function castAbility(owner, name, targetId, st){
   if(!mpCombatActive(st)) return;
@@ -890,6 +922,23 @@ async function castAbility(owner, name, targetId, st){
     if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); const res=applyDamage(e, d.total, fx.dtype, st, {crit:roll.crit}); card.dmg={ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult }; }
     fxEmit(st, { kind:(fx.range||1)<=1?'melee':'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:fxResult(hit,roll.crit), mult:(card.dmg&&card.dmg.mult) });
     st.history.push(card);
+  } else if(fx.kind==='save' && fx.area){
+    // ÁREA DE EFEITO: pega inimigos E aliados sob o gabarito (fogo amigo). Um dado de dano, save por criatura.
+    const center=tgtPos; if(!center){ await saveState(st); renderGame(); return; }
+    const victims=tacCreaturesInArea(st, myPos, center, fx.area, owner);
+    const full=mpRollDmgExpr(fx.dmg);   // rola o dano UMA vez; metade para quem passa no save
+    if(fx.area.shape==='cone') fxEmit(st, { kind:'area', cone:true, dtype:fx.dtype, src:owner, center, radius:fx.area.size||2 });
+    else fxEmit(st, { kind:'area', dtype:fx.dtype, src:owner, center, radius:fx.area.radius||2 });
+    st.history.push({ role:'scene', text:`✦ ${c.name} conjura ${name} — ${victims.length} na área${victims.some(v=>!v.isEnemy)?' (inclui aliados!)':''}.` });
+    for(const v of victims){
+      const tgt = v.isEnemy ? v.e : v.c;
+      const smod = v.isEnemy ? (v.e.mod||0) : pcSaveMod(v.c, fx.save);
+      const sv=mpD20(v.isEnemy?null:v.c, smod), saved=sv.total>=dc;
+      const raw=saved?(fx.half?Math.floor(full.total/2):0):full.total;
+      const res=applyDamage(tgt, raw, fx.dtype, st, {});
+      const who = v.isEnemy ? tgt.name : `⚠ ${tgt.name} (fogo amigo)`;
+      st.history.push({ role:'roll', tipo:'save', label:`${who} · save ${fx.save} (${name})`, total:sv.total, mod:smod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
+    }
   } else if(fx.kind==='save'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const sv=mpD20(null, e.mod||0); const saved=sv.total>=dc;   // inimigo: save plano por e.mod (aprox.)
@@ -899,6 +948,27 @@ async function castAbility(owner, name, targetId, st){
     if((fx.range||1)<=2) fxEmit(st, { kind:'area', cone:true, dtype:fx.dtype, src:owner, center, radius:1, mult:res.mult });   // cone (Mãos Flamejantes)
     else fxEmit(st, { kind:'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:'hit', mult:res.mult });               // raio (Chama Sagrada, Repreensão…)
     st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
+  } else if(fx.kind==='sleep'){
+    // SONO: esfera; soma 5d8 de HP; derruba Inconsciente do menor HP p/ cima até esgotar; pula mortos-vivos/imunes a charme; pega aliados (fogo amigo).
+    const center=tgtPos; if(!center){ await saveState(st); renderGame(); return; }
+    let pool=mpRollDmgExpr(fx.pool).total;
+    const victims=tacCreaturesInArea(st, myPos, center, fx.area, owner)
+      .filter(v=>!sleepImmune(v))
+      .sort((a,b)=> (a.isEnemy?a.e.curHp:a.c.hp) - (b.isEnemy?b.e.curHp:b.c.hp));
+    fxEmit(st, { kind:'area', dtype:'psíquico', src:owner, center, radius:fx.area.radius||2 });
+    st.history.push({ role:'scene', text:`✦ ${c.name} conjura ${name} (reserva ${pool} HP de sono).` });
+    let slept=0;
+    for(const v of victims){
+      const tgt = v.isEnemy ? v.e : v.c; const hpNow = v.isEnemy ? v.e.curHp : v.c.hp;
+      if(pool < hpNow) break;   // não cobre o próximo (lista ordenada por HP) → ninguém mais dorme
+      pool -= hpNow;
+      tgt.conditions = tgt.conditions || []; if(!tgt.conditions.includes('Inconsciente')) tgt.conditions.push('Inconsciente');
+      tgt._asleep = true;   // sono mágico: acorda ao sofrer dano
+      fxEmit(st, { kind:'stun', tgt:v.id });
+      st.history.push({ role:'scene', text:`✦ ${v.isEnemy?'':'⚠ '}${tgt.name} cai no sono${v.isEnemy?'':' (aliado!)'} — Inconsciente.` });
+      slept++;
+    }
+    if(!slept) st.history.push({ role:'scene', text:`✦ Ninguém na área tinha HP baixo o bastante — o sono se dissipa.` });
   } else if(fx.kind==='auto'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const d=mpRollDmgExpr(fx.dmg); const res=applyDamage(e, d.total, fx.dtype, st, {});
@@ -2639,7 +2709,7 @@ function mpAdvanceCombat(st){
   }
 }
 function mpEndCombat(st, victory){
-  (st.characters||[]).forEach(c=>{ c.raging=false; c.inspiration=null; c.resUsed={}; c.concentrating=null; });   // descanso curto: recarrega Surto/Fôlego/Fúria/Canalizar/Inspiração; encerra concentração
+  (st.characters||[]).forEach(c=>{ c.raging=false; c.inspiration=null; c.resUsed={}; c.concentrating=null; if(c._asleep){ c._asleep=false; c.conditions=(c.conditions||[]).filter(n=>n!=='Inconsciente'); } });   // descanso curto: recarrega recursos; encerra concentração; acorda quem dormiu
   st.activeEffects = [];   // buffs/debuffs de combate não persistem fora dele
   st.combat = null; st.tactical = null;
   st.history = st.history || [];
@@ -3410,7 +3480,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627z';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627aa';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
