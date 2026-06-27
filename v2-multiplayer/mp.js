@@ -744,10 +744,15 @@ function tacTickEnemyConditions(st, e){   // versão leve p/ inimigos (save plan
   e.conditions=keep;
 }
 // tica as condições de quem tem o turno agora, se for um PC vivo
+function tacHideDice(){   // esconde o overlay de dados (ex.: limpa a rolagem do inimigo quando a vez volta ao PC)
+  try { const ov=$('#diceOverlay'); if(ov){ if(ov._t){ clearTimeout(ov._t); ov._t=null; } ov.style.pointerEvents='none'; ov.classList.add('hide'); }
+    if(typeof DICE_TIMER!=='undefined' && DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER=null; }
+    DICE_SPINNING=false; if(typeof stopDice3D==='function') stopDice3D(); } catch(e){}
+}
 function tacTickCurrentPc(st){
   if(!mpCombatActive(st)) return;
   const cur=mpCurrentActor(st);
-  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0){ tacTickConditions(st,c); tickEffectsTurnStart(st,c); pushTurnHeader(st, c.name, 'pc'); } }
+  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0){ tacTickConditions(st,c); tickEffectsTurnStart(st,c); pushTurnHeader(st, c.name, 'pc'); tacHideDice(); } }   // limpa dado do inimigo ao começar a vez do PC
 }
 // cabeçalho de turno no log (separa visualmente quem age); evita repetir o mesmo cabeçalho sem ação entre eles
 function pushTurnHeader(st, name, who){
@@ -963,6 +968,11 @@ let LAST_RENDER_AT = 0;
 function tacRecoverStuck(force){
   try { const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null; if(!st) return;
     const idle = LAST_RENDER_AT ? (Date.now() - LAST_RENDER_AT) : 999999;
+    // se é a VEZ DE UM PC, nenhum lock devia estar ativo → destrava na hora (corrige engineBusy preso no alt+tab)
+    const cur = (st.combat && st.combat.order) ? mpCurrentActor(st) : null;
+    if (cur && cur.kind==='pc' && (st.busy || engineBusy || ENEMY_LOOP_RUNNING)){
+      st.busy=false; engineBusy=false; ENEMY_LOOP_RUNNING=false; if(typeof saveState==='function') saveState(st); if(typeof tacHideDice==='function') tacHideDice();
+    }
     if (force){   // voltou pra aba/janela: limpa overlays que cobrem a tela e podem ter ficado presos
       ['#diceOverlay','#combatReveal','#turnCard'].forEach(sel=>{ const ov=$(sel); if(ov && ov.classList) ov.classList.add('hide'); });
       try { if(DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER=null; } } catch(e){}
@@ -2539,7 +2549,7 @@ function runDiceGroup(group, meta, onSettled){
   if (meta.title != null) $('#diceTitle').textContent = meta.title;
   if (meta.target != null) $('#diceTarget').textContent = meta.target;
   $('#diceResult').innerHTML = meta.preResult || '';
-  ov.classList.remove('hide','settled'); ov.classList.add('rolling');
+  ov.classList.remove('hide','settled'); ov.classList.add('rolling'); ov.style.pointerEvents='none';
   DICE_SPINNING = true;
   const use3d = spawnDice3d(group);                // 3D realista; cai p/ SVG se faltar WebGL/THREE
   const tray = $('#diceTray');
@@ -2589,7 +2599,7 @@ function playDiceRoll(card){
 function startDiceAnim(pr){
   const ov = $('#diceOverlay'); if (!ov) return;
   if (ov._t){ clearTimeout(ov._t); ov._t = null; }
-  ov.classList.remove('hide','settled'); ov.classList.add('rolling');
+  ov.classList.remove('hide','settled'); ov.classList.add('rolling'); ov.style.pointerEvents='none';
   $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` · ${pr.tipo}`:''}`;
   $('#diceTarget').textContent = pr.cd ? `Alvo: CD ${pr.cd}` : '';
   $('#diceResult').innerHTML = '';
@@ -2702,7 +2712,7 @@ function renderGame(){
   // vez / compositor — trava para TODOS enquanto o Mestre pensa/digita, há level-up, ou o Mestre saiu
   const levelingUp = !!Object.keys(luPend).length;
   const mestreAusente = !amIAdmin() && !MESTRE_PRESENTE;
-  const locked = !!st.busy || TYPING || localBusy || levelingUp || mestreAusente;
+  const locked = !!st.busy || engineBusy || TYPING || localBusy || levelingUp || mestreAusente;
   const myTurn = !enemyTurn && turnChar && turnChar.hp > 0 && turnChar.owner === ME.id && !locked;
   $('#turnIndicator').innerHTML = mestreAusente
     ? '⏸ <b style="color:var(--blood)">Mestre ausente</b> — partida pausada. Aguardando o Mestre voltar…'
@@ -3920,7 +3930,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627an';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ao';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
