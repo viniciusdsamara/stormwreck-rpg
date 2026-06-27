@@ -893,7 +893,7 @@ async function mpPresentEnemyTurn(st, e, ev){
       announceTurn(e.name, art, 'enemy', traitIntentText(prof.trait, tname));
       await saveState(st); renderGame(); await mpSleep(1600); tacHideTurnCard(); await mpSleep(900);
     } else if(phase==='breath' || phase==='done' || phase==='traitDone'){
-      await saveState(st); renderGame(); await mpSleep(6800);   // mostra o d20 e DEPOIS o dano (duas etapas)
+      await saveState(st); renderGame(); await mpSleep(5500);   // mostra o d20 e DEPOIS o dano (duas etapas)
     }
   });
   // 4) FINAL DO TURNO
@@ -970,9 +970,10 @@ function tacRecoverStuck(force){
     }
     if ((st.busy || engineBusy) && !ENEMY_LOOP_RUNNING && (force || idle > 6000)){   // turno do PC travado → destrava tudo
       st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
-    } else if ((st.busy || engineBusy) && ENEMY_LOOP_RUNNING && idle > 30000){        // último recurso: loop de inimigo congelado
+    } else if ((st.busy || engineBusy) && ENEMY_LOOP_RUNNING && idle > 9000){          // loop de inimigo congelado (sem render há >9s) → abandona e destrava
       ENEMY_LOOP_RUNNING = false; st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
     }
+    if (force) LAST_RENDER_AT = Date.now();   // ao voltar, dá uma folga antes de o vigia abandonar um loop que vai retomar
     if (typeof renderGame==='function') renderGame();
   } catch(e){}
 }
@@ -998,7 +999,9 @@ async function tacRequestAttack(enemyId){
 async function tacEndTurn(){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
-  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  // NÃO segura engineBusy durante o loop de inimigo (st.busy é o lock, e tem try/finally) —
+  // assim, se o loop travar num alt+tab, o engineBusy não fica preso bloqueando tudo.
+  if(amIAdmin()){ if(engineBusy||st.busy) return; await tacAdvanceFromPc(st); }
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(fim)', text: ENDTURN_PREFIX }); }catch(e){} }
 }
 
@@ -3917,7 +3920,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627am';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627an';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
