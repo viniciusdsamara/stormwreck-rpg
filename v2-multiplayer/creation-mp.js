@@ -19,7 +19,7 @@ function openGuidedCreation(){
   DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
             fightingStyle:null, archetype:null, cantrips:[], spells:[], expertise:[],
-            player: PLAYER_NAME, portrait: null,
+            player: PLAYER_NAME, portrait: null, gender: null,
             profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   show('screen-create');
   renderCreationForm();
@@ -58,6 +58,12 @@ function renderCreationForm(){
     renderSkills(); renderEquipment(); renderClassOptions(); renderSpells(); renderExpertise(); checkCreationReady();
   });
   $('#cName').oninput = checkCreationReady;
+  $$('#genderRow .gender-opt').forEach(b => b.onclick = () => {
+    const same = DRAFT.gender === b.dataset.gender;
+    $$('#genderRow .gender-opt').forEach(x => x.classList.remove('sel'));
+    DRAFT.gender = same ? null : b.dataset.gender;   // clicar de novo desmarca
+    if (!same) b.classList.add('sel');
+  });
   ['appearance','context','motivation','flaw','quality'].forEach(k => {
     const el = $('#pf_'+k); if (el){ el.value=''; el.oninput = () => DRAFT.profile[k] = el.value; }
   });
@@ -347,6 +353,7 @@ function finishCreationMp(){
     profile: { ...DRAFT.profile }
   });
   char.portrait = DRAFT.portrait || null;
+  char.gender = DRAFT.gender || null;
   if (ON_DONE) ON_DONE(char);
 }
 
@@ -412,29 +419,49 @@ const CLASS_EN = {
   'Mago':'wizard in robes holding a staff, scholarly', 'Monge':'monk in simple martial-arts robes, disciplined',
   'Paladino':'paladin in shining holy plate armor, righteous', 'Patrulheiro':'ranger in a hooded cloak with a bow, wilderness scout',
 };
-// monta o prompt do retrato a partir da ficha (raça PRIMEIRO, depois classe e aparência)
-function portraitPrompt(){
+const GENDER_EN = { 'Masculino':'male', 'Feminino':'female', 'Não-binário':'androgynous' };
+// monta o prompt do retrato (gênero + raça PRIMEIRO, depois classe e aparência já em inglês)
+function portraitPrompt(appOverride){
   const d = DRAFT, p = d.profile || {};
   let race = RACE_EN[d.race] || (d.race || 'human');
   if (d.race === 'Elfo' && d.subrace && /drow/i.test(d.subrace))
     race = 'drow dark elf with dark obsidian grey skin, long white hair, long pointed ears and glowing red eyes';
   const cls = CLASS_EN[d.cls] || (d.cls || 'adventurer');
-  const bits = [`portrait of a ${race}, a ${cls}`];
-  if (p.appearance && p.appearance.trim()) bits.push(p.appearance.trim());
+  const g = GENDER_EN[d.gender] ? GENDER_EN[d.gender] + ' ' : '';
+  const app = (appOverride != null) ? appOverride : ((p.appearance || '').trim());
+  const bits = [`portrait of a ${g}${race}, a ${cls}`];
+  if (app) bits.push(app);
   bits.push('fantasy character portrait, head and shoulders, dungeons and dragons, painterly digital art, dramatic lighting, detailed face, dark fantasy');
   return bits.join(', ');
 }
-// gera o retrato pela Pollinations (grátis) e embute como data URL; fallback = URL externa
-function generatePortraitAI(onOk, onErr){
-  const seed = Math.floor(Math.random() * 100000);
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(portraitPrompt())}?width=512&height=512&seed=${seed}&nologo=true&model=flux`;
-  const img = new Image(); img.crossOrigin = 'anonymous';
+// traduz a Aparência (PT) para inglês via Pollinations (texto, grátis); fallback = texto original
+function translateAppearance(text, cb){
+  const t = (text || '').trim();
+  if (!t){ cb(''); return; }
+  const q = `Translate to concise English as comma-separated visual descriptors only, no preamble, no quotes: ${t}`;
+  const url = `https://text.pollinations.ai/${encodeURIComponent(q)}`;
   let done = false;
-  const timer = setTimeout(() => { if (!done){ done = true; if (onErr) onErr(); } }, 45000);
-  img.onload = () => { if (done) return; done = true; clearTimeout(timer);
-    try { onOk(drawPortrait(img)); } catch(e){ onOk(url); } };          // CORS ok → embute; senão guarda a URL
-  img.onerror = () => { if (done) return; done = true; clearTimeout(timer); onOk(url); };  // CORS bloqueou o canvas → usa a URL (exibe igual)
-  img.src = url;
+  const to = setTimeout(() => { if (!done){ done = true; cb(t); } }, 12000);   // demorou → usa o original
+  fetch(url).then(r => r.ok ? r.text() : Promise.reject())
+    .then(out => { if (done) return; done = true; clearTimeout(to);
+      const clean = (out || '').trim().replace(/^["']|["']$/g, '').slice(0, 300);
+      cb(clean || t); })
+    .catch(() => { if (done) return; done = true; clearTimeout(to); cb(t); });   // erro → usa o original PT
+}
+// gera o retrato: traduz a aparência → monta o prompt → Pollinations (grátis) → embute como data URL
+function generatePortraitAI(onOk, onErr){
+  const appPT = (DRAFT.profile && DRAFT.profile.appearance) || '';
+  translateAppearance(appPT, (appEN) => {
+    const seed = Math.floor(Math.random() * 100000);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(portraitPrompt(appEN))}?width=512&height=512&seed=${seed}&nologo=true&model=flux`;
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    let done = false;
+    const timer = setTimeout(() => { if (!done){ done = true; if (onErr) onErr(); } }, 45000);
+    img.onload = () => { if (done) return; done = true; clearTimeout(timer);
+      try { onOk(drawPortrait(img)); } catch(e){ onOk(url); } };          // CORS ok → embute; senão guarda a URL
+    img.onerror = () => { if (done) return; done = true; clearTimeout(timer); onOk(url); };  // CORS bloqueou o canvas → usa a URL
+    img.src = url;
+  });
 }
 
 // ====================================================================

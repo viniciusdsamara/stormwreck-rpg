@@ -261,7 +261,7 @@ async function doLogout(){
 async function enterHub(){
   show('screen-hub');
   $('#hubEmail').textContent = ME.email;
-  supa.rpc('is_app_admin').then(({data})=>{ if (data) $('#hubAdmin').style.display='inline'; });
+  supa.rpc('is_app_admin').then(({data})=>{ if (data){ $('#hubAdmin').style.display='inline'; const tb = $('#hubTest'); if (tb){ tb.style.display='inline-block'; tb.onclick = () => { location.href = location.pathname + '?teste=1'; }; } } });
   $('#roomName').value = `Mesa de ${nameFromEmail(ME.email)}`;
   $('#createBtn').onclick = createRoom;
   $('#joinBtn').onclick = joinRoom;

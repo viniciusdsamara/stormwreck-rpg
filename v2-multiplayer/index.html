@@ -215,6 +215,12 @@
   .ros-id{ display:flex; gap:10px; align-items:center; }
   .ros-avatar{ width:42px; height:42px; border-radius:8px; background-size:cover; background-position:center;
           border:1px solid var(--basalt-600); flex-shrink:0; }
+  /* Seletor de gênero na criação */
+  .gender-row{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .gender-opt{ background:var(--basalt-700); border:1px solid var(--basalt-600); color:var(--parch); border-radius:18px;
+          padding:8px 16px; font-size:0.88rem; cursor:pointer; font-family:inherit; transition:border-color .15s, background .15s; }
+  .gender-opt:hover{ border-color:var(--ember); }
+  .gender-opt.sel{ background:rgba(214,158,74,0.18); border-color:var(--ember); color:var(--ember); font-weight:600; }
   /* Painel de teste (?teste=1) */
   #testPanel{ position:fixed; top:64px; right:10px; z-index:90; width:232px; background:rgba(14,18,28,0.96);
           border:1px solid var(--ember); border-radius:10px; font-family:Georgia, serif; color:var(--parch);
@@ -534,6 +540,7 @@
       <div><div class="eyebrow">Multiplayer</div><h1>Salas</h1></div>
       <div style="text-align:right"><small id="hubEmail"></small><br>
         <a id="hubAdmin" href="../admin.html" style="display:none;color:var(--ember);font-size:0.78rem;text-decoration:none;margin-right:10px">🛡️ Painel</a>
+        <button class="btn ghost" id="hubTest" style="display:none;margin-top:6px;margin-right:8px;padding:6px 12px;font-size:0.78rem" title="Ambiente de teste (sem login/IA)">🧪 Modo Teste</button>
         <button class="btn ghost" id="hubLogout" style="margin-top:6px;padding:6px 12px;font-size:0.78rem">Sair</button></div>
     </div>
 
@@ -663,6 +670,13 @@
 
     <div class="panel">
       <label class="field"><span>Nome do personagem</span><input id="cName" type="text" placeholder="Ex.: Branca, Dortar, Kael..."></label>
+
+      <label class="field"><span>Gênero (opcional — ajuda o retrato e o Mestre)</span></label>
+      <div class="gender-row" id="genderRow">
+        <button type="button" class="gender-opt" data-gender="Masculino">♂ Masculino</button>
+        <button type="button" class="gender-opt" data-gender="Feminino">♀ Feminino</button>
+        <button type="button" class="gender-opt" data-gender="Não-binário">⚧ Não-binário</button>
+      </div>
 
       <label class="field"><span>Raça</span></label>
       <div class="choice-grid" id="raceGrid"></div>
@@ -908,10 +922,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627g"></script>
-<script src="campaign.js?v=20260627g"></script>
-<script src="creation-mp.js?v=20260627g"></script>
-<script src="sfx.js?v=20260627g"></script>
-<script src="mp.js?v=20260627g"></script>
+<script src="rules.js?v=20260627h"></script>
+<script src="campaign.js?v=20260627h"></script>
+<script src="creation-mp.js?v=20260627h"></script>
+<script src="sfx.js?v=20260627h"></script>
+<script src="mp.js?v=20260627h"></script>
 </body>
 </html>
