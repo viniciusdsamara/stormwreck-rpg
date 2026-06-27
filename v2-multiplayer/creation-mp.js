@@ -488,18 +488,29 @@ function ccAddMsg(role, text){
   n.appendChild(d); n.scrollTop = n.scrollHeight;
 }
 function creationChatSystemPrompt(){
-  const races = Object.keys(RULES.races).join(', ');
-  const classes = Object.keys(RULES.classes).join(', ');
-  const skills = Object.keys(RULES.skills).join(', ');
-  return `Você é o Mestre de D&D 5e ajudando a criar UM personagem de NÍVEL 1 para a campanha Dragons of Stormwreck Isle. Fale em português do Brasil, de forma acolhedora e concisa (2-4 frases por vez): faça perguntas, sugira e explique. Conduza por: conceito → raça (e sub-raça se houver) → classe → atributos → perícias → equipamento → opções de classe (estilo de luta/subclasse) → magias (se conjurador) → perfil (aparência, contexto, motivações, defeitos, qualidades).
+  const L = (typeof gameLang==='function') ? gameLang() : 'pt';
+  // No JSON [CHARACTER] o motor exige nomes PT canônicos; por isso as listas de
+  // opções VÁLIDAS ficam sempre em PT. Em en/pt-en adicionamos o nome inglês ao lado
+  // (term()), só para leitura — mas o jogador/IA deve escolher pelo identificador PT.
+  const showEn = (L === 'en' || L === 'pt-en');
+  const fmtList = keys => keys.map(k => showEn && term(k) !== k ? `${k} (${term(k)})` : k).join(', ');
+  const races = fmtList(Object.keys(RULES.races));
+  const classes = fmtList(Object.keys(RULES.classes));
+  const skills = fmtList(Object.keys(RULES.skills));
+  const langLine = L === 'en'
+    ? 'Speak in ENGLISH, warm and concise (2-4 sentences at a time)'
+    : (L === 'pt-en'
+      ? 'Fale em português do Brasil, de forma acolhedora e concisa (2-4 frases por vez), mas use os nomes de raças, classes, perícias e termos de regra em INGLÊS'
+      : 'Fale em português do Brasil, de forma acolhedora e concisa (2-4 frases por vez)');
+  return `Você é o Mestre de D&D 5e ajudando a criar UM personagem de NÍVEL 1 para a campanha Dragons of Stormwreck Isle. ${langLine}: faça perguntas, sugira e explique. Conduza por: conceito → raça (e sub-raça se houver) → classe → atributos → perícias → equipamento → opções de classe (estilo de luta/subclasse) → magias (se conjurador) → perfil (aparência, contexto, motivações, defeitos, qualidades).
 
-Opções válidas (use os nomes EXATOS):
+Opções válidas — no bloco JSON final use SEMPRE o identificador em português (o primeiro nome, antes do parêntese):
 - Raças: ${races}. (algumas têm sub-raças)
 - Classes: ${classes}.
 - Atributos: point-buy de 27 pontos, cada um entre 8 e 15.
 - Perícias: ${skills}.
 
-Quando — e SOMENTE quando — tudo estiver definido e o jogador confirmar, inclua na MESMA mensagem, na última linha, um bloco JSON exatamente neste formato (nomes exatos do sistema; campos não aplicáveis como null ou lista vazia):
+Quando — e SOMENTE quando — tudo estiver definido e o jogador confirmar, inclua na MESMA mensagem, na última linha, um bloco JSON exatamente neste formato (nomes exatos do sistema EM PORTUGUÊS; campos não aplicáveis como null ou lista vazia):
 [CHARACTER]{"name":"","race":"","subrace":null,"cls":"","base":{"FOR":10,"DES":10,"CON":10,"INT":10,"SAB":10,"CAR":10},"asiChoices":[],"skills":[],"armor":"Nenhuma","shield":false,"weapon":"","fightingStyle":null,"archetype":null,"cantrips":[],"spells":[],"expertise":[],"profile":{"appearance":"","context":"","motivation":"","flaw":"","quality":""}}[/CHARACTER]
 NÃO emita o bloco antes de tudo estar pronto e confirmado.`;
 }
