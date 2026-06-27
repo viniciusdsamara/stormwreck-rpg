@@ -2672,12 +2672,12 @@ function injectTestPanel(){
   const scenes = Object.keys((typeof CAMPAIGN!=='undefined' && CAMPAIGN.scenes) || {});
   const el = document.createElement('div'); el.id = 'testPanel';
   el.innerHTML = `
-    <div class="tp-head">🧪 Painel de Teste <button id="tpToggle" title="Mostrar/esconder">▾</button></div>
+    <div class="tp-head">🧪 Painel de Teste <span class="tp-build">v${BUILD}</span><button id="tpToggle" title="Mostrar/esconder">▾</button></div>
     <div class="tp-body" id="tpBody">
       <div class="tp-sec"><b>⚔ Combate — você controla o herói</b><div class="tp-hint">clique no mapa pra mover (alcance = Speed); clique no inimigo pra atacar; os inimigos agem sozinhos</div><div class="tp-row">
         ${encs.map(e=>`<button data-enc="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</button>`).join('')}
       </div><button data-endc="1" class="wide">encerrar combate</button></div>
-      <div class="tp-sec"><b>🤖 Combate simulado (a engine joga sozinha)</b><div class="tp-row">
+      <div class="tp-sec"><b>🤖 Combate simulado (a engine joga sozinha)</b><div class="tp-hint">só pra ASSISTIR — você não controla. Pra jogar, use os botões ⚔ acima.</div><div class="tp-row">
         <select id="tpSimEnc">${encs.map(e=>`<option value="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</option>`).join('')}</select>
         <button id="tpSimGo">▶ simular</button><button id="tpSimStop">parar</button></div></div>
       <div class="tp-sec"><b>🎲 Dado 3D</b><div class="tp-row">
@@ -2713,5 +2713,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
+const BUILD = '20260627q';   // carimbo de versão — confira no console (F12) se está no código novo
+try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
