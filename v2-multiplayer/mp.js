@@ -260,6 +260,8 @@ function renderTactical(st){
       bar = `${eco}<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
     }
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
+  // botão de destravar SEMPRE presente em combate p/ quem joga (admin/jogador da vez) — saída + diagnóstico
+  if (mpCombatActive(st)) bar += `<div class="tac-unlock-row"><button class="tac-unlock" id="tacUnlockBtn" title="Destravar / diagnóstico">🔓 Destravar</button></div>`;
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
   tacAnimateMoves(st);   // anima o deslocamento (passo a passo pela grade quando há caminho)
   fxPlay(st);          // toca as animações de combate novas (deduplicadas por id)
@@ -269,6 +271,7 @@ function renderTactical(st){
     el.onclick=()=>tacRequestAttack(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestAttack(id); } }; });
   $$('#tacticalCard .tac-cast-target').forEach(el=>{ const id=el.dataset.cast;
     el.onclick=()=>tacCastOnTarget(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacCastOnTarget(id); } }; });
+  const unlockBtn=$('#tacUnlockBtn'); if (unlockBtn) unlockBtn.onclick=()=>tacForceUnlock();
   const endBtn=$('#tacEndBtn'); if (endBtn) endBtn.onclick=()=>tacEndTurn();
   const abBtn=$('#tacAbBtn'); if (abBtn) abBtn.onclick=()=>{ ABILITY_MENU_OPEN=!ABILITY_MENU_OPEN; renderTactical(st); };
   const cancelBtn=$('#tacCancelAbBtn'); if (cancelBtn) cancelBtn.onclick=()=>tacCancelAbility();
@@ -990,6 +993,27 @@ function tacRecoverStuck(force){
     // periódico NÃO carimba LAST_RENDER_AT à toa, e o cronômetro de ociosidade continua válido.
     if ((changed || force) && typeof renderGame==='function') renderGame();
   } catch(e){}
+}
+// botão "🔓 Destravar" (sempre clicável no combate): saída manual + DIAGNÓSTICO.
+// Mostra num toast o estado real dos locks no momento do clique — assim sabemos exatamente
+// o que estava preso (busy/engineBusy/loop/myTurn/owner/cur/admin), sem adivinhar.
+function tacForceUnlock(){
+  try {
+    const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null;
+    const diag = st
+      ? `busy=${!!st.busy} eng=${typeof engineBusy!=='undefined'?engineBusy:'?'} loop=${typeof ENEMY_LOOP_RUNNING!=='undefined'?ENEMY_LOOP_RUNNING:'?'} my=${tacMyTurn(st)} owner=${tacActiveOwner(st)} me=${ME&&ME.id} cur=${(mpCurrentActor(st)||{}).kind||'-'} admin=${typeof amIAdmin==='function'?amIAdmin():'?'}`
+      : 'sem estado';
+    toast('🔓 '+diag);
+    if (st) st.busy = false;
+    engineBusy = false; ENEMY_LOOP_RUNNING = false; DICE_SPINNING = false;
+    try { if(DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER=null; } } catch(e){}
+    if (typeof tacHideDice==='function') tacHideDice();
+    ['#diceOverlay','#combatReveal','#turnCard'].forEach(sel=>{ const ov=$(sel); if(ov&&ov.classList) ov.classList.add('hide'); });
+    if (typeof stopDice3D==='function') stopDice3D();
+    if (st && typeof saveState==='function') saveState(st);
+    LAST_RENDER_AT = Date.now();
+    if (typeof renderGame==='function') renderGame();
+  } catch(e){ try{ toast('erro destravar: '+e.message); }catch(_){ } }
 }
 if (typeof document!=='undefined' && document.addEventListener){
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tacRecoverStuck(true); });
@@ -3953,7 +3977,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627aq';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ar';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
