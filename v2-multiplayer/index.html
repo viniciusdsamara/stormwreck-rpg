@@ -362,11 +362,31 @@
   .tac-foe-ring{ fill:none; stroke:var(--blood); stroke-width:2; stroke-dasharray:3 2; opacity:0.85; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.4s ease-out infinite; }
   .tac-foe-target:hover .tac-foe-ring, .tac-foe-target:focus .tac-foe-ring{ opacity:1; stroke-width:3; }
   .tac-foe-target:hover .tac-disc, .tac-foe-target:focus .tac-disc{ filter:drop-shadow(0 0 5px var(--blood)); }
-  .tac-actions{ display:flex; justify-content:center; margin-top:8px; }
+  .tac-actions{ display:flex; justify-content:center; gap:8px; margin-top:8px; align-items:center; }
   .tac-end{ font-family:var(--font-mono); font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--parch);
     background:#1b1320; border:1px solid var(--basalt-600); border-radius:8px; padding:7px 16px; cursor:pointer; transition:background .12s, border-color .12s; }
   .tac-end:hover{ background:#2a1d30; border-color:var(--ember); }
-  @media (prefers-reduced-motion: reduce){ .tac-pulse, .tac-foe-ring{ animation:none; } }
+  .tac-end.on{ border-color:var(--ember); background:#2a1d30; }
+  .tac-end.alt{ color:var(--stone-300); }
+  .tac-actions.targeting{ background:rgba(232,132,60,0.10); border:1px solid var(--ember); border-radius:8px; padding:6px 10px; }
+  .tac-aim{ font-family:var(--font-mono); font-size:0.72rem; color:var(--ember); }
+  /* alvo de magia: vermelho p/ inimigo, verde p/ aliado */
+  .tac-cast-target{ cursor:pointer; outline:none; }
+  .tac-cast-ring{ fill:none; stroke-width:2.5; stroke-dasharray:3 2; opacity:0.9; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.2s ease-out infinite; }
+  .tac-cast-ring.foe{ stroke:var(--blood); } .tac-cast-ring.ally{ stroke:#6fae82; }
+  .tac-cast-target:hover .tac-disc, .tac-cast-target:focus .tac-disc{ filter:drop-shadow(0 0 6px var(--ember)); }
+  /* menu de magias/habilidades */
+  .tac-ability-menu{ margin:8px auto 0; max-width:520px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:5px; max-height:230px; overflow-y:auto; }
+  .tac-ab-slots{ font-family:var(--font-mono); font-size:0.62rem; letter-spacing:0.06em; color:var(--ember); text-transform:uppercase; padding:2px 4px 4px; }
+  .tac-ab-item{ background:#1b1320; border:1px solid var(--basalt-600); border-radius:8px; padding:7px 10px; cursor:pointer; transition:border-color .12s, background .12s; outline:none; }
+  .tac-ab-item:hover, .tac-ab-item:focus{ border-color:var(--ember); background:#241829; }
+  .tac-ab-item.dis{ opacity:0.4; cursor:not-allowed; }
+  .tac-ab-h{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .tac-ab-h b{ color:var(--parch); font-size:0.92rem; }
+  .tac-ab-cost{ font-family:var(--font-mono); font-size:0.58rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--blood); border:1px solid var(--blood); border-radius:5px; padding:1px 6px; flex:0 0 auto; }
+  .tac-ab-cost.cantrip{ color:#6fae82; border-color:#6fae82; }
+  .tac-ab-d{ font-size:0.72rem; color:var(--stone-300); margin-top:3px; line-height:1.35; }
+  @media (prefers-reduced-motion: reduce){ .tac-pulse, .tac-foe-ring, .tac-cast-ring{ animation:none; } }
   .map-detail{ margin-top:14px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:12px 14px; min-height:64px; }
   .map-d-head{ font-size:0.98rem; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .map-d-chap{ font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--ember); margin:3px 0 6px; }
@@ -988,11 +1008,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627r"></script>
-<script src="campaign.js?v=20260627r"></script>
-<script src="tactical-maps.js?v=20260627r"></script>
-<script src="creation-mp.js?v=20260627r"></script>
-<script src="sfx.js?v=20260627r"></script>
-<script src="mp.js?v=20260627r"></script>
+<script src="rules.js?v=20260627s"></script>
+<script src="campaign.js?v=20260627s"></script>
+<script src="tactical-maps.js?v=20260627s"></script>
+<script src="creation-mp.js?v=20260627s"></script>
+<script src="sfx.js?v=20260627s"></script>
+<script src="mp.js?v=20260627s"></script>
 </body>
 </html>

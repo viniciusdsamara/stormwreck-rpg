@@ -140,16 +140,24 @@ function renderTacticalMap(st,m){
   const activeId=tacActiveOwner(st); const pos=(st.tactical&&st.tactical.pos)||{};
   const activeChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
   const moveBudget = tacMoveBudget(activeChar);   // alcance vem da Speed do PC, zerado por condições
-  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]) && moveBudget>0;
+  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]) && moveBudget>0 && !PENDING_ABILITY;
   const reach = canMove ? tacReachable(st,m,pos[activeId],moveBudget) : new Map();
-  // alvos de ataque: durante meu turno, inimigos vivos e visíveis dentro do alcance
+  // alvos de ação: durante meu turno, se puder agir (não incapacitado)
   const meChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
   const myPos = activeId ? pos[activeId] : null;
-  const canAtk = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).some(n=>NO_ACT_CONDS.includes(n));
-  const foeTargets = new Set();
-  if (canAtk && mpCombatActive(st)){ const rng = pcAttackRange(meChar);
-    (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if (!ep||e.curHp<=0) return;
-      if (!visible.has(tacKey(ep[0],ep[1]))) return; if (tacDist(myPos,ep)<=rng) foeTargets.add(e.id); }); }
+  const canAct = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).some(n=>NO_ACT_CONDS.includes(n));
+  const foeTargets = new Set(), castEnemy = new Set(), castAlly = new Set();
+  if (canAct && mpCombatActive(st)){
+    if (PENDING_ABILITY){   // modo MIRA de magia: marca os alvos válidos
+      const fx=PENDING_ABILITY.fx, rng=fx.range||1, side=abilityTargetSide(fx);
+      if (side==='enemy'){ (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if(!ep||e.curHp<=0) return; if(!visible.has(tacKey(ep[0],ep[1]))) return; if(tacDist(myPos,ep)<=rng) castEnemy.add(e.id); }); }
+      else { (st.characters||[]).forEach(a=>{ const ap=pos[a.owner]; if(!ap||(a.hp||0)<=0) return; if(tacDist(myPos,ap)<=rng) castAlly.add(a.owner); }); }
+    } else {   // ataque normal com arma
+      const rng = pcAttackRange(meChar);
+      (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if (!ep||e.curHp<=0) return;
+        if (!visible.has(tacKey(ep[0],ep[1]))) return; if (tacDist(myPos,ep)<=rng) foeTargets.add(e.id); });
+    }
+  }
   const bg = tacBgUrl(m);   // textura de fundo (battlemap gerado por IA); terreno vira só marcação por cima
   let terrain='',marks='',fog='',moves='';
   for (let y=0;y<H;y++) for (let x=0;x<W;x++){
@@ -176,10 +184,12 @@ function renderTacticalMap(st,m){
     const label=ref.img?'':`<text x="${cx}" y="${cy}" class="tac-init" text-anchor="middle" dominant-baseline="central">${escapeHtml(tacInitials(ref.name))}</text>`;
     const pct=Math.max(0,Math.min(1,ref.hp/(ref.maxHp||1))), bw=r*1.8, bx=cx-bw/2, by=cy+r+3, hpc=pct>0.5?'#5a8f6b':pct>0.25?'#d9c48a':'#c4485a';
     const hpbar=dead?'':`<rect x="${bx}" y="${by}" width="${bw}" height="3" rx="1.5" fill="#0c0a10"/><rect x="${bx}" y="${by}" width="${(bw*pct).toFixed(1)}" height="3" rx="1.5" fill="${hpc}"/>`;
-    const targetable = ref.kind==='enemy' && foeTargets.has(id);
-    const tAttr = targetable ? ` data-enemy="${escapeHtml(id)}" tabindex="0" role="button" aria-label="Atacar ${escapeHtml(ref.name)}"` : '';
-    const ring = targetable ? `<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-foe-ring"/>` : '';
-    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${targetable?'tac-foe-target':''}"${tAttr} data-id="${escapeHtml(id)}" data-cx="${cx}" data-cy="${cy}">${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
+    const isFoe = ref.kind==='enemy' && foeTargets.has(id);
+    const isCast = (ref.kind==='enemy' && castEnemy.has(id)) || (ref.kind==='pc' && castAlly.has(id));
+    let cls='', tAttr='', ring='';
+    if (isCast){ cls='tac-cast-target'; tAttr=` data-cast="${escapeHtml(id)}" tabindex="0" role="button" aria-label="Alvo ${escapeHtml(ref.name)}"`; ring=`<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-cast-ring ${castAlly.has(id)?'ally':'foe'}"/>`; }
+    else if (isFoe){ cls='tac-foe-target'; tAttr=` data-enemy="${escapeHtml(id)}" tabindex="0" role="button" aria-label="Atacar ${escapeHtml(ref.name)}"`; ring=`<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-foe-ring"/>`; }
+    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${cls}"${tAttr} data-id="${escapeHtml(id)}" data-cx="${cx}" data-cy="${cy}">${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
   }
   // camadas: terreno (base/fallback) → textura IA → marcações de bloqueio → grade → névoa → movimento → tokens
   const bgImg = bg ? `<image href="${bg}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid slice"/>` : '';
@@ -188,16 +198,33 @@ function renderTacticalMap(st,m){
 function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
   const m = mpCombatActive(st) ? tacMap(st) : null;
-  if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; TAC_PREV_POS={}; return; }
+  if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; TAC_PREV_POS={}; PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; return; }
   const myTurn = mpCombatActive(st) && tacMyTurn(st);
-  const bar = myTurn ? `<div class="tac-actions"><button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>` : '';
+  const owner = tacActiveOwner(st);
+  const meC = owner ? (st.characters||[]).find(c=>c.owner===owner) : null;
+  let bar='';
+  if (myTurn){
+    if (PENDING_ABILITY){
+      bar = `<div class="tac-actions targeting"><span class="tac-aim">🎯 ${escapeHtml(PENDING_ABILITY.name)} — clique no alvo</span><button class="tac-end alt" id="tacCancelAbBtn">cancelar</button></div>`;
+    } else {
+      const abBtn = (meC && pcHasAbilities(meC)) ? `<button class="tac-end ${ABILITY_MENU_OPEN?'on':''}" id="tacAbBtn">✨ Ações</button>` : '';
+      const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC) : '';
+      bar = `<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
+    }
+  } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
   tacAnimateMoves();   // desliza tokens que mudaram de célula
   $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
     el.onclick=()=>tacRequestMove(x,y); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestMove(x,y); } }; });
   $$('#tacticalCard .tac-foe-target').forEach(el=>{ const id=el.dataset.enemy;
     el.onclick=()=>tacRequestAttack(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestAttack(id); } }; });
+  $$('#tacticalCard .tac-cast-target').forEach(el=>{ const id=el.dataset.cast;
+    el.onclick=()=>tacCastOnTarget(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacCastOnTarget(id); } }; });
   const endBtn=$('#tacEndBtn'); if (endBtn) endBtn.onclick=()=>tacEndTurn();
+  const abBtn=$('#tacAbBtn'); if (abBtn) abBtn.onclick=()=>{ ABILITY_MENU_OPEN=!ABILITY_MENU_OPEN; renderTactical(st); };
+  const cancelBtn=$('#tacCancelAbBtn'); if (cancelBtn) cancelBtn.onclick=()=>tacCancelAbility();
+  $$('#tacticalCard .tac-ab-item').forEach(el=>{ if (el.dataset.dis==='1') return;
+    el.onclick=()=>{ ABILITY_MENU_OPEN=false; tacPickAbility(el.dataset.ab); }; });
 }
 // anima o deslocamento: cada token que mudou de célula parte da posição
 // anterior e desliza até a nova (transform translate + transição CSS)
@@ -484,6 +511,115 @@ async function tacEndTurn(){
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
   if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(fim)', text: ENDTURN_PREFIX }); }catch(e){} }
+}
+
+// ============================================================
+//  HABILIDADES / MAGIAS NO TABULEIRO — o código resolve os dados (atk vs CA,
+//  save vs CD, dano, cura), igual aos ataques. Conjuração consome slot.
+// ============================================================
+const ABILITY_PREFIX = '@@ABIL@@';
+// mecânica das magias/habilidades de combate (subconjunto usado na campanha);
+// as não listadas viram 'utility' (narra o uso e gasta slot, sem dados).
+const SPELL_FX = {
+  // truques (nível 0, sem slot)
+  'Rajada de Fogo':      { lvl:0, kind:'attack', range:8, dmg:'1d10', dtype:'fogo' },
+  'Raio de Gelo':        { lvl:0, kind:'attack', range:8, dmg:'1d8',  dtype:'frio' },
+  'Toque Gélido':        { lvl:0, kind:'attack', range:1, dmg:'1d8',  dtype:'necrótico' },
+  'Estalo Sobrenatural': { lvl:0, kind:'attack', range:8, dmg:'1d10', dtype:'força' },
+  'Produzir Chama':      { lvl:0, kind:'attack', range:6, dmg:'1d8',  dtype:'fogo' },
+  'Chama Sagrada':       { lvl:0, kind:'save',   range:8, save:'DES', dmg:'1d8', dtype:'radiante' },
+  'Zombaria Cruel':      { lvl:0, kind:'save',   range:6, save:'SAB', dmg:'1d4', dtype:'psíquico' },
+  // magias de nível 1 (gastam slot)
+  'Mísseis Mágicos':     { lvl:1, kind:'auto',   range:8, dmg:'3d4+3', dtype:'força' },
+  'Mãos Flamejantes':    { lvl:1, kind:'save',   range:2, save:'DES', dmg:'3d6', dtype:'fogo', half:true },
+  'Repreensão Infernal': { lvl:1, kind:'save',   range:8, save:'DES', dmg:'2d10', dtype:'fogo', half:true },
+  'Curar Ferimentos':    { lvl:1, kind:'heal',   range:1, dmg:'1d8', addMod:true },
+  'Palavra Curativa':    { lvl:1, kind:'heal',   range:8, dmg:'1d4', addMod:true },
+};
+function spellCastMod(c){ return abilityMod((c.abilities||{})[c.spellAbility||'INT']||10); }
+function spellAtkBonus(c){ return (c.prof||2)+spellCastMod(c); }
+function spellSaveDC(c){ return c.spellDC || (8+(c.prof||2)+spellCastMod(c)); }
+function abilityFx(name){ return SPELL_FX[name] || { lvl:(name?1:0), kind:'utility' }; }
+function abilityNeedsTarget(fx){ return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
+function abilityTargetSide(fx){ return fx.kind==='heal' ? 'ally' : 'enemy'; }
+// lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot)
+function castableAbilities(c){
+  if(!c) return [];
+  const out=[]; const slotsLeft = c.spellSlots ? (c.spellSlots.max-(c.spellSlots.used||0)) : 0;
+  (c.cantripsChosen||[]).forEach(n=>{ const fx=abilityFx(n); out.push({ name:n, lvl:0, fx, disabled:false }); });
+  (c.spellsChosen||[]).forEach(n=>{ const fx=abilityFx(n); const lvl=fx.lvl||1; out.push({ name:n, lvl, fx, disabled: lvl>=1 && slotsLeft<=0 }); });
+  return out;
+}
+function pcHasAbilities(c){ return castableAbilities(c).length>0; }
+// resolve uma habilidade pelo CÓDIGO (rola os dados); targetId = inimigo ou aliado (cura)
+async function castAbility(owner, name, targetId, st){
+  if(!mpCombatActive(st)) return;
+  const c=(st.characters||[]).find(x=>x.owner===owner); if(!c) return;
+  if((c.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))) return;
+  const meta=castableAbilities(c).find(a=>a.name===name); if(!meta||meta.disabled) return;
+  const fx=meta.fx;
+  // checa alcance
+  const pos=(st.tactical&&st.tactical.pos)||{}; const myPos=pos[owner];
+  const tgtPos = targetId ? pos[targetId] : null;
+  if(abilityNeedsTarget(fx) && fx.range && myPos && tgtPos && tacDist(myPos,tgtPos)>fx.range) return;
+  if((fx.lvl||0)>=1){ if(!c.spellSlots||(c.spellSlots.used||0)>=c.spellSlots.max) return; c.spellSlots.used=(c.spellSlots.used||0)+1; }   // gasta slot
+  const dc=spellSaveDC(c), atk=spellAtkBonus(c), cmod=spellCastMod(c);
+  if(fx.kind==='attack'){
+    const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
+    const roll=mpD20(c, atk); const hit=roll.crit||(!roll.fumble&&roll.total>=e.ca);
+    const card={ role:'roll', tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:roll.total, mod:atk, dice:roll.dice, crit:roll.crit, fumble:roll.fumble, dc:e.ca, nat:roll.nat, outcome:hit?'ACERTO':'ERRO' };
+    if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); card.dmg={ total:d.total, type:fx.dtype, detail:d.detail }; e.curHp=Math.max(0,e.curHp-d.total); if(e.curHp<=0) tacKill(st,e.id); }
+    st.history.push(card);
+  } else if(fx.kind==='save'){
+    const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
+    const sv=mpD20(null, e.mod||0); const saved=sv.total>=dc;   // inimigo: save plano por e.mod (aprox.)
+    const full=mpRollDmgExpr(fx.dmg); const dmg=saved?(fx.half?Math.floor(full.total/2):0):full.total;
+    e.curHp=Math.max(0,e.curHp-dmg); if(e.curHp<=0) tacKill(st,e.id);
+    st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: dmg>0?{ total:dmg, type:fx.dtype, detail:fx.dmg }:null });
+  } else if(fx.kind==='auto'){
+    const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
+    const d=mpRollDmgExpr(fx.dmg); e.curHp=Math.max(0,e.curHp-d.total); if(e.curHp<=0) tacKill(st,e.id);
+    st.history.push({ role:'roll', noRoll:true, tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:d.total, outcome:'ACERTO AUTOMÁTICO', dmg:{ total:d.total, type:fx.dtype, detail:d.detail } });
+  } else if(fx.kind==='heal'){
+    const ally=(st.characters||[]).find(x=>x.owner===targetId) || c;
+    const h=mpRollDmgExpr(fx.dmg).total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
+    st.history.push({ role:'roll', noRoll:true, tipo:'cura', label:`${c.name} · ${name} → ${ally.name}`, total:h, outcome:`+${h} HP`, heal:h });
+  } else {
+    st.history.push({ role:'scene', text:`✦ ${c.name} usa ${name}.` });
+  }
+  if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
+  await saveState(st); renderGame();
+}
+// estado de mira de habilidade (local do cliente que está agindo)
+let PENDING_ABILITY = null, ABILITY_MENU_OPEN = false;
+function tacAbilityMenuHtml(c){
+  const list=castableAbilities(c); if(!list.length) return '';
+  const items=list.map(a=>{
+    const cost = a.lvl>=1 ? `<span class="tac-ab-cost">nv${a.lvl}</span>` : `<span class="tac-ab-cost cantrip">truque</span>`;
+    const desc = (((typeof RULES!=='undefined'&&RULES.spells[a.name])||{}).desc)||'';
+    return `<div class="tac-ab-item ${a.disabled?'dis':''}" data-ab="${escapeHtml(a.name)}" data-dis="${a.disabled?1:0}" tabindex="0" role="button"><div class="tac-ab-h"><b>${escapeHtml(a.name)}</b>${cost}</div><div class="tac-ab-d">${escapeHtml(desc)}</div></div>`;
+  }).join('');
+  const slots = c.spellSlots ? `<div class="tac-ab-slots">Slots nv1: ${c.spellSlots.max-(c.spellSlots.used||0)}/${c.spellSlots.max} · sem alvo? toque novamente</div>` : '';
+  return `<div class="tac-ability-menu">${slots||'<div class="tac-ab-slots">truques ilimitados</div>'}${items}</div>`;
+}
+function tacPickAbility(name){
+  const st=ROOM.state||{}; const owner=tacActiveOwner(st);
+  if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
+  const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c).find(a=>a.name===name);
+  if(!meta||meta.disabled) return;
+  if(abilityNeedsTarget(meta.fx)){ PENDING_ABILITY={ name, fx:meta.fx }; renderTactical(st); }   // entra em modo de mira
+  else { tacCancelAbility(); tacDoCast(owner, name, owner); }   // sem alvo (auto-aplica em si/utility)
+}
+function tacCancelAbility(){ PENDING_ABILITY=null; const st=ROOM.state||{}; renderTactical(st); }
+function tacCastOnTarget(targetId){
+  const st=ROOM.state||{}; const owner=tacActiveOwner(st); const ab=PENDING_ABILITY;
+  if(!ab||!owner||owner!==ME.id||!tacMyTurn(st)) return;
+  PENDING_ABILITY=null; tacDoCast(owner, ab.name, targetId);
+}
+async function tacDoCast(owner, name, targetId){
+  const st=ROOM.state||{};
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(magia)', text: ABILITY_PREFIX+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
 }
 
 function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
@@ -1331,6 +1467,13 @@ function startTyping(bodyEl, full, count){
 // ---------------- ROLAGENS (cards espelhados a todos via estado) ----------------
 // card grande na narrativa (estilo V1 showRollCard)
 function rollCardHtml(card){
+  if (card.noRoll){   // magia de acerto automático / cura — sem d20
+    const dmg = card.dmg ? `<div class="rbreak" style="margin-top:6px;color:var(--blood)">⚔ Dano <b style="color:var(--parch)">${card.dmg.total}</b> [${card.dmg.type}]</div>` : '';
+    const heal = card.heal ? `<div class="rbreak" style="margin-top:6px;color:#6fae82">✚ Cura <b style="color:var(--parch)">${card.heal}</b> HP</div>` : '';
+    return `<div class="roll-card"><div class="rtype">${escapeHtml(card.label)}</div>
+      <div class="rnum">${card.dmg?card.dmg.total:(card.heal||card.total)}</div>
+      <div class="rbreak">${escapeHtml(card.outcome||'')}</div>${dmg}${heal}</div>`;
+  }
   let outcome = '';
   if (card.dc != null){
     const ok = !card.autoFail && card.total >= card.dc;
@@ -1346,6 +1489,12 @@ function rollCardHtml(card){
 }
 // entrada no painel direito (estilo V1 logRoll)
 function rollLogEntryHtml(card){
+  if (card.noRoll){
+    const dmg = card.dmg ? `<div class="rl-dmg">⚔ Dano <b>${card.dmg.total}</b> <span class="rl-sub">[${card.dmg.type}]</span></div>` : '';
+    const heal = card.heal ? `<div class="rl-dmg" style="color:#6fae82">✚ Cura <b>${card.heal}</b> HP</div>` : '';
+    return `<div class="rl-entry"><div class="rl-head">${escapeHtml(card.label)}</div>
+      <div class="rl-line"><span class="rl-num">${card.dmg?card.dmg.total:(card.heal||card.total)}</span><span class="rl-out">${escapeHtml(card.outcome||'')}</span></div>${dmg}${heal}</div>`;
+  }
   const auto = card.autoFail || !card.dice || !card.dice.length;
   let cls = card.crit ? 'crit' : card.fumble ? 'fumble' : '';
   let out = '';
@@ -2194,6 +2343,17 @@ async function onPlayerAction(action){
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
   }
+  // magia/habilidade no tabuleiro: o admin resolve e dispara os inimigos
+  if (typeof action.text === 'string' && action.text.startsWith(ABILITY_PREFIX)){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
+    engineBusy = true; PROCESSED_IDS.add(action.id);
+    const st = ROOM.state || {};
+    try { const d = JSON.parse(action.text.slice(ABILITY_PREFIX.length));
+      if (d && d.owner === tacActiveOwner(st)){ await castAbility(d.owner, d.name, d.targetId, st); await tacAdvanceFromPc(st); } }
+    catch(e){}
+    finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
+    return;
+  }
   // encerrar turno no tabuleiro: passa a vez e dispara os inimigos
   if (action.text === ENDTURN_PREFIX){
     if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
@@ -2723,6 +2883,31 @@ async function tpSimCombat(encId){
   st.combat = null; LAST_COMBAT = false; mpStartCombat(st, encId); renderGame();
   await tpRunAuto(st);
 }
+// monta um herói de teste de uma classe (nível 3) com truques/magias auto-escolhidos
+function tpBuildTestHero(cls){
+  const casterAb={ Mago:'INT', Clérigo:'SAB', Druida:'SAB', Feiticeiro:'CAR', Bardo:'CAR', Bruxo:'CAR', Paladino:'CAR', Patrulheiro:'SAB' };
+  const sc={ FOR:14, DES:14, CON:14, INT:10, SAB:11, CAR:10 };
+  if (casterAb[cls]) sc[casterAb[cls]]=16;
+  if (cls==='Guerreiro'||cls==='Bárbaro'||cls==='Paladino') sc.FOR=16;
+  const cantrips=(typeof cantripsFor==='function'?cantripsFor(cls):[]).slice(0,3);
+  const spells=(typeof spellsL1For==='function'?spellsL1For(cls):[]).slice(0,4);
+  let c;
+  try { c=buildCharacter({ name:'Herói de Teste', player:'Mestre', slot:0, race:'Humano', cls, scores:sc, cantrips, spells, fightingStyle: cls==='Guerreiro'?'Defesa':null }); }
+  catch(e){ try{ console.log('tpBuildTestHero', e.message); }catch(_){} return null; }
+  c.level=3; c.prof=2;
+  try { recomputeSpellSlots(c); } catch(e){}
+  c.maxHp = (c.maxHp||10) + (c.level-1)*6; c.hp=c.maxHp;   // HP jogável p/ teste
+  c.owner='test-admin'; c.ownerName='Mestre'; c.player='Mestre'; c.slot=0; c.conditions=[];
+  return c;
+}
+function tpSetHeroClass(cls){
+  const st=ROOM.state; const hero=tpBuildTestHero(cls);
+  if (!hero){ toast('Não consegui montar '+cls); return; }
+  st.characters[0]=hero; st.combat=null; st.tactical=null; LAST_COMBAT=false; PENDING_ABILITY=null; ABILITY_MENU_OPEN=false;
+  const slotInfo = hero.spellSlots ? ` · slots nv1: ${hero.spellSlots.max}` : (castableAbilities(hero).length?'':' (sem magias — classe marcial)');
+  toast('Herói de teste: '+cls+slotInfo);
+  renderGame();
+}
 function injectTestPanel(){
   if (document.getElementById('testPanel')) return;
   const encs = Object.keys((typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters) || {});
@@ -2731,7 +2916,9 @@ function injectTestPanel(){
   el.innerHTML = `
     <div class="tp-head">🧪 Painel de Teste <span class="tp-build">v${BUILD}</span><button id="tpToggle" title="Mostrar/esconder">▾</button></div>
     <div class="tp-body" id="tpBody">
-      <div class="tp-sec"><b>⚔ Combate — você controla o herói</b><div class="tp-hint">clique no mapa pra mover (alcance = Speed); clique no inimigo pra atacar; os inimigos agem sozinhos</div><div class="tp-row">
+      <div class="tp-sec"><b>🧙 Classe do herói (testar magias)</b><div class="tp-hint">troca o herói de teste de classe pra testar truques/magias no tabuleiro (Mago/Clérigo conjuram já no nv1)</div><div class="tp-row">
+        <select id="tpClass"><option>Guerreiro</option><option>Mago</option><option>Clérigo</option><option>Feiticeiro</option><option>Bardo</option><option>Paladino</option><option>Ladino</option><option>Bárbaro</option></select><button id="tpClassGo">trocar</button></div></div>
+      <div class="tp-sec"><b>⚔ Combate — você controla o herói</b><div class="tp-hint">clique no mapa pra mover (alcance = Speed); clique no inimigo pra atacar; ✨ Ações pra magias; os inimigos agem sozinhos</div><div class="tp-row">
         ${encs.map(e=>`<button data-enc="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</button>`).join('')}
       </div><button data-endc="1" class="wide">encerrar combate</button></div>
       <div class="tp-sec"><b>🤖 Combate simulado (a engine joga sozinha)</b><div class="tp-hint">só pra ASSISTIR — você não controla. Pra jogar, use os botões ⚔ acima.</div><div class="tp-row">
@@ -2760,6 +2947,7 @@ function injectTestPanel(){
   if (simGo) simGo.onclick = () => { if (TP_SIM) return; TP_SIM = true; simGo.disabled = true;
     tpSimCombat(el.querySelector('#tpSimEnc').value).catch(e=>toast('Sim: '+e.message)).finally(()=>{ TP_SIM = false; simGo.disabled = false; }); };
   if (simStop) simStop.onclick = () => { TP_SIM = false; };
+  const clsGo = el.querySelector('#tpClassGo'); if (clsGo) clsGo.onclick = () => tpSetHeroClass(el.querySelector('#tpClass').value);
   el.querySelectorAll('[data-roll]').forEach(b => b.onclick = () => tpTestRoll(b.dataset.roll));
   el.querySelector('#tpGuide').onclick = () => openGuide();
   el.querySelector('#tpMap').onclick = () => openMapMp();
@@ -2770,7 +2958,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627r';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627s';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
