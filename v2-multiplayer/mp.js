@@ -119,6 +119,14 @@ function renderTacticalMap(st,m){
   const activeId=tacActiveOwner(st); const pos=(st.tactical&&st.tactical.pos)||{};
   const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]);
   const reach = canMove ? tacReachable(st,m,pos[activeId],TAC_MOVE) : new Map();
+  // alvos de ataque: durante meu turno, inimigos vivos e visíveis dentro do alcance
+  const meChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
+  const myPos = activeId ? pos[activeId] : null;
+  const canAtk = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).includes('Paralisado');
+  const foeTargets = new Set();
+  if (canAtk && mpCombatActive(st)){ const rng = pcAttackRange(meChar);
+    (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if (!ep||e.curHp<=0) return;
+      if (!visible.has(tacKey(ep[0],ep[1]))) return; if (tacDist(myPos,ep)<=rng) foeTargets.add(e.id); }); }
   let terrain='',fog='',moves='';
   for (let y=0;y<H;y++) for (let x=0;x<W;x++){
     const px=x*TAC_CELL,py=y*TAC_CELL,k=tacKey(x,y); const tl=TAC_TILE[tacTileType(m,x,y)]||TAC_TILE.cave_floor;
@@ -140,7 +148,10 @@ function renderTacticalMap(st,m){
     const label=ref.img?'':`<text x="${cx}" y="${cy}" class="tac-init" text-anchor="middle" dominant-baseline="central">${escapeHtml(tacInitials(ref.name))}</text>`;
     const pct=Math.max(0,Math.min(1,ref.hp/(ref.maxHp||1))), bw=r*1.8, bx=cx-bw/2, by=cy+r+3, hpc=pct>0.5?'#5a8f6b':pct>0.25?'#d9c48a':'#c4485a';
     const hpbar=dead?'':`<rect x="${bx}" y="${by}" width="${bw}" height="3" rx="1.5" fill="#0c0a10"/><rect x="${bx}" y="${by}" width="${(bw*pct).toFixed(1)}" height="3" rx="1.5" fill="${hpc}"/>`;
-    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''}">${pulse}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
+    const targetable = ref.kind==='enemy' && foeTargets.has(id);
+    const tAttr = targetable ? ` data-enemy="${escapeHtml(id)}" tabindex="0" role="button" aria-label="Atacar ${escapeHtml(ref.name)}"` : '';
+    const ring = targetable ? `<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-foe-ring"/>` : '';
+    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${targetable?'tac-foe-target':''}"${tAttr}>${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
   }
   return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
 }
@@ -148,9 +159,14 @@ function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
   const m = mpCombatActive(st) ? tacMap(st) : null;
   if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; return; }
-  card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m);
+  const myTurn = mpCombatActive(st) && tacMyTurn(st);
+  const bar = myTurn ? `<div class="tac-actions"><button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>` : '';
+  card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
   $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
     el.onclick=()=>tacRequestMove(x,y); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestMove(x,y); } }; });
+  $$('#tacticalCard .tac-foe-target').forEach(el=>{ const id=el.dataset.enemy;
+    el.onclick=()=>tacRequestAttack(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestAttack(id); } }; });
+  const endBtn=$('#tacEndBtn'); if (endBtn) endBtn.onclick=()=>tacEndTurn();
 }
 async function tacRequestMove(x,y){
   const st=ROOM.state||{}, m=tacMap(st); if (!m||!st.tactical) return;
@@ -169,6 +185,188 @@ async function tacMoveToken(st,owner,x,y){
   st.tactical.moved=st.tactical.moved||{}; st.tactical.moved[owner]=true;
   tacReveal(st);
   await saveState(st); renderGame();
+}
+
+// ============================================================
+//  MOTOR DE COMBATE PROGRAMADO (IA só narra; decisões 100% código)
+//  Regra de alvo (pedido do usuário): mira o PC MAIS PRÓXIMO; entre os
+//  mais próximos, o de MENOR HP. Dados rolados pelo código.
+// ============================================================
+const ATTACK_PREFIX = '@@ATK@@', ENDTURN_PREFIX = '@@ENDTURN@@';
+const MONSTER_AI = {
+  'Zumbi Afogado': { speed:4, reach:1, fly:false, multiattack:1, flee:0 },
+  'Zumbi':         { speed:4, reach:1, fly:false, multiattack:1, flee:0 },
+  'Polvo de Fungo':{ speed:3, reach:1, fly:false, multiattack:2, flee:0.25, trait:'grapple', anchor:true },
+  'Fume Drake':    { speed:5, reach:3, fly:true,  multiattack:1, flee:0.5, kite:true },
+  'Ghoul':         { speed:5, reach:1, fly:false, multiattack:2, flee:0, trait:'paralyze', saveDC:10 },
+  'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6' } },
+};
+const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0 };
+function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[e.name]||{}); }
+function tacDist(a,b){ return (a&&b) ? Math.max(Math.abs(a[0]-b[0]), Math.abs(a[1]-b[1])) : 0; }
+function tacLegendAt(m,x,y){ return m.legend[[...(m.cells[y]||'')][x]] || null; }
+function tacIsHazard(m,x,y){ const t=tacLegendAt(m,x,y); return !!(t&&t.hazard); }
+function tacEnterable(m,x,y,fly){ const t=tacLegendAt(m,x,y); if(!t) return false; if(!t.impassable) return true; return !!(fly&&t.hazard); }
+function aiReach(st,m,from,budget,fly){   // BFS ciente de voo; ignora células ocupadas (cadáveres já saíram)
+  const out=new Map(); if(!from) return out; out.set(tacKey(from[0],from[1]),0); let fr=[[from[0],from[1],0]];
+  const D=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  while(fr.length){ const nx=[]; for(const [x,y,c] of fr){ if(c>=budget) continue; for(const [dx,dy] of D){ const a=x+dx,b=y+dy,k=tacKey(a,b);
+    if(a<0||b<0||a>=m.w||b>=m.h||out.has(k)||!tacEnterable(m,a,b,fly)||tacOccupant(st,a,b)) continue;
+    if(dx&&dy&&!tacEnterable(m,x+dx,y,fly)&&!tacEnterable(m,x,y+dy,fly)) continue;
+    out.set(k,c+1); nx.push([a,b,c+1]); } } fr=nx; }
+  out.delete(tacKey(from[0],from[1])); return out;
+}
+function aiLivePcs(st){ const pos=(st.tactical&&st.tactical.pos)||{};
+  return (st.characters||[]).map((c,idx)=>({idx,owner:c.owner,pc:c,pos:pos[c.owner]})).filter(t=>(t.pc.hp||0)>0); }
+// REGRA DO USUÁRIO: PC mais próximo primeiro; entre os próximos (folga de 1), o de menor HP
+function aiPickTarget(st,e){
+  const live=aiLivePcs(st); if(!live.length) return null;
+  const sp=(st.tactical&&st.tactical.pos)||{}; const self=sp[e.id];
+  live.forEach(t=> t.d = (self&&t.pos)?tacDist(self,t.pos):0);
+  const minD=Math.min(...live.map(t=>t.d)); const near=live.filter(t=>t.d<=minD+1);
+  near.sort((a,b)=> (a.pc.hp-b.pc.hp) || (a.d-b.d) || (a.idx-b.idx));
+  return near[0];
+}
+function aiMoveDest(st,m,e,prof,target){
+  const self=st.tactical.pos[e.id], tp=target.pos; if(!self||!tp) return self;
+  const reach=aiReach(st,m,self,prof.speed,prof.fly); let best=self, bs=Infinity;
+  const consider=(x,y)=>{ const d=tacDist([x,y],tp); let s = prof.kite ? Math.abs(d-prof.reach)*10 + (d<prof.reach?6:0) : d*10;
+    if(tacIsHazard(m,x,y)) s+=4; if(s<bs){ bs=s; best=[x,y]; } };
+  consider(self[0],self[1]);
+  for(const k of reach.keys()){ const [x,y]=k.split(',').map(Number); consider(x,y); }
+  return best;
+}
+function tacKill(st,id){ if(st.tactical&&st.tactical.pos) delete st.tactical.pos[id]; }   // tira o token morto do tabuleiro
+function aiEnemyAttack(st,e,prof,target,ev){
+  for(let k=0;k<(prof.multiattack||1);k++){
+    if((target.pc.hp||0)<=0) break;
+    const atk=mpD20(null,e.mod||0); const hit=atk.crit||(!atk.fumble&&atk.total>=(target.pc.ca||10));
+    st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.pc.ca, tipo:'ataque', nat:atk.nat });
+    if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); target.pc.hp=Math.max(0,target.pc.hp-d.total);
+      ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:d.total,down:target.pc.hp<=0});
+      if(target.pc.hp<=0){ tacKill(st,target.owner); break; } }
+    else ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:false});
+  }
+}
+function aiApplyTrait(st,e,prof,target,ev){
+  if((target.pc.hp||0)<=0) return; const c=target.pc; c.conditions=c.conditions||[];
+  if(prof.trait==='paralyze'){ const sv=mpD20(c, abilityMod(c.abilities.CON)), ok=sv.total>=(prof.saveDC||10);
+    st.history.push({ role:'roll', label:`${c.name} · save CON`, total:sv.total, mod:abilityMod(c.abilities.CON), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:prof.saveDC||10, tipo:'save', nat:sv.nat });
+    if(!ok && !c.conditions.includes('Paralisado')) c.conditions.push('Paralisado');
+    ev.push({kind:'trait',tgtName:c.name,cond:'paralisado',saved:ok}); }
+  else if(prof.trait==='grapple'){ const mod=Math.max(abilityMod(c.abilities.FOR),abilityMod(c.abilities.DES)), sv=mpD20(c,mod), ok=sv.total>=12;
+    st.history.push({ role:'roll', label:`${c.name} · escapar do agarrão`, total:sv.total, mod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:12, tipo:'save', nat:sv.nat });
+    if(!ok && !c.conditions.includes('Agarrado')) c.conditions.push('Agarrado');
+    ev.push({kind:'trait',tgtName:c.name,cond:'agarrado',saved:ok}); }
+}
+function aiDragonBreath(st,m,e,prof,ev){
+  const br=prof.breath, t0=aiPickTarget(st,e); if(!t0) return; const center=t0.pos||(st.tactical&&st.tactical.pos[e.id]); const names=[];
+  aiLivePcs(st).forEach(t=>{ if(!t.pos||tacDist(t.pos,center)>br.radius) return;
+    const sv=mpD20(t.pc, abilityMod(t.pc.abilities.DES)), full=mpRollDmgExpr(br.dmg), dmg=sv.total>=br.dc?Math.floor(full.total/2):full.total;
+    st.history.push({ role:'roll', label:`${t.pc.name} · save DES (sopro)`, total:sv.total, mod:abilityMod(t.pc.abilities.DES), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:br.dc, tipo:'save', nat:sv.nat });
+    t.pc.hp=Math.max(0,t.pc.hp-dmg); names.push(t.pc.name); if(t.pc.hp<=0) tacKill(st,t.owner); });
+  ev.push({kind:'breath',srcName:e.name,tgtName:names.join(', ')||'ninguém'});
+}
+function aiRunEnemyTurn(st,e,ev){
+  const prof=aiProfile(e), m=tacMap(st), self=st.tactical&&st.tactical.pos[e.id];
+  if(prof.flee>0 && (e.curHp/e.hp)<prof.flee){   // moral: recua se muito ferido
+    if(m&&self){ const reach=aiReach(st,m,self,prof.speed,prof.fly), t=aiPickTarget(st,e), tp=t&&t.pos; let best=self,bd=-1;
+      if(tp){ for(const k of reach.keys()){ const [x,y]=k.split(',').map(Number), d=tacDist([x,y],tp); if(d>bd){bd=d;best=[x,y];} } }
+      if(best[0]!==self[0]||best[1]!==self[1]){ st.tactical.pos[e.id]=best; tacReveal(st); } }
+    ev.push({kind:'flee',srcName:e.name}); return; }
+  if(prof.breath && e.breathReady===false && mpRollDie(6)>=5) e.breathReady=true;   // recarga do sopro
+  const target=aiPickTarget(st,e);
+  if(!target){ ev.push({kind:'idle',srcName:e.name}); return; }
+  if(prof.breath && e.breathReady){ aiDragonBreath(st,m,e,prof,ev); e.breathReady=false; return; }
+  if(m&&self&&target.pos&&tacDist(self,target.pos)>prof.reach){   // move até o alcance
+    const dest=aiMoveDest(st,m,e,prof,target);
+    if(dest[0]!==self[0]||dest[1]!==self[1]){ st.tactical.pos[e.id]=dest; tacReveal(st); ev.push({kind:'move',srcName:e.name,tgtName:target.pc.name}); } }
+  const now=(m&&st.tactical&&st.tactical.pos[e.id]) ? tacDist(st.tactical.pos[e.id],target.pos) : prof.reach;
+  if(now<=prof.reach){ aiEnemyAttack(st,e,prof,target,ev); if(prof.trait) aiApplyTrait(st,e,prof,target,ev); }
+  else ev.push({kind:'idle',srcName:e.name});
+}
+function narrateRoundTemplate(ev){
+  const L=[]; ev.forEach(x=>{
+    if(x.kind==='move') L.push(`${x.srcName} avança sobre ${x.tgtName}.`);
+    else if(x.kind==='attack'&&x.hit) L.push(x.crit?`${x.srcName} desfere um golpe brutal em ${x.tgtName} (${x.dmg})${x.down?' — ele cai!':'!'}`:`${x.srcName} acerta ${x.tgtName} (${x.dmg})${x.down?', que tomba!':'.'}`);
+    else if(x.kind==='attack') L.push(`${x.tgtName} escapa do ataque de ${x.srcName}.`);
+    else if(x.kind==='trait') L.push(x.saved?`${x.tgtName} resiste.`:`${x.tgtName} fica ${x.cond}!`);
+    else if(x.kind==='breath') L.push(`${x.srcName} libera seu sopro — ${x.tgtName} é atingido!`);
+    else if(x.kind==='flee') L.push(`${x.srcName}, ferido, recua.`);
+    else if(x.kind==='idle') L.push(`${x.srcName} se aproxima, espreitando.`);
+  });
+  return L.join(' ');
+}
+function summarizeRoundForAI(ev){
+  const L=ev.map(x=>{
+    if(x.kind==='move') return `${x.srcName} avança até ${x.tgtName}`;
+    if(x.kind==='attack') return x.hit?`${x.srcName} ACERTA ${x.tgtName} (${x.dmg} de dano${x.crit?', crítico':''}${x.down?'; cai':''})`:`${x.srcName} ERRA ${x.tgtName}`;
+    if(x.kind==='trait') return x.saved?`${x.tgtName} resiste ao efeito`:`${x.tgtName} fica ${x.cond}`;
+    if(x.kind==='breath') return `${x.srcName} usa o sopro (atinge ${x.tgtName})`;
+    if(x.kind==='flee') return `${x.srcName} recua, ferido`;
+    return `${x.srcName} espreita`;
+  });
+  return `[TURNO DOS INIMIGOS — JÁ RESOLVIDO PELO SISTEMA, dano já aplicado]\n- ${L.join('\n- ')}\nNarre em 1-3 frases curtas, em personagem (PT-BR). NÃO peça rolagem, NÃO use marcadores, NÃO altere acertos nem dano.`;
+}
+async function deliverEnemyNarration(st,ev){
+  if(!ev.length) return; let text='';
+  try { const reply=await callDm(st, summarizeRoundForAI(ev)); text=(reply||'').replace(/\[[^\]]*\]/g,'').trim(); } catch(e){}
+  if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero
+  if(text) st.history.push({ role:'dm', text });
+}
+// SUBSTITUI mpRunEnemyTurns: inimigos agem 100% por código; 1 narração por bloco
+async function mpRunEnemyTurnsAuto(st){
+  let guard=0;
+  while(mpCombatActive(st) && guard++<12){
+    if(mpAllPcsDead(st)){ st.history.push({role:'scene',text:'⚰ O grupo tombou em combate…'}); mpEndCombat(st,false); break; }
+    if(mpAllEnemiesDead(st)){ mpEndCombat(st,true); break; }
+    const acting=[];
+    while(mpCombatActive(st)){ const cur=mpCurrentActor(st); if(!cur) break;
+      if(cur.kind==='pc'){ if((st.characters[cur.idx]||{}).hp>0) break; mpAdvanceCombat(st); continue; }
+      const e=st.combat.enemies[cur.idx]; if(e.curHp>0) acting.push(e); mpAdvanceCombat(st); }
+    if(!acting.length) break;
+    const ev=[];
+    for(const e of acting){ if(e.curHp<=0) continue;
+      aiRunEnemyTurn(st,e,ev); await saveState(st); renderGame(); await mpSleep(450);
+      if(mpAllPcsDead(st)) break; }
+    await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
+    if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
+  }
+}
+// ---- ataque do jogador no tabuleiro ----
+function pcAttackRange(c){ const w=String(c.weapon||(c.weapons&&c.weapons[0])||'').toLowerCase(); return /arco|besta|funda|dardo|azagaia|estilingue/.test(w)?8:1; }
+async function playerAttack(owner,enemyId,st){
+  if(!mpCombatActive(st)) return;
+  const c=(st.characters||[]).find(x=>x.owner===owner), e=(st.combat.enemies||[]).find(x=>x.id===enemyId);
+  if(!c||!e||e.curHp<=0||(c.conditions||[]).includes('Paralisado')) return;
+  const m=tacMap(st), pp=st.tactical&&st.tactical.pos[owner], ep=st.tactical&&st.tactical.pos[e.id];
+  if(m&&pp&&ep&&tacDist(pp,ep)>pcAttackRange(c)) return;   // fora de alcance
+  const atr = pcAttackRange(c)>1?'DES':'FOR';
+  const card=doMpRoll(c, ['','ataque',atr,'0',e.name]); card.dc=e.ca;
+  const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
+  st.history.push(card);
+  if(hit&&card.dmg){ e.curHp=Math.max(0,e.curHp-card.dmg.total); if(e.curHp<=0) tacKill(st,e.id); }
+  if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
+  await saveState(st); renderGame();
+}
+// avança a partir do turno do PC (após atacar ou encerrar) e dispara os inimigos
+async function tacAdvanceFromPc(st){
+  if(!mpCombatActive(st)){ await saveState(st); renderGame(); return; }
+  advanceTurn(st); await saveState(st); renderGame();
+  const cur=mpCurrentActor(st);
+  if(cur&&cur.kind==='enemy'){ st.busy=true; await saveState(st); renderGame(); await mpRunEnemyTurnsAuto(st); st.busy=false; await saveState(st); renderGame(); }
+}
+async function tacRequestAttack(enemyId){
+  const st=ROOM.state||{}; const owner=tacActiveOwner(st);
+  if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await playerAttack(owner,enemyId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(atk)', text: ATTACK_PREFIX+JSON.stringify({owner,enemyId}) }); }catch(e){} }
+}
+async function tacEndTurn(){
+  const st=ROOM.state||{}; const owner=tacActiveOwner(st);
+  if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(fim)', text: ENDTURN_PREFIX }); }catch(e){} }
 }
 
 function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
@@ -1662,6 +1860,9 @@ function mpStartCombat(st, encId){
   st.history = st.history || [];
   st.history.push({ role:'scene', text:`⚔ COMBATE: ${(enc.name||'').toUpperCase()} ⚔` });
   tacSeed(st);   // posiciona PCs e inimigos no mapa tático da cena (se houver)
+  st.combat.enemies.forEach(e => { const p = aiProfile(e);   // inicia IA: sopro carregado, âncora de spawn
+    if (p.breath) e.breathReady = true;
+    if (p.anchor && st.tactical) e._anchor = (st.tactical.pos||{})[e.id]; });
   return true;
 }
 // avança o ponteiro de iniciativa, pulando quem está caído; conta rodadas
@@ -1727,7 +1928,7 @@ async function gmCombatSkip(){
   const st = ROOM.state;
   mpAdvanceCombat(st);
   await saveState(st); renderGame();
-  if (mpCurrentActor(st) && mpCurrentActor(st).kind==='enemy'){ st.busy = true; await saveState(st); renderGame(); await mpRunEnemyTurns(st); st.busy = false; await saveState(st); renderGame(); }
+  if (mpCurrentActor(st) && mpCurrentActor(st).kind==='enemy'){ st.busy = true; await saveState(st); renderGame(); await mpRunEnemyTurnsAuto(st); st.busy = false; await saveState(st); renderGame(); }
 }
 async function gmCombatEnd(){
   if (!amIAdmin() || !mpCombatActive(ROOM.state)) return;
@@ -1735,34 +1936,8 @@ async function gmCombatEnd(){
   mpEndCombat(ROOM.state, false);
   await saveState(ROOM.state); renderGame();
 }
-// auto-conduz os inimigos: junta os que agem antes do próximo PC vivo e narra
-// TODOS numa ÚNICA chamada à IA (economiza tokens em vez de 1 chamada por inimigo)
-async function mpRunEnemyTurns(st){
-  let guard = 0;
-  while (mpCombatActive(st) && guard++ < 12){
-    if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); break; }
-    if (mpAllEnemiesDead(st)){ mpEndCombat(st, true); break; }
-    // coleta os inimigos vivos que agem agora, até o próximo PC vivo
-    const acting = [];
-    while (mpCombatActive(st)){
-      const cur = mpCurrentActor(st);
-      if (!cur) break;
-      if (cur.kind==='pc'){ if ((st.characters[cur.idx]||{}).hp > 0) break; mpAdvanceCombat(st); continue; }
-      const e = st.combat.enemies[cur.idx];
-      if (e.curHp > 0) acting.push(e);
-      mpAdvanceCombat(st);
-    }
-    if (!acting.length) break;   // chegou num PC vivo → ele joga
-    await saveState(st); renderGame();
-    await mpSleep(600);
-    const lista = acting.map(e => `${e.name} (HP ${e.curHp}/${e.hp}, dano ${e.dmg||'1d6'})`).join('; ');
-    const reply = await callDm(st, `[TURNO DOS INIMIGOS] É a vez destes inimigos: ${lista}. Narre as ações deles AGORA, no total em 1-3 frases, coerente com a cena. Para cada herói atingido, aplique [DANO:NomeDoHeroi:quantidade]. NÃO peça rolagem nem fale como sistema.`);
-    applyMpMarkers(reply, st);
-    const clean = reply.replace(/\[[^\]]*\]/g, '').trim();
-    if (clean) st.history.push({ role:'dm', text: clean });
-    await saveState(st); renderGame();
-  }
-}
+// (mpRunEnemyTurns antigo — narração 100% IA — foi substituído por
+//  mpRunEnemyTurnsAuto: inimigos agem por código e a IA só dá o sabor.)
 
 // ---------------- ENGINE (roda no cliente do ADMIN) ----------------
 async function saveState(st){
@@ -1836,6 +2011,27 @@ async function onPlayerAction(action){
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
   }
+  // ataque no tabuleiro: o admin resolve o ataque enviado pelo jogador e dispara os inimigos
+  if (typeof action.text === 'string' && action.text.startsWith(ATTACK_PREFIX)){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
+    engineBusy = true; PROCESSED_IDS.add(action.id);
+    const st = ROOM.state || {};
+    try { const d = JSON.parse(action.text.slice(ATTACK_PREFIX.length));
+      if (d && d.owner === tacActiveOwner(st)){ await playerAttack(d.owner, d.enemyId, st); await tacAdvanceFromPc(st); } }
+    catch(e){}
+    finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
+    return;
+  }
+  // encerrar turno no tabuleiro: passa a vez e dispara os inimigos
+  if (action.text === ENDTURN_PREFIX){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
+    engineBusy = true; PROCESSED_IDS.add(action.id);
+    const st = ROOM.state || {};
+    try { await tacAdvanceFromPc(st); }
+    catch(e){}
+    finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
+    return;
+  }
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
   engineBusy = true; PROCESSED_IDS.add(action.id);
   const st = ROOM.state || {};
@@ -1881,7 +2077,7 @@ async function onPlayerAction(action){
       if (!clean) st.history.push({ role:'dm', text:'…' });
       if (mpCombatActive(st)){
         if (hadCombat) advanceTurn(st);                     // já estava em combate: passa o ponteiro do PC que agiu
-        await mpRunEnemyTurns(st);                          // auto-conduz inimigos até o próximo PC vivo
+        await mpRunEnemyTurnsAuto(st);                      // auto-conduz inimigos até o próximo PC vivo
       } else advanceTurn(st);
       break;
     }

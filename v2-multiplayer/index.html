@@ -348,7 +348,15 @@
   .tac-x{ font-size:18px; fill:var(--blood); font-weight:700; }
   .tac-pulse{ fill:none; stroke-width:2.5; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.6s ease-out infinite; }
   .tac-pulse.pc{ stroke:var(--ember); } .tac-pulse.enemy{ stroke:var(--blood); }
-  @media (prefers-reduced-motion: reduce){ .tac-pulse{ animation:none; } }
+  .tac-foe-target{ cursor:pointer; outline:none; }
+  .tac-foe-ring{ fill:none; stroke:var(--blood); stroke-width:2; stroke-dasharray:3 2; opacity:0.85; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.4s ease-out infinite; }
+  .tac-foe-target:hover .tac-foe-ring, .tac-foe-target:focus .tac-foe-ring{ opacity:1; stroke-width:3; }
+  .tac-foe-target:hover .tac-disc, .tac-foe-target:focus .tac-disc{ filter:drop-shadow(0 0 5px var(--blood)); }
+  .tac-actions{ display:flex; justify-content:center; margin-top:8px; }
+  .tac-end{ font-family:var(--font-mono); font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--parch);
+    background:#1b1320; border:1px solid var(--basalt-600); border-radius:8px; padding:7px 16px; cursor:pointer; transition:background .12s, border-color .12s; }
+  .tac-end:hover{ background:#2a1d30; border-color:var(--ember); }
+  @media (prefers-reduced-motion: reduce){ .tac-pulse, .tac-foe-ring{ animation:none; } }
   .map-detail{ margin-top:14px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:12px 14px; min-height:64px; }
   .map-d-head{ font-size:0.98rem; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .map-d-chap{ font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--ember); margin:3px 0 6px; }
@@ -941,11 +949,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627i"></script>
-<script src="campaign.js?v=20260627i"></script>
-<script src="tactical-maps.js?v=20260627i"></script>
-<script src="creation-mp.js?v=20260627i"></script>
-<script src="sfx.js?v=20260627i"></script>
-<script src="mp.js?v=20260627i"></script>
+<script src="rules.js?v=20260627j"></script>
+<script src="campaign.js?v=20260627j"></script>
+<script src="tactical-maps.js?v=20260627j"></script>
+<script src="creation-mp.js?v=20260627j"></script>
+<script src="sfx.js?v=20260627j"></script>
+<script src="mp.js?v=20260627j"></script>
 </body>
 </html>
