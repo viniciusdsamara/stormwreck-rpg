@@ -214,6 +214,7 @@ function renderTactical(st){
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
   tacAnimateMoves();   // desliza tokens que mudaram de célula
+  fxPlay(st);          // toca as animações de combate novas (deduplicadas por id)
   $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
     el.onclick=()=>tacRequestMove(x,y); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestMove(x,y); } }; });
   $$('#tacticalCard .tac-foe-target').forEach(el=>{ const id=el.dataset.enemy;
@@ -243,6 +244,123 @@ function tacAnimateMoves(){
   });
   TAC_PREV_POS = cur;
 }
+// ════════════════════════════════════════════════════════════════════════
+//  FX ENGINE — animações de combate (PURAMENTE VISUAL). Espelhado via st.fx →
+//  toca em TODOS os clientes, 1× cada (dedupe por id). NÃO altera estado/HP.
+//  Mesmo padrão de tacAnimateMoves()/TAC_PREV_POS.
+// ════════════════════════════════════════════════════════════════════════
+const FX_NS='http://www.w3.org/2000/svg', FX_MAX=24, FX_TTL_MS=5000;
+let FX_SEQ=0, FX_SEEDED=false; const FX_SEEN=new Set();
+function fxReduce(){ return (typeof window!=='undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+function fxCellPx(c){ return c ? [c[0]*TAC_CELL+TAC_CELL/2, c[1]*TAC_CELL+TAC_CELL/2] : null; }
+function fxPosOf(st,id){ const p=(st&&st.tactical&&st.tactical.pos)||{}; return fxCellPx(p[id]); }
+function fxMultCls(mult){ return mult==='imune'?'fx-imune':mult==='vulnerável'?'fx-vuln':mult==='resistência'?'fx-resist':''; }
+function fxResult(hit,crit){ return crit?'crit':hit?'hit':'miss'; }
+// EMISSÃO — só o admin escreve (single-writer); st.fx viaja no save a todos
+function fxEmit(st,d){ if(!st||!amIAdmin()) return; st.fx=st.fx||[]; d.id=`${Date.now().toString(36)}-${(FX_SEQ++).toString(36)}`; d.t=Date.now(); st.fx.push(d); if(st.fx.length>FX_MAX) st.fx.splice(0,st.fx.length-FX_MAX); }
+function fxClear(st){ if(st) st.fx=[]; }
+function fxSeedSeen(st){ ((st&&st.fx)||[]).forEach(d=>{ if(d.id) FX_SEEN.add(d.id); }); }
+const FX_DTYPE={ fogo:{c:'#ff7a2e',g:'#ffd24a'}, frio:{c:'#7fd4ff',g:'#d6f6ff'}, 'necrótico':{c:'#7b5ea8',g:'#caa9d6'},
+  radiante:{c:'#ffe9a8',g:'#fff6d0'}, 'força':{c:'#c9a0ff',g:'#ffc4f4'}, 'psíquico':{c:'#c77bff',g:'#f0d6ff'},
+  'elétrico':{c:'#9fd0ff',g:'#fff'}, 'trovão':{c:'#bcd0ff',g:'#eef4ff'}, veneno:{c:'#8fdf4a',g:'#d6ff9a'},
+  'ácido':{c:'#b8f04a',g:'#eaffb0'}, cortante:{c:'#f4e4c1',g:'#fff'}, perfurante:{c:'#cfe3ef',g:'#fff'}, 'concussão':{c:'#e8b15a',g:'#ffe'} };
+function fxCol(dtype){ return FX_DTYPE[dmgNorm(dtype)] || FX_DTYPE['concussão']; }
+function fxTok(svg,id){ try{ return svg.querySelector(`g.tac-tok[data-id="${(window.CSS&&CSS.escape)?CSS.escape(String(id)):String(id)}"]`); }catch(e){ return null; } }
+function fxSpawn(layer,markup,ms){ const g=document.createElementNS(FX_NS,'g'); g.setAttribute('class','tac-fx'); g.innerHTML=markup; layer.appendChild(g); setTimeout(()=>{ try{g.remove();}catch(e){} }, ms||1200); return g; }
+function fxRetrigger(node,cls,ms){ if(!node) return; node.classList.remove(cls); void node.getBoundingClientRect(); node.classList.add(cls); if(ms) setTimeout(()=>{ try{node.classList.remove(cls);}catch(e){} }, ms); }
+// PLAYBACK — roda em todos, chamado no fim de renderTactical
+function fxPlay(st){
+  const svg=$('#tacticalCard svg.tac-svg'); if(!svg) return;
+  fxDrawTethers(svg,st);                          // tethers de agarrão (persistentes)
+  const list=(st&&st.fx)||[]; if(!list.length) return;
+  const reduce=fxReduce(), now=Date.now();
+  let layer=svg.querySelector('g.tac-fx-layer');
+  if(!layer){ layer=document.createElementNS(FX_NS,'g'); layer.setAttribute('class','tac-fx-layer'); layer.setAttribute('pointer-events','none'); svg.appendChild(layer); }
+  for(const d of list){ if(FX_SEEN.has(d.id)) continue; FX_SEEN.add(d.id); if(now-(d.t||0)>FX_TTL_MS) continue; if(reduce) continue; try{ fxDraw(layer,svg,d,st); }catch(e){} }
+  if(FX_SEEN.size>256){ FX_SEEN.clear(); list.forEach(x=>FX_SEEN.add(x.id)); }
+}
+function fxDraw(layer,svg,d,st){
+  const s=fxPosOf(st,d.src), tgtIds=d.tgts||(d.tgt!=null?[d.tgt]:[]); const ds=`style="animation-delay:${(d.seq||0)*120}ms"`;
+  switch(d.kind){
+    case 'melee':  return fxDraw_melee(layer,d,s,tgtIds,ds,st);
+    case 'ranged': return fxDraw_ranged(layer,d,s,tgtIds,st);
+    case 'area': case 'breath': return fxDraw_area(layer,d,st);
+    case 'heal':   return fxDraw_heal(layer,st,tgtIds,ds);
+    case 'react':  return fxDraw_react(layer,svg,d,st);
+    case 'oa':     return fxDraw_oa(layer,d,st);
+    case 'stun':   return fxDraw_stun(layer,st,tgtIds);
+  }
+}
+// MELEE — corte/estocada/impacto no alvo (sem lunge no token: evita colisão com o slide de movimento)
+function fxDraw_melee(layer,d,s,tgtIds,ds,st){
+  const phys=dmgNorm(d.dtype)||'concussão', mc=fxMultCls(d.mult);
+  tgtIds.forEach(tid=>{ const t=fxPosOf(st,tid); if(!t) return;
+    const ang=s?Math.round(Math.atan2(t[1]-s[1],t[0]-s[0])*180/Math.PI):0;
+    let glyph;
+    if(d.result==='miss') glyph=`<line class="fx-whiff" x1="-16" y1="0" x2="16" y2="0"/>`;
+    else if(phys==='cortante') glyph=`<path class="fx-slash" d="M-16 -13 A21 21 0 0 1 16 -13"/>`;
+    else if(phys==='perfurante') glyph=`<path class="fx-thrust" d="M-19 0 L14 0 M4 -6 L16 0 L4 6"/>`;
+    else glyph=`<g class="fx-impact"><circle r="6"/><circle r="13"/><circle r="20"/></g>`;
+    const big=d.mult==='vulnerável'?1.3:1;
+    fxSpawn(layer,`<g class="fx-melee ${phys} ${d.result} ${mc}" transform="translate(${t[0]},${t[1]}) rotate(${ang}) scale(${big})" ${ds}>${glyph}${d.mult==='imune'?'<text class="fx-puff" y="-22">sem efeito</text>':''}</g>`,700); });
+}
+// RANGED — projétil atacante→alvo, cor por dtype
+function fxDraw_ranged(layer,d,s,tgtIds,st){
+  tgtIds.forEach(tid=>{ const t=fxPosOf(st,tid); if(!s||!t) return; const col=fxCol(d.dtype);
+    fxSpawn(layer,`<line x1="${s[0]}" y1="${s[1]}" x2="${t[0]}" y2="${t[1]}" class="fx-bolt-line ${d.result}" stroke="${col.c}"/><circle r="4" fill="${col.g}" class="fx-bolt ${d.result}" style="color:${col.c}"><animateMotion dur="0.3s" fill="freeze" path="M${s[0]},${s[1]} L${t[0]},${t[1]}"/></circle>`,700); });
+}
+// AREA/BREATH — cone (origin→centro) ou burst radial, cor por dtype
+function fxDraw_area(layer,d,st){
+  const o=fxPosOf(st,d.src), c=fxCellPx(d.center)||o; if(!c) return; const col=fxCol(d.dtype);
+  const reach=((d.radius||1)+0.6)*TAC_CELL, ang=o?Math.atan2(c[1]-o[1],c[0]-o[0]):0;
+  const cone=(d.kind==='breath'||d.cone)&&o&&Math.hypot(c[0]-o[0],c[1]-o[1])>1; let path;
+  if(cone){ const sp=Math.PI/4, ox=o[0], oy=o[1], x1=ox+Math.cos(ang-sp)*reach, y1=oy+Math.sin(ang-sp)*reach, x2=ox+Math.cos(ang+sp)*reach, y2=oy+Math.sin(ang+sp)*reach;
+    path=`<path class="fx-area cone ${fxMultCls(d.mult)}" d="M${ox} ${oy} L${x1.toFixed(1)} ${y1.toFixed(1)} A${reach.toFixed(1)} ${reach.toFixed(1)} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z" style="transform-origin:${ox}px ${oy}px" fill="${col.c}"/>`;
+  } else path=`<circle class="fx-area burst ${fxMultCls(d.mult)}" cx="${c[0]}" cy="${c[1]}" r="${reach.toFixed(1)}" style="transform-origin:${c[0]}px ${c[1]}px" fill="${col.c}"/>`;
+  fxSpawn(layer,path,1100);
+}
+// HEAL — brilho verde/dourado subindo no aliado
+function fxDraw_heal(layer,st,tgtIds,ds){
+  tgtIds.forEach(tid=>{ const t=fxPosOf(st,tid); if(!t) return; let sparks='';
+    for(let i=0;i<6;i++){ const dx=(i-2.5)*5; sparks+=`<circle class="fx-spark" cx="${t[0]+dx}" cy="${t[1]+TAC_CELL*0.25}" r="2.2" style="animation-delay:${i*60}ms"/>`; }
+    fxSpawn(layer,`<circle class="fx-heal-glow" cx="${t[0]}" cy="${t[1]}" r="${TAC_CELL*0.42}" ${ds}/><text class="fx-plus" x="${t[0]}" y="${t[1]-TAC_CELL*0.4}" text-anchor="middle">+</text>${sparks}`,1250); });
+}
+// REACT — impacto no alvo: tremor (token) + flash; morte = overlay posicional (token já saiu do tabuleiro)
+function fxDraw_react(layer,svg,d,st){
+  const p=d.at||fxPosOf(st,d.tgt); if(!p) return;
+  if(d.result==='death'){ const tok=fxTok(svg,d.tgt); if(tok) fxRetrigger(tok,'fx-die',800);
+    fxSpawn(layer,`<circle cx="${p[0]}" cy="${p[1]}" r="${(TAC_CELL*0.42).toFixed(1)}" class="fx-death-puff"/>`,820); return; }
+  if(d.result==='miss'){ const tok=fxTok(svg,d.tgt); if(tok) fxRetrigger(tok,'fx-whiff-shake',320); return; }
+  if(d.mult==='imune') return;
+  const tok=fxTok(svg,d.tgt); const cls=d.mult==='vulnerável'?'fx-shake-big':d.mult==='resistência'?'fx-nudge':d.result==='crit'?'fx-shake-big':'fx-shake';
+  if(tok) fxRetrigger(tok,cls,600);
+  fxSpawn(layer,`<circle class="fx-flash ${d.mult==='vulnerável'?'big':''}" cx="${p[0]}" cy="${p[1]}" r="${(TAC_CELL*0.40).toFixed(1)}"/>`,500);
+}
+// OA — raio reagente→movedor + selo ⚡ AO
+function fxDraw_oa(layer,d,st){
+  const a=fxPosOf(st,d.src), b=fxPosOf(st,d.tgt); if(!a||!b) return;
+  const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, jx=mx+(b[1]-a[1])*0.12, jy=my-(b[0]-a[0])*0.12;
+  const path=`M${a[0]} ${a[1]} L${jx.toFixed(1)} ${jy.toFixed(1)} L${b[0]} ${b[1]}`;
+  fxSpawn(layer,`<g class="fx-oa ${d.result==='miss'?'whiff':''} ${d.result==='crit'?'crit':''}"><path d="${path}" class="oa-bolt"/><path d="${path}" class="oa-bolt core"/><g class="oa-tag" transform="translate(${mx.toFixed(1)},${(my-TAC_CELL*0.34).toFixed(1)})"><rect x="-21" y="-11" width="42" height="18" rx="5" class="oa-tag-bg"/><text x="0" y="3" text-anchor="middle" class="oa-tag-tx">⚡ AO</text></g></g>`,1100);
+}
+// STUN — estrelas de atordoamento (garras do Ghoul)
+function fxDraw_stun(layer,st,tgtIds){
+  tgtIds.forEach(tid=>{ const p=fxPosOf(st,tid); if(!p) return; let stars='';
+    for(let i=0;i<5;i++){ const ang=(-90+i*30-30)*Math.PI/180, R=TAC_CELL*0.42, sx=p[0]+Math.cos(ang)*R, sy=p[1]-TAC_CELL*0.30+Math.sin(ang)*R*0.5;
+      stars+=`<text x="${sx.toFixed(1)}" y="${sy.toFixed(1)}" class="stun-star" style="--d:${i*70}ms" text-anchor="middle">✦</text>`; }
+    fxSpawn(layer,`<circle cx="${p[0]}" cy="${p[1]}" r="${(TAC_CELL*0.46).toFixed(1)}" class="stun-ring"/>${stars}`,1400); });
+}
+// TETHER do agarrão — derivado de 'Agarrado', redesenhado a cada render (persistente)
+function fxDrawTethers(svg,st){
+  let layer=svg.querySelector('g.tac-fx-tethers');
+  if(!layer){ layer=document.createElementNS(FX_NS,'g'); layer.setAttribute('class','tac-fx-tethers'); layer.setAttribute('pointer-events','none'); svg.appendChild(layer); }
+  layer.innerHTML=''; if(!mpCombatActive(st)) return; const pos=(st.tactical&&st.tactical.pos)||{};
+  (st.characters||[]).forEach(c=>{ if(!(c.conditions||[]).includes('Agarrado')) return; const cp=pos[c.owner]; if(!cp) return;
+    const g=(st.combat&&st.combat.enemies||[]).find(e=>e.curHp>0 && pos[e.id] && tacDist(cp,pos[e.id])<=1); if(!g) return;
+    const a=fxCellPx(pos[g.id]), b=fxCellPx(cp), mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2, dx=b[0]-a[0], dy=b[1]-a[1];
+    layer.insertAdjacentHTML('beforeend',`<g class="tac-fx-tether"><path d="M${a[0]} ${a[1]} Q${(mx-dy*0.18).toFixed(1)} ${(my+dx*0.18).toFixed(1)} ${b[0]} ${b[1]}" class="tether-line"/><circle cx="${b[0]}" cy="${b[1]}" r="4" class="tether-grip"/></g>`); });
+}
+
 async function tacRequestMove(x,y){
   const st=ROOM.state||{}, m=tacMap(st); if (!m||!st.tactical) return;
   const owner=tacActiveOwner(st);
@@ -340,15 +458,20 @@ function applyDamage(target, amount, type, st, opts){
   let absorbed=0;
   if (target.tempHp>0 && dmg>0){ absorbed=Math.min(target.tempHp,dmg); target.tempHp-=absorbed; dmg-=absorbed; }
   if (targetIsEnemy(target)){
+    const px = (typeof fxPosOf==='function') ? fxPosOf(st, target.id) : null;   // posição antes do tacKill (p/ animação de morte)
     const before=target.curHp; target.curHp=Math.max(0,target.curHp-dmg);
     if (mult==='imune' && st) st.history.push({ role:'scene', text:`✦ ${target.name} é imune a dano de ${t} — sem efeito.` });
+    if (typeof fxEmit==='function') fxEmit(st, { kind:'react', tgt:target.id, at:px, mult, result: opts.crit?'crit':(dmg>0?'hit':'miss') });   // impacto (cobre Fortitude)
     if (target.curHp<=0 && before>0){
       if (mpUndeadFortitude(st,target,dmg,t,opts)) return { applied:dmg, mult, down:false, absorbed };
+      if (typeof fxEmit==='function') fxEmit(st, { kind:'react', tgt:target.id, at:px, result:'death' });
       tacKill(st,target.id); }
     return { applied:dmg, mult, down:target.curHp<=0, absorbed };
   } else {
+    const px = (typeof fxPosOf==='function') ? fxPosOf(st, target.owner) : null;
     const before=target.hp; target.hp=Math.max(0,target.hp-dmg);
-    if (target.hp<=0 && before>0) tacKill(st,target.owner);
+    if (typeof fxEmit==='function') fxEmit(st, { kind:'react', tgt:target.owner, at:px, mult, result: opts.crit?'crit':(dmg>0?'hit':'miss') });
+    if (target.hp<=0 && before>0){ if (typeof fxEmit==='function') fxEmit(st, { kind:'react', tgt:target.owner, at:px, result:'death' }); tacKill(st,target.owner); }
     if (!opts.noConc && (dmg+absorbed)>0 && typeof concentrationCheckOnDamage==='function') concentrationCheckOnDamage(st,target,dmg+absorbed);
     return { applied:dmg, mult, down:target.hp<=0, absorbed };
   }
@@ -381,6 +504,8 @@ function oaEnemyStrike(st,e,pc){
   const hit=atk.crit||(!atk.fumble&&atk.total>=(pc.ca||10)); if(hit&&tam.autoCrit&&!atk.fumble) atk.crit=true;
   st.history.push({ role:'roll', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat });
   if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); applyDamage(pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e}); }
+  fxEmit(st, { kind:'oa', src:e.id, tgt:pc.owner, result:fxResult(hit,atk.crit) });
+  if(hit) fxEmit(st, { kind:'melee', dtype:enemyDmgType(e), src:e.id, tgt:pc.owner, result:fxResult(true,atk.crit) });
 }
 function oaPcStrike(st,c,e){
   const tam=(typeof targetAttackMods==='function')?targetAttackMods(e,true):{adv:false,dis:false,autoCrit:false};
@@ -389,6 +514,8 @@ function oaPcStrike(st,c,e){
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
   st.history.push(card);
   if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult; }
+  fxEmit(st, { kind:'oa', src:c.owner, tgt:e.id, result:fxResult(hit,card.crit) });
+  if(hit&&card.dmg) fxEmit(st, { kind:'melee', dtype:card.dmg.type, src:c.owner, tgt:e.id, result:fxResult(true,card.crit), mult:card.dmg.mult });
 }
 // chamado ANTES de mover 'moverId' de 'from' para 'to'; resolve OAs de quem ele deixa.
 // Devolve true se o próprio movedor caiu (parar o movimento).
@@ -457,9 +584,11 @@ function aiEnemyAttack(st,e,prof,target,ev){
     if(hit && tam.autoCrit && !atk.fumble) atk.crit=true;   // alvo paralisado/inconsciente: acerto corpo-a-corpo é crítico
     st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.pc.ca, tipo:'ataque', nat:atk.nat });
     if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
+      fxEmit(st, { kind:(prof.reach||1)<=1?'melee':'ranged', dtype:enemyDmgType(e), src:e.id, tgt:target.pc.owner, result:fxResult(true,atk.crit), mult:res.mult, seq:k });
       ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
       if(res.down){ break; } }
-    else ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:false});
+    else { fxEmit(st, { kind:(prof.reach||1)<=1?'melee':'ranged', dtype:enemyDmgType(e), src:e.id, tgt:target.pc.owner, result:'miss', seq:k });
+      ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:false}); }
   }
 }
 function aiApplyTrait(st,e,prof,target,ev){
@@ -469,7 +598,7 @@ function aiApplyTrait(st,e,prof,target,ev){
     if(fxClaws.elfImmune && /elfo/i.test(c.race||'')){ st.history.push({ role:'scene', text:`✦ ${c.name} (elfo) é imune à paralisia do ${e.name}.` }); return; }
     const sv=mpD20(c, abilityMod(c.abilities.CON)), ok=sv.total>=(prof.saveDC||10);
     st.history.push({ role:'roll', label:`${c.name} · save CON`, total:sv.total, mod:abilityMod(c.abilities.CON), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:prof.saveDC||10, tipo:'save', nat:sv.nat });
-    if(!ok && !c.conditions.includes('Paralisado')) c.conditions.push('Paralisado');
+    if(!ok && !c.conditions.includes('Paralisado')){ c.conditions.push('Paralisado'); fxEmit(st, { kind:'stun', tgt:c.owner }); }
     ev.push({kind:'trait',tgtName:c.name,cond:'paralisado',saved:ok}); }
   else if(prof.trait==='grapple'){ const mod=Math.max(abilityMod(c.abilities.FOR),abilityMod(c.abilities.DES)), sv=mpD20(c,mod), ok=sv.total>=12;
     st.history.push({ role:'roll', label:`${c.name} · escapar do agarrão`, total:sv.total, mod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:12, tipo:'save', nat:sv.nat });
@@ -482,6 +611,7 @@ function aiDragonBreath(st,m,e,prof,ev){
     const sv=mpD20(t.pc, abilityMod(t.pc.abilities.DES)), full=mpRollDmgExpr(br.dmg), dmg=sv.total>=br.dc?Math.floor(full.total/2):full.total;
     st.history.push({ role:'roll', label:`${t.pc.name} · save DES (sopro)`, total:sv.total, mod:abilityMod(t.pc.abilities.DES), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:br.dc, tipo:'save', nat:sv.nat });
     applyDamage(t.pc, dmg, (br.dtype||'fogo'), st, {}); names.push(t.pc.name); });
+  fxEmit(st, { kind:'breath', dtype:br.dtype||'fogo', src:e.id, center, radius:br.radius });
   ev.push({kind:'breath',srcName:e.name,tgtName:names.join(', ')||'ninguém'});
 }
 // ---- DURAÇÃO DAS CONDIÇÕES: no início do turno o combatente tenta se livrar ----
@@ -621,7 +751,9 @@ async function playerAttack(owner,enemyId,st){
   const card=doMpRoll(c, ['','ataque',atr,'0',e.name], { adv:tam.adv, dis:tam.dis, autoCrit:tam.autoCrit }); card.dc=e.ca;
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
   st.history.push(card);
-  if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult; }
+  if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult;
+    fxEmit(st, { kind:melee?'melee':'ranged', dtype:card.dmg.type, src:owner, tgt:e.id, result:fxResult(true,card.crit), mult:res.mult }); }
+  else fxEmit(st, { kind:melee?'melee':'ranged', dtype:(c.weapon||''), src:owner, tgt:e.id, result:'miss' });
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
 }
@@ -711,20 +843,26 @@ async function castAbility(owner, name, targetId, st){
     const hit=roll.crit||(!roll.fumble&&roll.total>=e.ca);
     const card={ role:'roll', tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:roll.total, mod:atk, dice:roll.dice, crit:roll.crit, fumble:roll.fumble, dc:e.ca, nat:roll.nat, outcome:hit?'ACERTO':'ERRO' };
     if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); const res=applyDamage(e, d.total, fx.dtype, st, {crit:roll.crit}); card.dmg={ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult }; }
+    fxEmit(st, { kind:(fx.range||1)<=1?'melee':'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:fxResult(hit,roll.crit), mult:(card.dmg&&card.dmg.mult) });
     st.history.push(card);
   } else if(fx.kind==='save'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const sv=mpD20(null, e.mod||0); const saved=sv.total>=dc;   // inimigo: save plano por e.mod (aprox.)
     const full=mpRollDmgExpr(fx.dmg); const raw=saved?(fx.half?Math.floor(full.total/2):0):full.total;
     const res=applyDamage(e, raw, fx.dtype, st, {});
+    const center=(st.tactical&&st.tactical.pos[targetId]);
+    if((fx.range||1)<=2) fxEmit(st, { kind:'area', cone:true, dtype:fx.dtype, src:owner, center, radius:1, mult:res.mult });   // cone (Mãos Flamejantes)
+    else fxEmit(st, { kind:'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:'hit', mult:res.mult });               // raio (Chama Sagrada, Repreensão…)
     st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
   } else if(fx.kind==='auto'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
     const d=mpRollDmgExpr(fx.dmg); const res=applyDamage(e, d.total, fx.dtype, st, {});
+    fxEmit(st, { kind:'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:'hit', mult:res.mult });
     st.history.push({ role:'roll', noRoll:true, tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:res.applied, outcome:'ACERTO AUTOMÁTICO', dmg:{ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult } });
   } else if(fx.kind==='heal'){
     const ally=(st.characters||[]).find(x=>x.owner===targetId) || c;
     const h=mpRollDmgExpr(fx.dmg).total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
+    fxEmit(st, { kind:'heal', tgt:(ally.owner!=null?ally.owner:owner) });
     st.history.push({ role:'roll', noRoll:true, tipo:'cura', label:`${c.name} · ${name} → ${ally.name}`, total:h, outcome:`+${h} HP`, heal:h });
   } else {
     st.history.push({ role:'scene', text:`✦ ${c.name} usa ${name}.` });
@@ -1477,6 +1615,7 @@ function enterGame(){
     $('#sfxBtn').onclick = toggleSfx;          // efeitos (teste)
     G_WIRED = true;
   }
+  if (!FX_SEEDED){ fxSeedSeen(ROOM.state||{}); FX_SEEDED = true; }   // não re-toca fx recentes ao (re)carregar a página
   updateSfxBtn();
   renderGame();
   if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
@@ -2318,6 +2457,7 @@ function mpActivePc(st){
 function mpStartCombat(st, encId){
   const enc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters[encId]);
   if (!enc) return false;
+  fxClear(st);   // zera a fila de animações no início do combate (não no fim, p/ não cortar fx do 2º cliente)
   st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp, conditions: [], tempHp: 0 })), order:[], turn:0, round:1 };
   const order = [];
   (st.characters||[]).forEach((c,idx) => order.push({ kind:'pc', idx, name:c.name, init: mpD20(c, abilityMod(c.abilities.DES)).total }));
@@ -3108,7 +3248,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627v';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627w';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
