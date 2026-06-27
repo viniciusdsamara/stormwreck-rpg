@@ -97,17 +97,22 @@ function tacActiveOwner(st){
   const ap=mpActivePc(st); return ap?ap.owner:null;
 }
 function tacMyTurn(st){ const o=tacActiveOwner(st); return !!o && o===ME.id && !st.busy && !engineBusy; }
-// economia de ação: a vez NÃO acaba sozinha. Atacar/conjurar (ação) consome a ação;
-// mover é separado; encerrar é manual (botão). Surto de Ação devolve a ação.
+// economia de ação: a vez NÃO acaba sozinha. AÇÃO (atacar/conjurar) e AÇÃO BÔNUS são
+// separadas; mover é separado; encerrar é manual (botão). Surto de Ação devolve a ação.
 function pcActed(st, owner){ return !!(st.tactical && st.tactical.acted && st.tactical.acted[owner]); }
 function pcSetActed(st, owner, v){ if(!st || !st.tactical) return; st.tactical.acted = st.tactical.acted || {}; if(v) st.tactical.acted[owner]=true; else delete st.tactical.acted[owner]; }
-function abilityUsesAction(a){ return a && a.feat ? (a.fx && a.fx.trigger==='action') : true; }   // magias = ação; features de 'bonus'/'extra' não gastam a ação
+function pcBonused(st, owner){ return !!(st.tactical && st.tactical.bonused && st.tactical.bonused[owner]); }
+function pcSetBonused(st, owner, v){ if(!st || !st.tactical) return; st.tactical.bonused = st.tactical.bonused || {}; if(v) st.tactical.bonused[owner]=true; else delete st.tactical.bonused[owner]; }
+function abilityCost(a){ if(a && a.feat) return (a.fx && a.fx.trigger) || 'action'; return 'action'; }   // 'action' | 'bonus' | 'extra' (magias = ação)
+function abilityUsesAction(a){ return abilityCost(a)==='action'; }
+// uma habilidade está esgotada nesta vez se gasta um recurso (ação/bônus) já usado
+function abilityBlockedByEconomy(st, owner, a){ const c=abilityCost(a); return (c==='action'&&pcActed(st,owner)) || (c==='bonus'&&pcBonused(st,owner)); }
 function tacSeed(st){
   const m=tacMap(st); if (!m){ st.tactical=null; return; }
   const pos={}; let si=0;
   (st.characters||[]).forEach(c=>{ const sp=m.pcSpawn[si++ % m.pcSpawn.length]; if (sp) pos[c.owner]=[sp[0],sp[1]]; });
   (st.combat.enemies||[]).forEach(e=>{ const sp=m.enemySpawn[e.id]; if (sp) pos[e.id]=[sp[0],sp[1]]; });
-  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{}, acted:{} };
+  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{}, acted:{}, bonused:{}, paths:{} };
   tacReveal(st);
 }
 function tacLOS(m,x0,y0,x1,y1){ const dx=x1-x0,dy=y1-y0,steps=Math.max(Math.abs(dx),Math.abs(dy)); if (!steps) return true;
@@ -217,8 +222,10 @@ function renderTactical(st){
       bar = `<div class="tac-actions targeting"><span class="tac-aim">🎯 ${escapeHtml(PENDING_ABILITY.name)} — clique no alvo</span><button class="tac-end alt" id="tacCancelAbBtn">cancelar</button></div>`;
     } else {
       const abBtn = (meC && pcHasAbilities(meC)) ? `<button class="tac-end ${ABILITY_MENU_OPEN?'on':''}" id="tacAbBtn">✨ Ações</button>` : '';
-      const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC, pcActed(st, owner)) : '';
-      bar = `<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
+      const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC, pcActed(st, owner), pcBonused(st, owner)) : '';
+      const mk = (used,label,icon)=>`<span class="tac-eco ${used?'used':'free'}">${icon} ${label}${used?' ✓':''}</span>`;
+      const eco = `<div class="tac-eco-row">${mk((st.tactical.moved||{})[owner],'Movimento','🏃')}${mk(pcActed(st,owner),'Ação','⚔')}${mk(pcBonused(st,owner),'Bônus','✦')}</div>`;
+      bar = `${eco}<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
     }
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
@@ -767,7 +774,12 @@ async function deliverEnemyNarration(st,ev){
 }
 // Inimigos agem 100% por código, UM POR VEZ — o ponteiro de iniciativa FICA no inimigo
 // que está agindo (o indicador de turno não pula pro PC antes da hora) e só avança depois.
+let ENEMY_LOOP_RUNNING = false;
 async function mpRunEnemyTurnsAuto(st){
+  ENEMY_LOOP_RUNNING = true;
+  try { await mpRunEnemyTurnsAutoInner(st); } finally { ENEMY_LOOP_RUNNING = false; }
+}
+async function mpRunEnemyTurnsAutoInner(st){
   try { await COMBAT_INTRO_DONE; } catch(e){}   // espera o intro de iniciativa antes do 1º turno
   const ev=[]; let guard=0;
   while(mpCombatActive(st) && guard++<24){
@@ -825,11 +837,23 @@ async function tacAdvanceFromPc(st){
   await saveState(st); renderGame();
   await tacKickEnemiesIfNeeded(st);   // se for inimigo, ele age (e o tick do PC vem no fim do bloco)
 }
+// destrava o jogo ao voltar pra aba/janela (se algo travou st.busy/engineBusy sem loop ativo)
+function tacRecoverStuck(){
+  try { const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null; if(!st) return;
+    if (st.busy && !ENEMY_LOOP_RUNNING && !engineBusy){ st.busy = false; if(typeof saveState==='function') saveState(st); }
+    if (typeof renderGame==='function') renderGame();
+  } catch(e){}
+}
+if (typeof document!=='undefined' && document.addEventListener){
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) tacRecoverStuck(); });
+  if (typeof window!=='undefined' && window.addEventListener) window.addEventListener('focus', tacRecoverStuck);
+}
 // se a vez atual é de inimigo, conduz os inimigos por código até cair num PC vivo
 async function tacKickEnemiesIfNeeded(st){
   if(!mpCombatActive(st)) return;
   const cur=mpCurrentActor(st);
-  if(cur&&cur.kind==='enemy'){ st.busy=true; await saveState(st); renderGame(); await mpRunEnemyTurnsAuto(st); st.busy=false; await saveState(st); renderGame(); }
+  if(cur&&cur.kind==='enemy'){ st.busy=true; await saveState(st); renderGame();
+    try { await mpRunEnemyTurnsAuto(st); } finally { st.busy=false; await saveState(st); renderGame(); } }   // try/finally: nunca deixa st.busy travado (ex.: erro ao trocar de janela)
 }
 async function tacRequestAttack(enemyId){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
@@ -907,14 +931,14 @@ function pcAllyAdjacentToEnemy(st, owner, e){ const pos=(st.tactical&&st.tactica
 function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; if(fx.kind==='effect') return true; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'||fx.kind==='sleep'; }
 function abilityTargetSide(fx){ if(fx.side) return fx.side; if(fx.kind==='effect') return fx.aim||'ally'; return fx.kind==='heal' ? 'ally' : 'enemy'; }
 // lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot).
-// acted=true → desabilita o que gasta a AÇÃO (magias e features de 'action'); bônus/Surto seguem livres.
-function castableAbilities(c, acted){
+// desabilita o que gasta um recurso já usado nesta vez (ação OU bônus).
+function castableAbilities(c, acted, bonused){
   if(!c) return [];
   const out=[]; const slotsLeft = c.spellSlots ? (c.spellSlots.max-(c.spellSlots.used||0)) : 0;
   (c.cantripsChosen||[]).forEach(n=>{ const fx=abilityFx(n); out.push({ name:n, lvl:0, fx, disabled:false }); });
   (c.spellsChosen||[]).forEach(n=>{ const fx=abilityFx(n); const lvl=fx.lvl||1; out.push({ name:n, lvl, fx, disabled: lvl>=1 && slotsLeft<=0 }); });
   out.push(...castableFeatures(c));   // habilidades de classe (Surto, Fúria, Imposição, Expulsar…)
-  if(acted) out.forEach(a=>{ if(abilityUsesAction(a)) a.disabled=true; });
+  out.forEach(a=>{ const cost=abilityCost(a); if((cost==='action'&&acted)||(cost==='bonus'&&bonused)) a.disabled=true; });
   return out;
 }
 function pcHasAbilities(c){ return castableAbilities(c).length>0; }
@@ -1064,7 +1088,7 @@ async function castFeature(owner, name, targetId, st){
   else if(fx.kind==='inspire'){ const ally=(st.characters||[]).find(x=>x.owner===targetId); if(ally){ ally.inspiration={die:fx.die||'1d6'};
     st.history.push({role:'scene',text:`✦ ${c.name} inspira ${ally.name} — próxima rolagem soma ${fx.die||'1d6'}.`}); fxEmit(st,{kind:'heal',tgt:ally.owner}); } }
   else if(fx.kind==='rageOn'){ c.raging=true; st.history.push({role:'scene',text:`✦ ${c.name} entra em FÚRIA! +2 de dano corpo-a-corpo e resistência a dano físico.`}); }
-  else if(fx.kind==='extraAction'){ pcSetActed(st, owner, false); st.history.push({role:'scene',text:`✦ ${c.name} usa Surto de Ação — ganha uma ação extra neste turno!`}); }   // devolve a ação
+  else if(fx.kind==='extraAction'){ st.history.push({role:'scene',text:`✦ ${c.name} usa Surto de Ação — ganha uma ação extra neste turno!`}); }
   else if(fx.kind==='turnUndead'){
     const pos=(st.tactical&&st.tactical.pos)||{}, me=pos[owner], dc=spellSaveDC(c); let n=0;
     (st.combat.enemies||[]).forEach(e=>{ if(e.curHp<=0||enemyType(e)!=='morto-vivo') return; const ep=pos[e.id]; if(me&&ep&&tacDist(me,ep)>(fx.radius||6)) return;
@@ -1075,6 +1099,10 @@ async function castFeature(owner, name, targetId, st){
       if(!ok){ e.conditions=e.conditions||[]; if(!e.conditions.includes('Amedrontado')){ e.conditions.push('Amedrontado'); n++; } fxEmit(st,{kind:'stun',tgt:e.id}); } });
     st.history.push({role:'scene',text:`✦ ${c.name} ergue o símbolo sagrado — ${n} morto(s)-vivo(s) recua(m) em pavor!`});
   }
+  // ECONOMIA (fonte única): Surto devolve a ação; 'bonus' gasta a ação bônus; 'action' gasta a ação.
+  if(fx.kind==='extraAction') pcSetActed(st, owner, false);
+  else if(fx.trigger==='bonus') pcSetBonused(st, owner, true);
+  else if(fx.trigger==='action') pcSetActed(st, owner, true);
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
 }
@@ -1133,8 +1161,8 @@ function tickEffectsTurnStart(st, pc){   // Heroísmo: HP temporário a cada tur
 }
 // estado de mira de habilidade (local do cliente que está agindo)
 let PENDING_ABILITY = null, ABILITY_MENU_OPEN = false;
-function tacAbilityMenuHtml(c, acted){
-  const list=castableAbilities(c, acted); if(!list.length) return '';
+function tacAbilityMenuHtml(c, acted, bonused){
+  const list=castableAbilities(c, acted, bonused); if(!list.length) return '';
   const items=list.map(a=>{
     let cost, desc;
     if(a.feat){ const u=a.fx.pool?Math.floor((a.uses||0)/(a.fx.healAmount||1)):a.uses; cost=`<span class="tac-ab-cost feat">${u===Infinity?tr('habilidade'):u+'×'}</span>`; desc=a.fx.desc||''; }
@@ -1147,7 +1175,7 @@ function tacAbilityMenuHtml(c, acted){
 function tacPickAbility(name){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
-  const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c, pcActed(st,owner)).find(a=>a.name===name);
+  const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c, pcActed(st,owner), pcBonused(st,owner)).find(a=>a.name===name);
   if(!meta||meta.disabled) return;
   if(abilityNeedsTarget(meta.fx)){ PENDING_ABILITY={ name, fx:meta.fx, feat:!!meta.feat }; renderTactical(st); }   // entra em modo de mira
   else { tacCancelAbility(); tacDoCast(owner, name, owner, !!meta.feat); }   // sem alvo (auto-aplica em si/área)
@@ -1161,8 +1189,7 @@ function tacCastOnTarget(targetId){
 async function tacDoCast(owner, name, targetId, feat){
   const st=ROOM.state||{};
   if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{
-      if(feat){ await castFeature(owner,name,targetId,st); const c=(st.characters||[]).find(x=>x.owner===owner);
-        if(featureEndsTurn(name,c)) pcSetActed(st,owner,true); }   // feature de 'action' consome a ação; bônus/Surto não. Nunca passa a vez (manual)
+      if(feat){ await castFeature(owner,name,targetId,st); }   // castFeature já marca a economia (ação/bônus/Surto). Nunca passa a vez (manual)
       else { await castAbility(owner,name,targetId,st); pcSetActed(st,owner,true); }   // magia gasta a ação
       await saveState(st); renderGame();
     } finally { engineBusy=false; } }
@@ -2949,7 +2976,7 @@ function mpAdvanceCombat(st){
     const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
     if (!dead) break;
   } while (++guard < cb.order.length * 2);
-  if (st.tactical){ st.tactical.moved = {}; st.tactical.acted = {};   // novo turno → renova deslocamento E ação
+  if (st.tactical){ st.tactical.moved = {}; st.tactical.acted = {}; st.tactical.bonused = {};   // novo turno → renova deslocamento, ação E bônus
     const o = cb.order[cb.turn]; const id = o.kind==='pc' ? (st.characters[o.idx]||{}).owner : (cb.enemies[o.idx]||{}).id;
     if (id) resetReactionFor(st, id);          // renova a reação de quem entra no turno (ataque de oportunidade disponível)
   }
@@ -3006,7 +3033,8 @@ async function gmCombatSkip(){
   const st = ROOM.state;
   mpAdvanceCombat(st);
   await saveState(st); renderGame();
-  if (mpCurrentActor(st) && mpCurrentActor(st).kind==='enemy'){ st.busy = true; await saveState(st); renderGame(); await mpRunEnemyTurnsAuto(st); st.busy = false; await saveState(st); renderGame(); }
+  if (mpCurrentActor(st) && mpCurrentActor(st).kind==='enemy'){ st.busy = true; await saveState(st); renderGame();
+    try { await mpRunEnemyTurnsAuto(st); } finally { st.busy = false; await saveState(st); renderGame(); } }
 }
 async function gmCombatEnd(){
   if (!amIAdmin() || !mpCombatActive(ROOM.state)) return;
@@ -3117,8 +3145,7 @@ async function onPlayerAction(action){
     engineBusy = true; PROCESSED_IDS.add(action.id);
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(FEATURE_PREFIX.length));
-      if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st);
-        const c=(st.characters||[]).find(x=>x.owner===d.owner); if(featureEndsTurn(d.name,c)) pcSetActed(st,d.owner,true); await saveState(st); renderGame(); } }
+      if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st); await saveState(st); renderGame(); } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3739,7 +3766,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ai';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627aj';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
