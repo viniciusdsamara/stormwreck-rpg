@@ -56,6 +56,7 @@ let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematog
 //  muta; jogadores clicam numa célula → ação @@MOVE@@ que o admin aplica.
 // ============================================================
 const TAC_CELL = 42, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';
+let TAC_PREV_POS = {};   // px {id:[cx,cy]} da renderização anterior → anima o deslocamento
 const TAC_TILE = {
   sand:{f:'#2a2430',s:'#39313f'}, surf:{f:'#1b3e50',s:'#27566e'}, sea:{f:'#0e2533',s:'#143242'},
   debris:{f:'#2a2320',s:'#3a2f29'}, ship_hull:{f:'#0c0a10',s:'#1a1620'}, cliff:{f:'#0c0a10',s:'#1a1620'},
@@ -151,22 +152,40 @@ function renderTacticalMap(st,m){
     const targetable = ref.kind==='enemy' && foeTargets.has(id);
     const tAttr = targetable ? ` data-enemy="${escapeHtml(id)}" tabindex="0" role="button" aria-label="Atacar ${escapeHtml(ref.name)}"` : '';
     const ring = targetable ? `<circle cx="${cx}" cy="${cy}" r="${r+3}" class="tac-foe-ring"/>` : '';
-    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${targetable?'tac-foe-target':''}"${tAttr}>${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
+    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''} ${targetable?'tac-foe-target':''}"${tAttr} data-id="${escapeHtml(id)}" data-cx="${cx}" data-cy="${cy}">${pulse}${ring}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
   }
   return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
 }
 function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
   const m = mpCombatActive(st) ? tacMap(st) : null;
-  if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; return; }
+  if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; TAC_PREV_POS={}; return; }
   const myTurn = mpCombatActive(st) && tacMyTurn(st);
   const bar = myTurn ? `<div class="tac-actions"><button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>` : '';
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
+  tacAnimateMoves();   // desliza tokens que mudaram de célula
   $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
     el.onclick=()=>tacRequestMove(x,y); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestMove(x,y); } }; });
   $$('#tacticalCard .tac-foe-target').forEach(el=>{ const id=el.dataset.enemy;
     el.onclick=()=>tacRequestAttack(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestAttack(id); } }; });
   const endBtn=$('#tacEndBtn'); if (endBtn) endBtn.onclick=()=>tacEndTurn();
+}
+// anima o deslocamento: cada token que mudou de célula parte da posição
+// anterior e desliza até a nova (transform translate + transição CSS)
+function tacAnimateMoves(){
+  const reduce = (typeof window!=='undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const prev = TAC_PREV_POS, cur = {};
+  $$('#tacticalCard g.tac-tok[data-id]').forEach(g=>{
+    const id=g.dataset.id, cx=+g.dataset.cx, cy=+g.dataset.cy; cur[id]=[cx,cy];
+    const p = prev[id];
+    if (!reduce && p && (p[0]!==cx || p[1]!==cy)){
+      const dx=p[0]-cx, dy=p[1]-cy;
+      g.style.transition='none'; g.style.transform=`translate(${dx}px,${dy}px)`;
+      void g.getBoundingClientRect();                     // força reflow p/ a posição inicial valer
+      requestAnimationFrame(()=>{ g.style.transition='transform .42s cubic-bezier(.34,.7,.36,1)'; g.style.transform='translate(0,0)'; });
+    }
+  });
+  TAC_PREV_POS = cur;
 }
 async function tacRequestMove(x,y){
   const st=ROOM.state||{}, m=tacMap(st); if (!m||!st.tactical) return;
@@ -1063,8 +1082,8 @@ let G_WIRED = false;
 function enterGame(){
   show('screen-game');
   if (!G_WIRED){
-    $('#rollsToggleBtn').onclick = () => $('.game-layout').classList.toggle('rolls-hidden');
-    $('#hideRollsBtn').onclick = () => $('.game-layout').classList.add('rolls-hidden');
+    $('#rollsToggleBtn').onclick = () => { if (COMBAT_LAYOUT) return; $('.game-layout').classList.toggle('rolls-hidden'); };   // em combate o chat mora na lateral
+    $('#hideRollsBtn').onclick = () => { if (COMBAT_LAYOUT) return; $('.game-layout').classList.add('rolls-hidden'); };
     $('#gLeaveBtn').onclick = leaveRoom;
     $('#sendBtn').onclick = submitAction;
     $('#actionInput').addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); submitAction(); } });
@@ -1148,7 +1167,10 @@ function mpCharCard(c, active, idx, luPending){
     return `<div class="mini-ab"><div class="l">${ab}</div><div class="v">${v}</div></div>`;
   }).join('');
   const conds = (c.conditions||[]).length
-    ? `<div class="cond-chips">${c.conditions.map(n=>`<span class="cond-chip ro" title="${escapeHtml((((typeof RULES!=='undefined'&&RULES.conditions[n])||{}).desc)||'')}">${escapeHtml(n)}</span>`).join('')}</div>`
+    ? `<div class="cond-chips">${c.conditions.map(n=>{
+        const cd = (((typeof RULES!=='undefined'&&RULES.conditions[n])||{}));
+        return `<div class="cond-line"><span class="cond-chip ro">${escapeHtml(n)}</span><span class="cond-mod">${escapeHtml(cd.desc||'')}</span></div>`;
+      }).join('')}</div>`
     : '';
   const luBadge = luPending ? `<div class="lu-badge">⬆ Subir de nível — toque para escolher</div>` : '';
   const avatar = c.portrait ? `<div class="cc-avatar" style="background-image:url('${c.portrait}')"></div>` : '';
@@ -1452,8 +1474,29 @@ function showCombatReveal(st){
 }
 function hideCombatReveal(){ const ov = $('#combatReveal'); if (ov) ov.classList.add('hide'); }
 
+// layout de combate: mapa grande no centro; chat + compositor vão para a
+// lateral direita (rolagens viram uma faixa compacta no topo). Só em telas
+// largas (>1100px) — no celular a lateral é overlay, então mantém o padrão.
+let COMBAT_LAYOUT = false;
+function applyCombatLayout(st){
+  const layout = document.querySelector('.game-layout'); if (!layout) return;
+  const want = mpCombatActive(st) && window.innerWidth > 1100;
+  if (want === COMBAT_LAYOUT) return;
+  COMBAT_LAYOUT = want;
+  const main = document.querySelector('.main-col'), rp = $('#rollPanel');
+  const narr = $('#narrative'), comp = document.querySelector('.composer');
+  if (!main || !rp || !narr || !comp) return;
+  if (want){
+    layout.classList.add('combat-mode'); layout.classList.remove('rolls-hidden');   // o chat mora aqui agora
+    rp.appendChild(narr); rp.appendChild(comp);                                      // chat + compositor → lateral
+  } else {
+    layout.classList.remove('combat-mode');
+    main.appendChild(narr); main.appendChild(comp);                                  // de volta ao centro
+  }
+}
 function renderGame(){
   const st = ROOM.state || {};
+  applyCombatLayout(st);   // reflui o layout quando entra/sai de combate
   if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
   if (st.busy) localBusy = false;                                   // a engine assumiu: solta o lock otimista
   const sc = (typeof CAMPAIGN !== 'undefined' && CAMPAIGN.scenes[st.sceneId]) || null;
