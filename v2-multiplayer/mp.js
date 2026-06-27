@@ -700,7 +700,7 @@ function narrateRoundTemplate(ev){
     if(x.kind==='move') L.push(`${x.srcName} avança sobre ${x.tgtName}.`);
     else if(x.kind==='attack'&&x.hit) L.push(x.crit?`${x.srcName} desfere um golpe brutal em ${x.tgtName} (${x.dmg})${x.down?' — ele cai!':'!'}`:`${x.srcName} acerta ${x.tgtName} (${x.dmg})${x.down?', que tomba!':'.'}`);
     else if(x.kind==='attack') L.push(`${x.tgtName} escapa do ataque de ${x.srcName}.`);
-    else if(x.kind==='trait') L.push(x.saved?`${x.tgtName} resiste.`:`${x.tgtName} fica ${x.cond}!`);
+    else if(x.kind==='trait') L.push(x.saved?`${x.tgtName} resiste.`:`${x.tgtName} fica ${term(x.cond)}!`);
     else if(x.kind==='breath') L.push(`${x.srcName} libera seu sopro — ${x.tgtName} é atingido!`);
     else if(x.kind==='flee') L.push(`${x.srcName}, ferido, recua.`);
     else if(x.kind==='idle') L.push(`${x.srcName} se aproxima, espreitando.`);
@@ -711,12 +711,15 @@ function summarizeRoundForAI(ev){
   const L=ev.map(x=>{
     if(x.kind==='move') return `${x.srcName} avança até ${x.tgtName}`;
     if(x.kind==='attack') return x.hit?`${x.srcName} ACERTA ${x.tgtName} (${x.dmg} de dano${x.crit?', crítico':''}${x.down?'; cai':''})`:`${x.srcName} ERRA ${x.tgtName}`;
-    if(x.kind==='trait') return x.saved?`${x.tgtName} resiste ao efeito`:`${x.tgtName} fica ${x.cond}`;
+    if(x.kind==='trait') return x.saved?`${x.tgtName} resiste ao efeito`:`${x.tgtName} fica ${term(x.cond)}`;
     if(x.kind==='breath') return `${x.srcName} usa o sopro (atinge ${x.tgtName})`;
     if(x.kind==='flee') return `${x.srcName} recua, ferido`;
     return `${x.srcName} espreita`;
   });
-  return `[TURNO DOS INIMIGOS — JÁ RESOLVIDO PELO SISTEMA, dano já aplicado]\n- ${L.join('\n- ')}\nNarre em 1-3 frases curtas, em personagem (PT-BR). NÃO peça rolagem, NÃO use marcadores, NÃO altere acertos nem dano.`;
+  const narrLang = gameLang()==='en'
+    ? 'Narrate in 1-3 short sentences, in character, IN ENGLISH.'
+    : 'Narre em 1-3 frases curtas, em personagem (PT-BR).';
+  return `[TURNO DOS INIMIGOS — JÁ RESOLVIDO PELO SISTEMA, dano já aplicado]\n- ${L.join('\n- ')}\n${narrLang} NÃO peça rolagem, NÃO use marcadores, NÃO altere acertos nem dano.`;
 }
 async function deliverEnemyNarration(st,ev){
   if(!ev.length) return; let text='';
@@ -1021,12 +1024,12 @@ function tacAbilityMenuHtml(c){
   const list=castableAbilities(c); if(!list.length) return '';
   const items=list.map(a=>{
     let cost, desc;
-    if(a.feat){ const u=a.fx.pool?Math.floor((a.uses||0)/(a.fx.healAmount||1)):a.uses; cost=`<span class="tac-ab-cost feat">${u===Infinity?'habilidade':u+'×'}</span>`; desc=a.fx.desc||''; }
-    else { cost = a.lvl>=1 ? `<span class="tac-ab-cost">nv${a.lvl}</span>` : `<span class="tac-ab-cost cantrip">truque</span>`; desc=(((typeof RULES!=='undefined'&&RULES.spells[a.name])||{}).desc)||''; }
-    return `<div class="tac-ab-item ${a.disabled?'dis':''}" data-ab="${escapeHtml(a.name)}" data-feat="${a.feat?1:0}" data-dis="${a.disabled?1:0}" tabindex="0" role="button"><div class="tac-ab-h"><b>${escapeHtml(a.name)}</b>${cost}</div><div class="tac-ab-d">${escapeHtml(desc)}</div></div>`;
+    if(a.feat){ const u=a.fx.pool?Math.floor((a.uses||0)/(a.fx.healAmount||1)):a.uses; cost=`<span class="tac-ab-cost feat">${u===Infinity?tr('habilidade'):u+'×'}</span>`; desc=a.fx.desc||''; }
+    else { cost = a.lvl>=1 ? `<span class="tac-ab-cost">nv${a.lvl}</span>` : `<span class="tac-ab-cost cantrip">${tr('truque')}</span>`; desc=(((typeof RULES!=='undefined'&&RULES.spells[a.name])||{}).desc)||''; }
+    return `<div class="tac-ab-item ${a.disabled?'dis':''}" data-ab="${escapeHtml(a.name)}" data-feat="${a.feat?1:0}" data-dis="${a.disabled?1:0}" tabindex="0" role="button"><div class="tac-ab-h"><b>${escapeHtml(term(a.name))}</b>${cost}</div><div class="tac-ab-d">${escapeHtml(desc)}</div></div>`;
   }).join('');
   const slots = c.spellSlots ? `<div class="tac-ab-slots">Slots nv1: ${c.spellSlots.max-(c.spellSlots.used||0)}/${c.spellSlots.max} · sem alvo? toque novamente</div>` : '';
-  return `<div class="tac-ability-menu">${slots||'<div class="tac-ab-slots">truques ilimitados</div>'}${items}</div>`;
+  return `<div class="tac-ability-menu">${slots||`<div class="tac-ab-slots">${tr('truques ilimitados')}</div>`}${items}</div>`;
 }
 function tacPickAbility(name){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
@@ -1751,6 +1754,7 @@ function enterGame(){
     $('#gmCloseBtn').onclick = closeGmModal;
     $('#gmModalBack').onclick = e => { if (e.target === $('#gmModalBack')) closeGmModal(); };
     $('#gmModel').onchange = () => updateRoom({ model: $('#gmModel').value });
+    $$('#gmLangOpts [data-lang]').forEach(b => b.onclick = () => gmSetLang(b.dataset.lang));
     $('#gmSkipBtn').onclick = gmSkipTurn;
     $('#gmEndBtn').onclick = gmEndMatch;
     $('#micBtn').onclick = toggleDictation;   // ditado por voz
@@ -1823,7 +1827,7 @@ function toggleDictation(){
 // card de ficha no estilo do V1 (clicável → abre a ficha completa, ou o level-up se pulsando)
 function mpCharCard(c, active, idx, luPending){
   const pct = Math.max(0, Math.round((c.hp/c.maxHp)*100));
-  const sub = `${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls}${c.fightingStyle?` · ${c.fightingStyle}`:''} Nv${c.level}`;
+  const sub = `${term(c.race)}${c.subrace?` (${term(c.subrace)})`:''} ${term(c.cls)}${c.fightingStyle?` · ${term(c.fightingStyle)}`:''} Nv${c.level}`;
   const minis = (typeof RULES!=='undefined' ? RULES.abilities : ['FOR','DES','CON','INT','SAB','CAR']).map(ab=>{
     const v = c.abilities ? c.abilities[ab] : '—';
     return `<div class="mini-ab"><div class="l">${ab}</div><div class="v">${v}</div></div>`;
@@ -1831,7 +1835,7 @@ function mpCharCard(c, active, idx, luPending){
   const conds = (c.conditions||[]).length
     ? `<div class="cond-chips">${c.conditions.map(n=>{
         const cd = (((typeof RULES!=='undefined'&&RULES.conditions[n])||{}));
-        return `<div class="cond-line"><span class="cond-chip ro">${escapeHtml(n)}</span><span class="cond-mod">${escapeHtml(cd.desc||'')}</span></div>`;
+        return `<div class="cond-line"><span class="cond-chip ro">${escapeHtml(term(n))}</span><span class="cond-mod">${escapeHtml(cd.desc||'')}</span></div>`;
       }).join('')}</div>`
     : '';
   const luBadge = luPending ? `<div class="lu-badge">⬆ Subir de nível — toque para escolher</div>` : '';
@@ -2285,6 +2289,8 @@ function closeGmModal(){ $('#gmModalBack').classList.remove('open'); }
 function renderGmModal(){
   const st = ROOM.state || {};
   $('#gmModel').value = ROOM.model || 'claude-haiku-4-5';
+  const curLang = st.gameLang || 'pt';
+  $$('#gmLangOpts [data-lang]').forEach(b => b.classList.toggle('sel', b.dataset.lang === curLang));
   const chars = st.characters || [];
   const turnChar = chars[st.turnIndex||0];
   $('#gmTurnNote').innerHTML = turnChar
@@ -2313,6 +2319,19 @@ function renderGmModal(){
       </div>`).join('');
     $$('#gmHpList [data-hp]').forEach(b => b.onclick = () => gmAdjustHp(+b.dataset.hp, +b.dataset.d));
   }
+}
+
+// Mestre troca o modo de idioma (estado COMPARTILHADO → todos recebem via saveState).
+async function gmSetLang(lang){
+  if (!amIAdmin()) return;
+  if (!['pt','pt-en','en'].includes(lang)) return;
+  const st = ROOM.state || {};
+  if ((st.gameLang || 'pt') === lang){ renderGmModal(); return; }
+  st.gameLang = lang;
+  MP_STATIC_CACHE = {};            // invalida o cache do system prompt (chaveado por idioma)
+  await saveState(st);             // propaga a todos os jogadores
+  renderGmModal();
+  renderGame();
 }
 
 async function gmAdjustHp(idx, delta){
@@ -2364,21 +2383,21 @@ function mpSheetHtml(c, i){
   }).join('');
   const skills = Object.entries(SK).map(([name,ab]) => {
     const prof = (c.skills||[]).includes(name), m = abilityMod(c.abilities[ab]) + (prof?c.prof:0);
-    return `<div class="sh-skill ${prof?'prof':''}"><span>${prof?'●':'○'} ${name} <small>(${ab})</small></span><b>${fmtMod(m)}</b></div>`;
+    return `<div class="sh-skill ${prof?'prof':''}"><span>${prof?'●':'○'} ${escapeHtml(term(name))} <small>(${ab})</small></span><b>${fmtMod(m)}</b></div>`;
   }).join('');
-  const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
-  const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${escapeHtml(t)}</span>`).join('') || '—';
-  const conds  = (c.conditions||[]).length ? `<h4>Condições ativas</h4><div class="sh-conds">${c.conditions.map(t=>`<div class="sh-cond"><span class="sh-cond-name">${escapeHtml(t)}</span><span class="sh-cond-desc">${escapeHtml(((RULES.conditions[t]||{}).desc)||'Sem descrição.')}</span></div>`).join('')}</div>` : '';
+  const traits = (c.traits||[]).map(t=>`<span class="sh-tag">${escapeHtml(term(t))}</span>`).join('') || '—';
+  const feats  = (c.features||[]).map(t=>`<span class="sh-tag">${escapeHtml(term(t))}</span>`).join('') || '—';
+  const conds  = (c.conditions||[]).length ? `<h4>${tr('Condições ativas')}</h4><div class="sh-conds">${c.conditions.map(t=>`<div class="sh-cond"><span class="sh-cond-name">${escapeHtml(term(t))}</span><span class="sh-cond-desc">${escapeHtml(((RULES.conditions[t]||{}).desc)||'Sem descrição.')}</span></div>`).join('')}</div>` : '';
   const spell  = c.spellSlots ? `<div class="sh-line">Conjuração — habilidade ${c.spellAbility}, CD ${c.spellDC}, slots nv${c.spellSlots.level||1} ${c.spellSlots.max-c.spellSlots.used}/${c.spellSlots.max}${c.spellSlots2&&c.spellSlots2.max?`, nv2 ${c.spellSlots2.max-c.spellSlots2.used}/${c.spellSlots2.max}`:''}${c.cantripsKnown?`, truques ${c.cantripsKnown}`:''}</div>` : '';
   const known  = ((c.cantripsChosen&&c.cantripsChosen.length)||(c.spellsChosen&&c.spellsChosen.length))
-    ? `<h4>Magias conhecidas</h4><div class="sh-tags">${(c.cantripsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)} <small>(truque)</small></span>`).join('')}${(c.spellsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(s)}</span>`).join('')}</div>` : '';
-  const exp    = (c.expertise&&c.expertise.length) ? `<div class="sh-line" style="color:var(--myco)">Especialização (proficiência dobrada): ${c.expertise.join(', ')}</div>` : '';
+    ? `<h4>${tr('Magias conhecidas')}</h4><div class="sh-tags">${(c.cantripsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(term(s))} <small>(${tr('truque')})</small></span>`).join('')}${(c.spellsChosen||[]).map(s=>`<span class="sh-tag" title="${escapeHtml((RULES.spells[s]||{}).desc||'')}">${escapeHtml(term(s))}</span>`).join('')}</div>` : '';
+  const exp    = (c.expertise&&c.expertise.length) ? `<div class="sh-line" style="color:var(--myco)">Especialização (proficiência dobrada): ${c.expertise.map(s=>term(s)).join(', ')}</div>` : '';
   const inv    = (c.inventory||[]).map(it=>`<li>${escapeHtml(it)}</li>`).join('') || '<li>—</li>';
   const p = c.profile || {};
   const pf = (k,label) => `<div><span class="sh-prof-lbl">${label}</span><div class="sh-prof-txt">${escapeHtml(p[k]||'—')}</div></div>`;
   return `
   <div class="sh-top">
-    <div class="sh-id">${c.portrait?`<div class="sh-portrait" style="background-image:url('${c.portrait}')"></div>`:''}<div><div class="sh-name">${escapeHtml(c.name)}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${escapeHtml(c.ownerName||c.player||'')}</div></div></div>
+    <div class="sh-id">${c.portrait?`<div class="sh-portrait" style="background-image:url('${c.portrait}')"></div>`:''}<div><div class="sh-name">${escapeHtml(c.name)}</div><div class="sh-sub">${escapeHtml(term(c.race))}${c.subrace?` (${escapeHtml(term(c.subrace))})`:''} · ${escapeHtml(term(c.cls))}${c.archetype?` [${escapeHtml(c.archetype)}]`:''}${c.fightingStyle?` · ${escapeHtml(term(c.fightingStyle))}`:''} · ${tr('Nível')} ${c.level} · ${escapeHtml(c.ownerName||c.player||'')}</div></div></div>
     <button class="rp-close" id="sheetCloseBtn">✕</button>
   </div>
   <div class="sh-stats">
@@ -2391,19 +2410,19 @@ function mpSheetHtml(c, i){
   </div>
   <div class="sh-cols">
     <div class="sh-col">
-      <h4>Atributos &amp; Saves</h4><div class="sh-abgrid">${abil}</div>
-      <h4>Perícias</h4><div class="sh-skills">${skills}</div>
+      <h4>${tr('Atributos &amp; Saves')}</h4><div class="sh-abgrid">${abil}</div>
+      <h4>${tr('Perícias')}</h4><div class="sh-skills">${skills}</div>
     </div>
     <div class="sh-col">
-      <h4>Traços raciais</h4><div class="sh-tags">${traits}</div>
-      <h4>Características de classe</h4><div class="sh-tags">${feats}</div>
+      <h4>${tr('Traços raciais')}</h4><div class="sh-tags">${traits}</div>
+      <h4>${tr('Características de classe')}</h4><div class="sh-tags">${feats}</div>
       ${spell}${exp}${conds}${known}
-      <h4>Idiomas</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
-      <h4>Bolsa <span class="sh-gold">${c.gold!=null?c.gold:0} po</span></h4>
+      <h4>${tr('Idiomas')}</h4><div style="color:var(--stone-300);font-size:0.84rem">${(c.languages||[]).join(', ')||'—'}</div>
+      <h4>${tr('Bolsa')} <span class="sh-gold">${c.gold!=null?c.gold:0} po</span></h4>
       <ul class="sh-inv">${inv}</ul>
     </div>
   </div>
-  <h4>História do personagem</h4>
+  <h4>${tr('História do personagem')}</h4>
   <div class="sh-prof-grid">
     ${pf('appearance','Descrição física')}
     ${pf('context','Por que está aqui')}
@@ -3132,7 +3151,7 @@ async function resolveEnemyCommand(){
   if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); }
   await mpSleep(500);
   DM_DRAFT.fromEnemy = true;                                    // marca: dano já aplicado pelo código (não reaplicar)
-  DM_DRAFT.seed = `[TURNO DOS INIMIGOS — RESULTADO] ${results.join(' ')} Narre as ações deles AGORA em 1-3 frases, coerente com a cena. NÃO peça rolagem nem fale como sistema.`;
+  DM_DRAFT.seed = `[TURNO DOS INIMIGOS — RESULTADO] ${results.join(' ')} ${gameLang()==='en'?'Narrate their actions NOW in 1-3 sentences IN ENGLISH, consistent with the scene.':'Narre as ações deles AGORA em 1-3 frases, coerente com a cena.'} NÃO peça rolagem nem fale como sistema.`;
   try { const reply = await callDm(st, DM_DRAFT.seed); stageDraft(reply); }
   catch(e){ toast('Erro ao narrar inimigos: ' + e.message); await finalizeDraft(st); }
 }
@@ -3157,13 +3176,25 @@ async function callDm(st, extraUser){
   catch (e){ return `*(O Mestre tropeçou: ${e.message})*`; }
 }
 // Bloco ESTÁTICO do system prompt (idêntico a sessão toda) → habilita prompt caching.
-let MP_STATIC_CACHE = null;
+// Cache do system prompt CHAVEADO POR IDIOMA (invalidado em gmSetLang).
+let MP_STATIC_CACHE = {};
 function mpStaticPrompt(){
-  if (MP_STATIC_CACHE) return MP_STATIC_CACHE;
-  MP_STATIC_CACHE = `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
+  const L = gameLang();
+  if (MP_STATIC_CACHE && MP_STATIC_CACHE[L]) return MP_STATIC_CACHE[L];
+  if (!MP_STATIC_CACHE || typeof MP_STATIC_CACHE !== 'object') MP_STATIC_CACHE = {};
+  // Instrução de idioma da NARRAÇÃO conforme o modo:
+  //   'pt'    → narra em PT-BR, termos de regra em inglês (como sempre).
+  //   'pt-en' → narra em PT-BR, mas nomes de magias/condições/habilidades em INGLÊS.
+  //   'en'    → narra TUDO em inglês.
+  const langLine = L === 'en'
+    ? 'Write everything in ENGLISH. Use standard D&D 5e rule terms (HP, AC, save, DC, spell/condition names) in English.'
+    : (L === 'pt-en'
+      ? 'Português do Brasil na narração, MAS escreva nomes de magias, condições, habilidades de classe, perícias e termos de regra em INGLÊS (ex.: Stunned, Bless, Stealth, Second Wind, HP, AC, save, DC).'
+      : 'Português do Brasil; termos de regra em inglês.');
+  MP_STATIC_CACHE[L] = `Você é o Mestre (DM) de uma aventura de D&D 5e: "${CAMPAIGN.title}".
 ${CAMPAIGN.premise||''}
 
-Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). Português do Brasil; termos de regra em inglês.
+Esta é uma MESA MULTIJOGADOR: vários jogadores, cada um controla SEU personagem (o nome do jogador vem entre colchetes antes da ação). Dirija-se ao grupo; quando um personagem específico agir, narre o resultado dele e envolva os outros. Seja vívido e conciso (2-3 parágrafos). ${langLine}
 
 REGRAS DE IMERSÃO (siga à risca):
 - Você é SEMPRE o narrador EM PERSONAGEM. NUNCA fale como sistema, IA ou assistente. NUNCA cite "Apêndice A", regras, "dano", "RP", "condição" como pergunta de bastidor, nem peça ao jogador para "escolher o efeito".
@@ -3176,7 +3207,7 @@ REGRAS DE IMERSÃO (siga à risca):
 
 ## MARCADORES (o sistema processa e REMOVE do texto — não os explique)
 - Combate: [COMBAT_START:idDoEncontro] inicia (rola iniciativa). Dano a inimigo: [HIT:idDoInimigo:n]. Dano a herói: [DANO:NomeDoHeroi:n]. Respeite a iniciativa — o sistema diz de quem é a vez.
-- Condição (Apêndice A): [CONDICAO:NomeDoHeroi:Condição] — ex.: [CONDICAO:Garrett:Envenenado]; ao acabar: [REMOVER_CONDICAO:NomeDoHeroi:Condição]. Válidas: ${Object.keys(RULES.conditions).join(', ')}.
+- Condição (Apêndice A): [CONDICAO:NomeDoHeroi:Condição] — ex.: [CONDICAO:Garrett:Envenenado]; ao acabar: [REMOVER_CONDICAO:NomeDoHeroi:Condição]. IMPORTANTE: dentro do marcador use SEMPRE estes identificadores EXATOS em português (o sistema só reconhece estes): ${Object.keys(RULES.conditions).join(', ')}.${(L==='en'||L==='pt-en') ? ` (Em inglês, para sua referência ao narrar: ${Object.keys(RULES.conditions).map(c=>`${c}=${term(c)}`).join(', ')}. Mas no marcador [CONDICAO:...] mantenha o identificador em português.)` : ''}
 - Avistou área nova do mapa: [REVELAR_LOCAL:id]. Não cite o nome de um local desconhecido antes de revelá-lo.
 - Cena cumprida (hora de avançar de local/capítulo): termine com [SCENE_COMPLETE]. O sistema cuida da transição/nível/descanso. Não use cedo demais.
 - SEMPRE termine com 2-3 sugestões curtas: [SUGESTOES: ação 1 | ação 2 | ação 3] (exceto se emitir [SCENE_COMPLETE]).
@@ -3185,18 +3216,18 @@ REGRAS DE IMERSÃO (siga à risca):
 Jogador [Bjorn]: "Tento escalar o mastro escorregadio." Você: A madeira encharcada cede sob as botas. [ROLL:Atletismo:FOR:13]
 Jogador [Lia]: "Tento convencer o capitão." Você: O capitão cruza os braços, desconfiado. [ROLL:Persuasão:CAR:15]
 Jogador [Bjorn]: "Ataco o esqueleto." Você: Bjorn ruge e desce a lâmina. [ROLL:ataque:FOR:0]`;
-  return MP_STATIC_CACHE;
+  return MP_STATIC_CACHE[L];
 }
 // Bloco DINÂMICO (cena + fichas + combate + mapa) — muda por turno.
 function mpDynamicPrompt(st){
   const sc = CAMPAIGN.scenes[st.sceneId] || {};
   const sheets = (st.characters||[]).map(c =>
-    `- ${c.name} (${c.ownerName||'?'}): ${c.race}${c.subrace?` (${c.subrace})`:''} ${c.cls} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
+    `- ${c.name} (${c.ownerName||'?'}): ${term(c.race)}${c.subrace?` (${term(c.subrace)})`:''} ${term(c.cls)} Nv${c.level}. HP ${c.hp}/${c.maxHp}, CA ${c.ca}. ` +
     `Atrib: ${RULES.abilities.map(a=>`${a} ${c.abilities[a]}(${fmtMod(abilityMod(c.abilities[a]))})`).join(', ')}.` +
-    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.join(', ')}.`:'') +
-    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.join(', ')}.`:'') +
+    ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.map(s=>term(s)).join(', ')}.`:'') +
+    ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.map(s=>term(s)).join(', ')}.`:'') +
     ` Inventário: ${(c.inventory&&c.inventory.length)?c.inventory.join('; '):'(vazio)'}.` +
-    ((c.conditions&&c.conditions.length)?` Condições: ${c.conditions.join(', ')}.`:'')
+    ((c.conditions&&c.conditions.length)?` Condições: ${c.conditions.map(s=>term(s)).join(', ')}.`:'')
   ).join('\n');
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
   const enc = sc.combat && CAMPAIGN.encounters[sc.combat];
