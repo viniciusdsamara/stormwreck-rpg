@@ -38,6 +38,18 @@ const SCENE_LOC = {
 };
 const MAP_ROUTE = ['praia','claustro','cavernas','claustro','naufragio','observatorio'];
 
+// ---------------- ARTES DOS MONSTROS (geradas por IA, hospedadas no repo) ----------------
+const MONSTER_ART = {
+  'Zumbi Afogado': 'assets/monsters/zumbi_afogado.png',
+  'Zumbi':         'assets/monsters/zumbi.png',
+  'Fume Drake':    'assets/monsters/fume_drake.png',
+  'Polvo de Fungo':'assets/monsters/polvo_fungo.png',
+  'Ghoul':         'assets/monsters/ghoul.png',
+  'Dragão Jovem':  'assets/monsters/dragao_jovem.png',
+};
+function monsterArt(name){ return MONSTER_ART[name] || null; }
+let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematográfico
+
 function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
 // marca o local da cena atual como visitado (roda na engine do admin)
 function mpMarkSceneVisited(st){
@@ -165,7 +177,9 @@ function openGuide(){
     const monHtml = encIds.length ? `<div class="g-block"><h5>Monstros</h5>${encIds.map(eid=>{
       const e = CAMPAIGN.encounters[eid]; if (!e) return '';
       const foes = (e.enemies||[]).map(en=>`<div class="g-foe"><b>${escapeHtml(en.name)}</b> — HP ${en.hp} · CA ${en.ca} · ataque ${fmtMod(en.mod)} · dano ${escapeHtml(en.dmg||'—')}${en.traits?`<div class="g-trait">${escapeHtml(en.traits)}</div>`:''}</div>`).join('');
-      return `<div class="g-enc"><div class="g-enc-name">⚔️ ${escapeHtml(e.name)}</div>${foes}${e.tactics?`<div class="g-tactic">Tática: ${escapeHtml(e.tactics)}</div>`:''}</div>`;
+      const artNames = [...new Set((e.enemies||[]).map(x=>x.name))].map(monsterArt).filter(Boolean);
+      const artRow = artNames.length ? `<div class="g-enc-arts">${artNames.map(a=>`<img src="${a}" alt="">`).join('')}</div>` : '';
+      return `<div class="g-enc">${artRow}<div class="g-enc-name">⚔️ ${escapeHtml(e.name)}</div>${foes}${e.tactics?`<div class="g-tactic">Tática: ${escapeHtml(e.tactics)}</div>`:''}</div>`;
     }).join('')}</div>` : '';
     // itens & tesouro
     const itemHtml = (a.items||[]).length ? `<div class="g-block"><h5>Itens & Tesouro</h5>${(a.items||[]).map(iid=>{
@@ -677,9 +691,9 @@ async function leaveRoomQuietly(opts){
   if (reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer = null; }
   clearTyping(); revealedCount = -1; localBusy = false; MESTRE_PRESENTE = true;
   DM_DRAFT = null; engineBusy = false;
-  ROLL_RESOLVER = null; LAST_PENDING = false; DICE_SPINNING = false;
+  ROLL_RESOLVER = null; LAST_PENDING = false; DICE_SPINNING = false; LAST_COMBAT = false;
   if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
-  hideRollFab(); stopDice3D(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
+  hideRollFab(); stopDice3D(); hideCombatReveal(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -1097,6 +1111,23 @@ function settleDiceAnim(card){
   ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); stopDice3D(); } };
 }
 
+// reveal cinematográfico quando o combate começa — arte + nome (SEM stats, pra não dar spoiler)
+function showCombatReveal(st){
+  const ov = $('#combatReveal'); if (!ov || !st.combat) return;
+  const seen = new Set(), uniq = [];
+  (st.combat.enemies||[]).forEach(e => { if (!seen.has(e.name)){ seen.add(e.name); uniq.push(e); } });
+  if (!uniq.length) return;
+  const cards = uniq.map(e => { const art = monsterArt(e.name);
+    return `<div class="cr-card">${art?`<img src="${art}" alt="">`:'<div class="cr-noart">⚔</div>'}<div class="cr-name">${escapeHtml(e.name)}</div></div>`;
+  }).join('');
+  $('#crInner').innerHTML = `<div class="cr-head">⚔ Combate! ⚔</div><div class="cr-cards">${cards}</div>`;
+  if (ov._t) clearTimeout(ov._t);
+  ov.classList.remove('hide');
+  ov._t = setTimeout(()=> ov.classList.add('hide'), 4000);
+  ov.onclick = ()=> ov.classList.add('hide');
+}
+function hideCombatReveal(){ const ov = $('#combatReveal'); if (ov) ov.classList.add('hide'); }
+
 function renderGame(){
   const st = ROOM.state || {};
   if (revealedCount < 0) revealedCount = (st.history||[]).length;   // não anima o histórico já existente
@@ -1157,6 +1188,10 @@ function renderGame(){
   if (st.pendingRoll) showRollFab(st.pendingRoll); else hideRollFab();
   if (LAST_PENDING && !st.pendingRoll) settleDiceAnim(lastRollCard(st));
   LAST_PENDING = !!st.pendingRoll;
+  // reveal de monstros quando o combate começa
+  const inCombat = mpCombatActive(st);
+  if (inCombat && !LAST_COMBAT) showCombatReveal(st);
+  LAST_COMBAT = inCombat;
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
 }
 
@@ -1529,7 +1564,9 @@ function renderCombatBar(st){
     let hp, dead;
     if (o.kind==='enemy'){ const e = cb.enemies[o.idx]; hp = `${e.curHp}/${e.hp}`; dead = e.curHp <= 0; }
     else { const c = st.characters[o.idx]||{}; hp = `${c.hp}/${c.maxHp}`; dead = (c.hp||0) <= 0; }
-    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}"><div class="cb-init">${o.init}</div><div>${escapeHtml(o.name)}</div><div class="cb-hp">${hp} HP</div></div>`;
+    const art = o.kind==='enemy' ? monsterArt(o.name) : null;
+    const artDiv = art ? `<div class="cb-art" style="background-image:url('${art}')"></div>` : '';
+    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}">${artDiv}<div class="cb-init">${o.init}</div><div>${escapeHtml(o.name)}</div><div class="cb-hp">${hp} HP</div></div>`;
   }).join('');
   const btns = amIAdmin() ? `<div class="cb-btns"><button class="cb-btn" id="cbSkipBtn" title="Pular o turno atual">Pular turno →</button><button class="cb-btn end" id="cbEndBtn">Encerrar</button></div>` : '';
   bar.innerHTML = `<span class="cb-round">Rodada ${cb.round}</span><div class="cb-list">${toks}</div>${btns}`;
