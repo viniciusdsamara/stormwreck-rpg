@@ -97,12 +97,17 @@ function tacActiveOwner(st){
   const ap=mpActivePc(st); return ap?ap.owner:null;
 }
 function tacMyTurn(st){ const o=tacActiveOwner(st); return !!o && o===ME.id && !st.busy && !engineBusy; }
+// economia de ação: a vez NÃO acaba sozinha. Atacar/conjurar (ação) consome a ação;
+// mover é separado; encerrar é manual (botão). Surto de Ação devolve a ação.
+function pcActed(st, owner){ return !!(st.tactical && st.tactical.acted && st.tactical.acted[owner]); }
+function pcSetActed(st, owner, v){ if(!st || !st.tactical) return; st.tactical.acted = st.tactical.acted || {}; if(v) st.tactical.acted[owner]=true; else delete st.tactical.acted[owner]; }
+function abilityUsesAction(a){ return a && a.feat ? (a.fx && a.fx.trigger==='action') : true; }   // magias = ação; features de 'bonus'/'extra' não gastam a ação
 function tacSeed(st){
   const m=tacMap(st); if (!m){ st.tactical=null; return; }
   const pos={}; let si=0;
   (st.characters||[]).forEach(c=>{ const sp=m.pcSpawn[si++ % m.pcSpawn.length]; if (sp) pos[c.owner]=[sp[0],sp[1]]; });
   (st.combat.enemies||[]).forEach(e=>{ const sp=m.enemySpawn[e.id]; if (sp) pos[e.id]=[sp[0],sp[1]]; });
-  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{} };
+  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{}, acted:{} };
   tacReveal(st);
 }
 function tacLOS(m,x0,y0,x1,y1){ const dx=x1-x0,dy=y1-y0,steps=Math.max(Math.abs(dx),Math.abs(dy)); if (!steps) return true;
@@ -148,9 +153,10 @@ function renderTacticalMap(st,m){
   // alvos de ação: durante meu turno, se puder agir (não incapacitado)
   const meChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
   const myPos = activeId ? pos[activeId] : null;
+  const acted = activeId ? pcActed(st, activeId) : false;   // já usou a ação deste turno?
   const canAct = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).some(n=>NO_ACT_CONDS.includes(n));
   const foeTargets = new Set(), castEnemy = new Set(), castAlly = new Set();
-  if (canAct && mpCombatActive(st)){
+  if (canAct && mpCombatActive(st) && !(acted && (!PENDING_ABILITY || abilityUsesAction({feat:PENDING_ABILITY.feat,fx:PENDING_ABILITY.fx})))){
     if (PENDING_ABILITY){   // modo MIRA de magia: marca os alvos válidos
       const fx=PENDING_ABILITY.fx, rng=fx.range||1, side=abilityTargetSide(fx);
       if (side==='enemy'){ (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if(!ep||e.curHp<=0) return; if(!visible.has(tacKey(ep[0],ep[1]))) return; if(tacDist(myPos,ep)<=rng) castEnemy.add(e.id); }); }
@@ -211,7 +217,7 @@ function renderTactical(st){
       bar = `<div class="tac-actions targeting"><span class="tac-aim">🎯 ${escapeHtml(PENDING_ABILITY.name)} — clique no alvo</span><button class="tac-end alt" id="tacCancelAbBtn">cancelar</button></div>`;
     } else {
       const abBtn = (meC && pcHasAbilities(meC)) ? `<button class="tac-end ${ABILITY_MENU_OPEN?'on':''}" id="tacAbBtn">✨ Ações</button>` : '';
-      const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC) : '';
+      const menu = (ABILITY_MENU_OPEN && meC) ? tacAbilityMenuHtml(meC, pcActed(st, owner)) : '';
       bar = `<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
     }
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
@@ -774,7 +780,8 @@ async function mpRunEnemyTurnsAuto(st){
     const tg=aiTelegraph(st,e);
     announceTurn(e.name, monsterArt(e.baseName||e.name), 'enemy', tg.action);   // 1) card "é a vez de X — <ação>"
     st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
-    await saveState(st); renderGame(); await mpSleep(2600);
+    await saveState(st); renderGame(); await mpSleep(4500);                      //    card vive ~3s; espera +1,5s depois de sumir
+    { const tc=$('#turnCard'); if(tc&&tc.classList) tc.classList.add('hide'); }  //    garante que o card sumiu antes dos dados
     aiRunEnemyTurn(st,e,ev);                                                     // 2) executa (rola os dados) e para ~8s p/ ver
     await saveState(st); renderGame(); await mpSleep(8000);
     mpAdvanceCombat(st);   // só agora passa o ponteiro (mantém o indicador correto durante a animação)
@@ -809,11 +816,9 @@ async function playerAttack(owner,enemyId,st){
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
 }
-// avança a partir do turno do PC (após atacar ou encerrar) e dispara os inimigos
+// encerra a vez do PC (botão "Encerrar turno") e dispara os inimigos
 async function tacAdvanceFromPc(st){
   if(!mpCombatActive(st)){ await saveState(st); renderGame(); return; }
-  const cur0=mpCurrentActor(st), curOwner=(cur0&&cur0.kind==='pc')?(st.characters[cur0.idx]||{}).owner:null;
-  if(st.combat._surge && st.combat._surge===curOwner){ delete st.combat._surge; await saveState(st); renderGame(); return; }   // Surto de Ação: ação extra, não passa a vez
   advanceTurn(st);
   const cur=mpCurrentActor(st);
   if(cur&&cur.kind==='pc') tacTickCurrentPc(st);   // próximo é PC → tica as condições dele agora
@@ -829,7 +834,8 @@ async function tacKickEnemiesIfNeeded(st){
 async function tacRequestAttack(enemyId){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
-  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await playerAttack(owner,enemyId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  if(pcActed(st,owner)){ toast('Você já usou sua ação neste turno — encerre a vez ou use Surto de Ação.'); return; }
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await playerAttack(owner,enemyId,st); pcSetActed(st,owner,true); await saveState(st); renderGame(); } finally { engineBusy=false; } }   // não passa a vez (manual)
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(atk)', text: ATTACK_PREFIX+JSON.stringify({owner,enemyId}) }); }catch(e){} }
 }
 async function tacEndTurn(){
@@ -900,13 +906,15 @@ function pcAllyAdjacentToEnemy(st, owner, e){ const pos=(st.tactical&&st.tactica
   return (st.characters||[]).some(a=>a.owner!==owner && (a.hp||0)>0 && pos[a.owner] && tacDist(pos[a.owner],ep)<=1); }
 function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; if(fx.kind==='effect') return true; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'||fx.kind==='sleep'; }
 function abilityTargetSide(fx){ if(fx.side) return fx.side; if(fx.kind==='effect') return fx.aim||'ally'; return fx.kind==='heal' ? 'ally' : 'enemy'; }
-// lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot)
-function castableAbilities(c){
+// lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot).
+// acted=true → desabilita o que gasta a AÇÃO (magias e features de 'action'); bônus/Surto seguem livres.
+function castableAbilities(c, acted){
   if(!c) return [];
   const out=[]; const slotsLeft = c.spellSlots ? (c.spellSlots.max-(c.spellSlots.used||0)) : 0;
   (c.cantripsChosen||[]).forEach(n=>{ const fx=abilityFx(n); out.push({ name:n, lvl:0, fx, disabled:false }); });
   (c.spellsChosen||[]).forEach(n=>{ const fx=abilityFx(n); const lvl=fx.lvl||1; out.push({ name:n, lvl, fx, disabled: lvl>=1 && slotsLeft<=0 }); });
   out.push(...castableFeatures(c));   // habilidades de classe (Surto, Fúria, Imposição, Expulsar…)
+  if(acted) out.forEach(a=>{ if(abilityUsesAction(a)) a.disabled=true; });
   return out;
 }
 function pcHasAbilities(c){ return castableAbilities(c).length>0; }
@@ -1056,7 +1064,7 @@ async function castFeature(owner, name, targetId, st){
   else if(fx.kind==='inspire'){ const ally=(st.characters||[]).find(x=>x.owner===targetId); if(ally){ ally.inspiration={die:fx.die||'1d6'};
     st.history.push({role:'scene',text:`✦ ${c.name} inspira ${ally.name} — próxima rolagem soma ${fx.die||'1d6'}.`}); fxEmit(st,{kind:'heal',tgt:ally.owner}); } }
   else if(fx.kind==='rageOn'){ c.raging=true; st.history.push({role:'scene',text:`✦ ${c.name} entra em FÚRIA! +2 de dano corpo-a-corpo e resistência a dano físico.`}); }
-  else if(fx.kind==='extraAction'){ if(st.combat) st.combat._surge=owner; st.history.push({role:'scene',text:`✦ ${c.name} usa Surto de Ação — ação extra neste turno!`}); }
+  else if(fx.kind==='extraAction'){ pcSetActed(st, owner, false); st.history.push({role:'scene',text:`✦ ${c.name} usa Surto de Ação — ganha uma ação extra neste turno!`}); }   // devolve a ação
   else if(fx.kind==='turnUndead'){
     const pos=(st.tactical&&st.tactical.pos)||{}, me=pos[owner], dc=spellSaveDC(c); let n=0;
     (st.combat.enemies||[]).forEach(e=>{ if(e.curHp<=0||enemyType(e)!=='morto-vivo') return; const ep=pos[e.id]; if(me&&ep&&tacDist(me,ep)>(fx.radius||6)) return;
@@ -1125,8 +1133,8 @@ function tickEffectsTurnStart(st, pc){   // Heroísmo: HP temporário a cada tur
 }
 // estado de mira de habilidade (local do cliente que está agindo)
 let PENDING_ABILITY = null, ABILITY_MENU_OPEN = false;
-function tacAbilityMenuHtml(c){
-  const list=castableAbilities(c); if(!list.length) return '';
+function tacAbilityMenuHtml(c, acted){
+  const list=castableAbilities(c, acted); if(!list.length) return '';
   const items=list.map(a=>{
     let cost, desc;
     if(a.feat){ const u=a.fx.pool?Math.floor((a.uses||0)/(a.fx.healAmount||1)):a.uses; cost=`<span class="tac-ab-cost feat">${u===Infinity?tr('habilidade'):u+'×'}</span>`; desc=a.fx.desc||''; }
@@ -1139,7 +1147,7 @@ function tacAbilityMenuHtml(c){
 function tacPickAbility(name){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
-  const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c).find(a=>a.name===name);
+  const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c, pcActed(st,owner)).find(a=>a.name===name);
   if(!meta||meta.disabled) return;
   if(abilityNeedsTarget(meta.fx)){ PENDING_ABILITY={ name, fx:meta.fx, feat:!!meta.feat }; renderTactical(st); }   // entra em modo de mira
   else { tacCancelAbility(); tacDoCast(owner, name, owner, !!meta.feat); }   // sem alvo (auto-aplica em si/área)
@@ -1154,8 +1162,9 @@ async function tacDoCast(owner, name, targetId, feat){
   const st=ROOM.state||{};
   if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{
       if(feat){ await castFeature(owner,name,targetId,st); const c=(st.characters||[]).find(x=>x.owner===owner);
-        if(featureEndsTurn(name,c)) await tacAdvanceFromPc(st); else { await saveState(st); renderGame(); } }   // bônus/Surto: não passa a vez
-      else { await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); }
+        if(featureEndsTurn(name,c)) pcSetActed(st,owner,true); }   // feature de 'action' consome a ação; bônus/Surto não. Nunca passa a vez (manual)
+      else { await castAbility(owner,name,targetId,st); pcSetActed(st,owner,true); }   // magia gasta a ação
+      await saveState(st); renderGame();
     } finally { engineBusy=false; } }
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:feat?'(habilidade)':'(magia)', text: (feat?FEATURE_PREFIX:ABILITY_PREFIX)+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
 }
@@ -2394,7 +2403,7 @@ function playDiceRoll(card){
   }, 900);
   const total = 900 + order.length*260 + 280 + 2600;   // mantém na tela ~2,6s após assentar
   ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, total);
-  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); stopDice3D(); } };
+  ov.onclick = null;   // clique NÃO pula a rolagem (espera o tempo)
 }
 // quem clica em "Rolar": gira um d20 3D placeholder até o resultado chegar
 function startDiceAnim(pr){
@@ -2433,7 +2442,7 @@ function showCombatReveal(st){
   }).join('');
   $('#crInner').innerHTML = `<div class="cr-head">⚔ Iniciativa ⚔</div><div class="ini-list">${rows}</div>`;
   if (ov._t) clearTimeout(ov._t);
-  ov.classList.remove('hide'); ov.onclick = ()=> ov.classList.add('hide');
+  ov.classList.remove('hide'); ov.onclick = null;   // clique NÃO pula a iniciativa
   try { [...ov.querySelectorAll('.ini-val')].forEach(el=>{ const to=+el.dataset.to||0; let n=0;   // "rolando" os valores
     const iv=setInterval(()=>{ n+=Math.max(1,Math.ceil(to/12)); if(n>=to){ n=to; clearInterval(iv); } el.textContent=n; }, 55); }); } catch(e){}
   COMBAT_INTRO_DONE = new Promise(res=>{ ov._t = setTimeout(()=>{ ov.classList.add('hide'); res(); try{ renderGame(); }catch(e){} }, 4200); });
@@ -2940,10 +2949,9 @@ function mpAdvanceCombat(st){
     const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
     if (!dead) break;
   } while (++guard < cb.order.length * 2);
-  if (st.tactical){ st.tactical.moved = {};   // novo turno → renova o deslocamento
+  if (st.tactical){ st.tactical.moved = {}; st.tactical.acted = {};   // novo turno → renova deslocamento E ação
     const o = cb.order[cb.turn]; const id = o.kind==='pc' ? (st.characters[o.idx]||{}).owner : (cb.enemies[o.idx]||{}).id;
     if (id) resetReactionFor(st, id);          // renova a reação de quem entra no turno (ataque de oportunidade disponível)
-    if (cb._surge && !(o.kind==='pc' && (st.characters[o.idx]||{}).owner===cb._surge)) delete cb._surge;   // limpa Surto não-usado ao trocar de ator
   }
 }
 function mpEndCombat(st, victory){
@@ -3087,7 +3095,7 @@ async function onPlayerAction(action){
     engineBusy = true; PROCESSED_IDS.add(action.id);
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(ATTACK_PREFIX.length));
-      if (d && d.owner === tacActiveOwner(st)){ await playerAttack(d.owner, d.enemyId, st); await tacAdvanceFromPc(st); } }
+      if (d && d.owner === tacActiveOwner(st) && !pcActed(st,d.owner)){ await playerAttack(d.owner, d.enemyId, st); pcSetActed(st,d.owner,true); } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3098,7 +3106,7 @@ async function onPlayerAction(action){
     engineBusy = true; PROCESSED_IDS.add(action.id);
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(ABILITY_PREFIX.length));
-      if (d && d.owner === tacActiveOwner(st)){ await castAbility(d.owner, d.name, d.targetId, st); await tacAdvanceFromPc(st); } }
+      if (d && d.owner === tacActiveOwner(st) && !pcActed(st,d.owner)){ await castAbility(d.owner, d.name, d.targetId, st); pcSetActed(st,d.owner,true); } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3110,7 +3118,7 @@ async function onPlayerAction(action){
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(FEATURE_PREFIX.length));
       if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st);
-        const c=(st.characters||[]).find(x=>x.owner===d.owner); if(featureEndsTurn(d.name,c)) await tacAdvanceFromPc(st); else { await saveState(st); renderGame(); } } }
+        const c=(st.characters||[]).find(x=>x.owner===d.owner); if(featureEndsTurn(d.name,c)) pcSetActed(st,d.owner,true); await saveState(st); renderGame(); } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3731,7 +3739,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ah';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ai';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
