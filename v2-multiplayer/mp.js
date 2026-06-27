@@ -968,10 +968,11 @@ let LAST_RENDER_AT = 0;
 function tacRecoverStuck(force){
   try { const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null; if(!st) return;
     const idle = LAST_RENDER_AT ? (Date.now() - LAST_RENDER_AT) : 999999;
+    let changed = false;
     // se é a VEZ DE UM PC, nenhum lock devia estar ativo → destrava na hora (corrige engineBusy preso no alt+tab)
     const cur = (st.combat && st.combat.order) ? mpCurrentActor(st) : null;
     if (cur && cur.kind==='pc' && (st.busy || engineBusy || ENEMY_LOOP_RUNNING)){
-      st.busy=false; engineBusy=false; ENEMY_LOOP_RUNNING=false; if(typeof saveState==='function') saveState(st); if(typeof tacHideDice==='function') tacHideDice();
+      st.busy=false; engineBusy=false; ENEMY_LOOP_RUNNING=false; changed=true; if(typeof tacHideDice==='function') tacHideDice();
     }
     if (force){   // voltou pra aba/janela: limpa overlays que cobrem a tela e podem ter ficado presos
       ['#diceOverlay','#combatReveal','#turnCard'].forEach(sel=>{ const ov=$(sel); if(ov && ov.classList) ov.classList.add('hide'); });
@@ -979,12 +980,15 @@ function tacRecoverStuck(force){
       DICE_SPINNING = false; if(typeof stopDice3D==='function') stopDice3D();
     }
     if ((st.busy || engineBusy) && !ENEMY_LOOP_RUNNING && (force || idle > 6000)){   // turno do PC travado → destrava tudo
-      st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
+      st.busy = false; engineBusy = false; changed=true;
     } else if ((st.busy || engineBusy) && ENEMY_LOOP_RUNNING && idle > 9000){          // loop de inimigo congelado (sem render há >9s) → abandona e destrava
-      ENEMY_LOOP_RUNNING = false; st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
+      ENEMY_LOOP_RUNNING = false; st.busy = false; engineBusy = false; changed=true;
     }
+    if (changed && typeof saveState==='function') saveState(st);
     if (force) LAST_RENDER_AT = Date.now();   // ao voltar, dá uma folga antes de o vigia abandonar um loop que vai retomar
-    if (typeof renderGame==='function') renderGame();
+    // só re-renderiza quando há motivo (destravou algo, ou é um retorno de foco) — assim o vigia
+    // periódico NÃO carimba LAST_RENDER_AT à toa, e o cronômetro de ociosidade continua válido.
+    if ((changed || force) && typeof renderGame==='function') renderGame();
   } catch(e){}
 }
 if (typeof document!=='undefined' && document.addEventListener){
@@ -3213,7 +3217,16 @@ async function gmCombatEnd(){
 async function saveState(st){
   ROOM.state = st;
   const ap = mpActivePc(st);
-  await supa.from('rooms').update({ state: st, scene_id: st.sceneId, turn_owner: (ap||{}).owner || null }).eq('id', ROOM.id);
+  // NUNCA travar o motor numa rede pendurada (ex.: trocar de janela suspende o socket do Supabase):
+  // corre contra um timeout. Se a gravação não voltar em 6s, segue em frente — o estado local já está
+  // atualizado e o próximo saveState (ou o Realtime) reconcilia. Isso evita que engineBusy/st.busy
+  // fiquem presos para sempre quando um await saveState pendura no meio de uma ação.
+  try {
+    await Promise.race([
+      supa.from('rooms').update({ state: st, scene_id: st.sceneId, turn_owner: (ap||{}).owner || null }).eq('id', ROOM.id),
+      new Promise(r => setTimeout(r, 6000))
+    ]);
+  } catch(e){}
 }
 function advanceTurn(st){
   if (mpCombatActive(st)){ mpAdvanceCombat(st); return; }   // em combate, segue a iniciativa
@@ -3930,7 +3943,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ao';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ap';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
