@@ -2193,43 +2193,106 @@ function mpRollResultText(c, card){
 // ============================================================
 let DICE_TIMER = null, DICE_SPINNING = false, LAST_PENDING = false, DICE3D = null;
 function lastRollCard(st){ const h = st.history||[]; for (let i=h.length-1;i>=0;i--){ if (h[i].role==='roll') return h[i]; } return null; }
-// d20 3D (three.js, via CDN) — degrada para só-número se WebGL/THREE faltar
-function ensureDice3D(){
+// ---- DADOS 3D POLIÉDRICOS (three.js) — d4..d20 com a forma certa; degrada p/ SVG se faltar WebGL/THREE ----
+function makeD10Geometry(scale){   // trapezoedro pentagonal (d10) — não existe pronto no THREE
+  scale = scale || 1; const a = Math.PI*2/10, h = 0.42, v = [];
+  for (let i=0;i<10;i++) v.push([Math.cos(i*a), h*(i%2?1:-1), Math.sin(i*a)]);   // cinturão em zigue-zague
+  v.push([0,-1.05,0]); v.push([0,1.05,0]);   // 10 = polo sul, 11 = polo norte
+  const faces = [[5,7,11],[4,2,10],[1,3,11],[0,8,10],[7,9,11],[8,6,10],[9,1,11],[2,0,10],[3,5,11],[6,4,10]];
+  const pos = [];
+  for (const f of faces) for (const idx of f){ const p = v[idx]; pos.push(p[0]*scale, p[1]*scale, p[2]*scale); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
+  return g;
+}
+function dieGeometry(sides){
+  switch(sides){
+    case 4:  return new THREE.TetrahedronGeometry(1.15);
+    case 6:  return new THREE.BoxGeometry(1.5,1.5,1.5);
+    case 8:  return new THREE.OctahedronGeometry(1.2);
+    case 10: return makeD10Geometry(1.05);
+    case 12: return new THREE.DodecahedronGeometry(1.15);
+    default: return new THREE.IcosahedronGeometry(1.3, 0);   // d20
+  }
+}
+function dieFaceColor(kind){ return kind==='heal' ? 0x3f8f5a : kind==='dmg' ? 0xb05540 : 0xd69e4a; }
+function ensureDiceScene(){
   if (DICE3D) return DICE3D;
   if (typeof THREE === 'undefined') return null;
   const wrap = $('#diceCanvasWrap'); if (!wrap) return null;
   try {
-    const S = 210;
     const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-    renderer.setSize(S, S); wrap.appendChild(renderer.domElement);
+    wrap.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100); camera.position.z = 4.2;
-    const geo = new THREE.IcosahedronGeometry(1.5, 0);   // d20: 20 faces triangulares
-    const mat = new THREE.MeshStandardMaterial({ color:0xd69e4a, metalness:0.75, roughness:0.32, flatShading:true });
-    const die = new THREE.Mesh(geo, mat);
-    die.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x241509 })));
-    scene.add(die);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const d1 = new THREE.DirectionalLight(0xfff0d2, 1.15); d1.position.set(3, 5, 4); scene.add(d1);
-    const d2 = new THREE.DirectionalLight(0x88a0ff, 0.45); d2.position.set(-4, -2, 2); scene.add(d2);
-    DICE3D = { renderer, scene, camera, die, mat, raf:null, spinning:false, settling:false, vel:{x:0,y:0,z:0} };
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100); camera.position.z = 9;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+    const d1 = new THREE.DirectionalLight(0xfff0d2, 1.1); d1.position.set(3, 5, 6); scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0x88a0ff, 0.4); d2.position.set(-4, -2, 3); scene.add(d2);
+    DICE3D = { renderer, scene, camera, dice:[], raf:null, W:0, H:0 };
   } catch(e){ DICE3D = null; }
   return DICE3D;
 }
-function diceLoop(){
-  const d = DICE3D; if (!d) return;
-  if (d.spinning){
-    if (d.settling){
-      d.vel.x *= 0.93; d.vel.y *= 0.93; d.vel.z *= 0.93;
-      if (Math.abs(d.vel.x) + Math.abs(d.vel.y) + Math.abs(d.vel.z) < 0.012) d.spinning = false;
-    }
-    d.die.rotation.x += d.vel.x; d.die.rotation.y += d.vel.y; d.die.rotation.z += d.vel.z;
-  }
-  try { d.renderer.render(d.scene, d.camera); } catch(e){}
-  d.raf = requestAnimationFrame(diceLoop);
+function sizeDiceRenderer(){
+  const D = DICE3D; if (!D) return; const stage = $('#diceStage'); if (!stage) return;
+  const W = stage.clientWidth || 460, H = stage.clientHeight || 150;
+  if (W===D.W && H===D.H) return;
+  D.W = W; D.H = H; D.renderer.setSize(W, H); D.camera.aspect = W/H; D.camera.updateProjectionMatrix();
 }
-function stopDice3D(){ const d = DICE3D; if (d && d.raf){ cancelAnimationFrame(d.raf); d.raf = null; } }
+function clearDice3d(){
+  const D = DICE3D; if (!D) return;
+  D.dice.forEach(d => { D.scene.remove(d.mesh); try{ d.mesh.geometry.dispose(); }catch(e){} });
+  D.dice = []; const nums = $('#diceNums'); if (nums) nums.innerHTML = '';
+}
+function spawnDice3d(list){
+  const D = ensureDiceScene(); if (!D) return false;
+  sizeDiceRenderer(); clearDice3d();
+  const nums = $('#diceNums'); if (!nums) return false;
+  // largura de mundo visível em z=0 → distribui os dados numa linha
+  const vh = 2 * Math.tan((D.camera.fov*Math.PI/180)/2) * D.camera.position.z;
+  const vw = vh * (D.W/D.H);
+  const n = list.length, gap = Math.min(2.2, (vw*0.84)/Math.max(1,n)), x0 = -gap*(n-1)/2;
+  list.forEach((d,i)=>{
+    const geo = dieGeometry(d.sides);
+    const mat = new THREE.MeshStandardMaterial({ color:dieFaceColor(d.kind), metalness:0.55, roughness:0.38, flatShading:true });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x241509 })));
+    const s = d.sides>=20?1.0 : d.sides>=12?1.0 : d.sides>=10?1.05 : d.sides>=8?1.0 : d.sides>=6?0.92 : 1.0;
+    mesh.scale.setScalar(s); mesh.position.set(x0 + i*gap, 0, 0);
+    mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+    D.scene.add(mesh);
+    const label = document.createElement('div'); label.className = 'die3-num' + (d.kind!=='d20'?' '+d.kind:'');
+    label.textContent = '?'; nums.appendChild(label);
+    D.dice.push({ mesh, label, value:d.value, kind:d.kind, sides:d.sides,
+      vel:{ x:0.12+Math.random()*0.16, y:0.16+Math.random()*0.2, z:0.06+Math.random()*0.1 },
+      settling:false, settled:false });
+  });
+  if (!D.raf) dice3dLoop();
+  return true;
+}
+function updateDiceNums(){
+  const D = DICE3D; if (!D) return;
+  D.dice.forEach(d=>{
+    if (!d.label) return;
+    const v = d.mesh.position.clone().project(D.camera);
+    const x = (v.x*0.5+0.5)*D.W, y = (-v.y*0.5+0.5)*D.H;
+    d.label.style.transform = `translate(-50%,-50%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+  });
+}
+function dice3dLoop(){
+  const D = DICE3D; if (!D) return;
+  D.dice.forEach(d=>{
+    if (d.settled) return;
+    d.mesh.rotation.x += d.vel.x; d.mesh.rotation.y += d.vel.y; d.mesh.rotation.z += d.vel.z;
+    if (d.settling){ d.vel.x*=0.9; d.vel.y*=0.9; d.vel.z*=0.9;
+      if (Math.abs(d.vel.x)+Math.abs(d.vel.y)+Math.abs(d.vel.z) < 0.012){ d.settled=true; d.vel={x:0,y:0,z:0}; } }
+  });
+  updateDiceNums();
+  try { D.renderer.render(D.scene, D.camera); } catch(e){}
+  if (D.dice.length && D.dice.every(d=>d.settled)){ D.raf = null; return; }   // tudo parado → pausa o loop (poupa CPU)
+  D.raf = requestAnimationFrame(dice3dLoop);
+}
+function stopDice3D(){ const d = DICE3D; if (d && d.raf){ cancelAnimationFrame(d.raf); d.raf = null; } if (d) clearDice3d(); }
 function showRollFab(pr){
   const b = $('#rollFab'); if (!b) return;
   const mine = pr.owner === ME.id;
@@ -2289,9 +2352,9 @@ function diceSummaryHtml(card){
   if (card.heal) html += `<div class="dice-dmg" style="color:#8ff0a0">✚ Cura <b>${card.heal}</b> HP</div>`;
   return html;
 }
-// gira e assenta TODOS os dados da rolagem (d20 + dados de dano), cada um com sua forma
+// gira e assenta TODOS os dados 3D da rolagem (d20 + dados de dano), cada um com sua FORMA
 function playDiceRoll(card){
-  const ov = $('#diceOverlay'), tray = $('#diceTray'); if (!ov || !tray || !card) return;
+  const ov = $('#diceOverlay'); if (!ov || !card) return;
   const dice = diceListFromCard(card);
   if (!dice.length){ return; }
   if (ov._t){ clearTimeout(ov._t); ov._t = null; }
@@ -2300,38 +2363,49 @@ function playDiceRoll(card){
   $('#diceTarget').textContent = card.dc != null ? `Alvo: CD ${card.dc}` : (card.dmg ? `Dano [${card.dmg.type}]` : (card.heal ? 'Cura' : ''));
   $('#diceResult').innerHTML = '';
   ov.classList.remove('hide','settled'); ov.classList.add('rolling');
-  tray.innerHTML = dice.map(d => dieSvg(d.sides, '?', `rolling ${d.kind!=='d20'?d.kind:''}`)).join('');
-  const els = [...tray.querySelectorAll('.die')], valEls = els.map(e => e.querySelector('.die-val'));
   DICE_SPINNING = true;
-  DICE_TIMER = setInterval(()=>{ valEls.forEach((v,i)=>{ v.textContent = 1 + Math.floor(Math.random()*dice[i].sides); }); }, 70);
+  const use3d = spawnDice3d(dice);                 // 3D realista; cai p/ SVG se faltar WebGL/THREE
+  const tray = $('#diceTray');
+  if (tray){ if (use3d){ tray.style.display = 'none'; } else { tray.style.display = ''; tray.innerHTML = dice.map(d => dieSvg(d.sides, '?', `rolling ${d.kind!=='d20'?d.kind:''}`)).join(''); } }
+  const D = DICE3D;
+  DICE_TIMER = setInterval(()=>{   // números ciclam enquanto os dados giram
+    if (use3d && D){ D.dice.forEach(dd=>{ if (!dd.settled) dd.label.textContent = 1 + Math.floor(Math.random()*dd.sides); }); }
+    else if (tray){ [...tray.querySelectorAll('.die-val')].forEach((v,i)=>{ v.textContent = 1 + Math.floor(Math.random()*dice[i].sides); }); }
+  }, 70);
   const order = dice.map((d,i)=>i).sort((a,b)=> (dice[a].kind==='d20'?0:1) - (dice[b].kind==='d20'?0:1));   // d20 assenta primeiro
   setTimeout(()=>{
     if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
     order.forEach((idx,k)=> setTimeout(()=>{
-      const el = els[idx], d = dice[idx];
-      el.classList.remove('rolling'); el.classList.add('settle');
-      valEls[idx].textContent = d.value;
-      if (d.kind==='d20'){ if (!d.chosen) el.classList.add('faded'); else if (card.crit) el.classList.add('crit'); else if (card.fumble) el.classList.add('fumble'); }
-    }, k*240));
-    setTimeout(()=>{ DICE_SPINNING = false; ov.classList.remove('rolling'); ov.classList.add('settled'); $('#diceResult').innerHTML = diceSummaryHtml(card); }, order.length*240 + 220);
-  }, 720);
-  const total = 720 + order.length*240 + 220 + 2400;   // mantém na tela ~2,4s após assentar
-  ov._t = setTimeout(()=>{ ov.classList.add('hide'); }, total);
-  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); } };
+      const d = dice[idx];
+      if (use3d && D){ const e = D.dice[idx]; if (e){ e.settling = true; e.label.textContent = d.value;
+        if (d.kind==='d20'){ if (!d.chosen) e.label.classList.add('faded'); else if (card.crit) e.label.classList.add('crit'); else if (card.fumble) e.label.classList.add('fumble'); } } }
+      else if (tray){ const el = tray.querySelectorAll('.die')[idx]; if (el){ el.classList.remove('rolling'); el.classList.add('settle'); el.querySelector('.die-val').textContent = d.value;
+        if (d.kind==='d20'){ if (!d.chosen) el.classList.add('faded'); else if (card.crit) el.classList.add('crit'); else if (card.fumble) el.classList.add('fumble'); } } }
+    }, k*260));
+    setTimeout(()=>{ DICE_SPINNING = false; ov.classList.remove('rolling'); ov.classList.add('settled'); $('#diceResult').innerHTML = diceSummaryHtml(card); }, order.length*260 + 280);
+  }, 900);
+  const total = 900 + order.length*260 + 280 + 2600;   // mantém na tela ~2,6s após assentar
+  ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, total);
+  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); stopDice3D(); } };
 }
-// quem clica em "Rolar": gira um d20 placeholder até o resultado chegar
+// quem clica em "Rolar": gira um d20 3D placeholder até o resultado chegar
 function startDiceAnim(pr){
-  const ov = $('#diceOverlay'), tray = $('#diceTray'); if (!ov || !tray) return;
+  const ov = $('#diceOverlay'); if (!ov) return;
   if (ov._t){ clearTimeout(ov._t); ov._t = null; }
   ov.classList.remove('hide','settled'); ov.classList.add('rolling');
   $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` · ${pr.tipo}`:''}`;
   $('#diceTarget').textContent = pr.cd ? `Alvo: CD ${pr.cd}` : '';
   $('#diceResult').innerHTML = '';
-  tray.innerHTML = dieSvg(20, '?', 'rolling');
-  const v = tray.querySelector('.die-val');
   DICE_SPINNING = true;
+  const use3d = spawnDice3d([{ sides:20, value:0, kind:'d20', chosen:true }]);
+  const tray = $('#diceTray');
+  if (tray){ if (use3d){ tray.style.display = 'none'; } else { tray.style.display = ''; tray.innerHTML = dieSvg(20, '?', 'rolling'); } }
+  const D = DICE3D;
   if (DICE_TIMER) clearInterval(DICE_TIMER);
-  DICE_TIMER = setInterval(()=>{ if (v) v.textContent = 1 + Math.floor(Math.random()*20); }, 70);
+  DICE_TIMER = setInterval(()=>{
+    if (use3d && D){ if (D.dice[0] && !D.dice[0].settled) D.dice[0].label.textContent = 1 + Math.floor(Math.random()*20); }
+    else if (tray){ const v = tray.querySelector('.die-val'); if (v) v.textContent = 1 + Math.floor(Math.random()*20); }
+  }, 70);
 }
 function settleDiceAnim(card){ if (card) playDiceRoll(card); }   // assenta com a forma certa (cobre PC e inimigos)
 
@@ -3618,7 +3692,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ad';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ae';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
