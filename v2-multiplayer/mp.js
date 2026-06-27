@@ -260,8 +260,8 @@ function renderTactical(st){
       bar = `${eco}<div class="tac-actions">${abBtn}<button class="tac-end" id="tacEndBtn">Encerrar turno ⏭</button></div>${menu}`;
     }
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
-  // botão de destravar SEMPRE presente em combate p/ quem joga (admin/jogador da vez) — saída + diagnóstico
-  if (mpCombatActive(st)) bar += `<div class="tac-unlock-row"><button class="tac-unlock" id="tacUnlockBtn" title="Destravar / diagnóstico">🔓 Destravar</button></div>`;
+  // botão de destravar (saída + diagnóstico) — SÓ no modo teste (?teste=1); escondido no jogo real
+  if (TEST_MODE && mpCombatActive(st)) bar += `<div class="tac-unlock-row"><button class="tac-unlock" id="tacUnlockBtn" title="Destravar / diagnóstico">🔓 Destravar</button></div>`;
   card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
   tacAnimateMoves(st);   // anima o deslocamento (passo a passo pela grade quando há caminho)
   fxPlay(st);          // toca as animações de combate novas (deduplicadas por id)
@@ -3981,7 +3981,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627as';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627at';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
