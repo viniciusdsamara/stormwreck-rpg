@@ -1554,19 +1554,36 @@ function mpEndCombat(st, victory){
   st.history = st.history || [];
   st.history.push({ role:'scene', text: victory ? '— inimigos derrotados! fim do combate —' : '— fim do combate —' });
 }
-// barra de combate (lida do estado compartilhado → idêntica para todos)
+// estado de saúde qualitativo do inimigo — jogadores NÃO veem HP exato (só o Mestre-puro vê)
+function enemyHealthWord(cur, max){
+  if (cur <= 0) return 'Abatido';
+  const p = cur / (max || 1);
+  if (p > 0.75) return 'Ileso';
+  if (p > 0.5)  return 'Ferido';
+  if (p > 0.25) return 'Muito ferido';
+  return 'Por um fio';
+}
+function enemyHealthClass(cur, max){
+  if (cur <= 0) return 'dead';
+  const p = cur / (max || 1);
+  return p > 0.75 ? 'ok' : p > 0.5 ? 'hurt' : p > 0.25 ? 'bad' : 'crit';
+}
+// barra de combate (lida do estado compartilhado)
 function renderCombatBar(st){
   const bar = $('#combatBar'); if (!bar) return;
   if (!mpCombatActive(st)){ bar.classList.add('hide'); bar.innerHTML = ''; return; }
   bar.classList.remove('hide');
   const cb = st.combat;
+  const seeExact = isCommandMode();   // só o Mestre-puro vê HP exato dos inimigos
   const toks = cb.order.map((o,k) => {
-    let hp, dead;
-    if (o.kind==='enemy'){ const e = cb.enemies[o.idx]; hp = `${e.curHp}/${e.hp}`; dead = e.curHp <= 0; }
-    else { const c = st.characters[o.idx]||{}; hp = `${c.hp}/${c.maxHp}`; dead = (c.hp||0) <= 0; }
+    let hp, dead, hpCls = '';
+    if (o.kind==='enemy'){ const e = cb.enemies[o.idx]; dead = e.curHp <= 0;
+      if (seeExact){ hp = `${e.curHp}/${e.hp} HP`; }
+      else { hp = enemyHealthWord(e.curHp, e.hp); hpCls = 'word ' + enemyHealthClass(e.curHp, e.hp); } }
+    else { const c = st.characters[o.idx]||{}; dead = (c.hp||0) <= 0; hp = `${c.hp}/${c.maxHp} HP`; }
     const art = o.kind==='enemy' ? monsterArt(o.name) : null;
     const artDiv = art ? `<div class="cb-art" style="background-image:url('${art}')"></div>` : '';
-    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}">${artDiv}<div class="cb-init">${o.init}</div><div>${escapeHtml(o.name)}</div><div class="cb-hp">${hp} HP</div></div>`;
+    return `<div class="cb-tok ${o.kind} ${k===cb.turn?'current':''} ${dead?'dead':''}">${artDiv}<div class="cb-init">${o.init}</div><div>${escapeHtml(o.name)}</div><div class="cb-hp ${hpCls}">${hp}</div></div>`;
   }).join('');
   const btns = amIAdmin() ? `<div class="cb-btns"><button class="cb-btn" id="cbSkipBtn" title="Pular o turno atual">Pular turno →</button><button class="cb-btn end" id="cbEndBtn">Encerrar</button></div>` : '';
   bar.innerHTML = `<span class="cb-round">Rodada ${cb.round}</span><div class="cb-list">${toks}</div>${btns}`;
@@ -2161,6 +2178,8 @@ function injectTestPanel(){
         <button data-roll="crit">crítico</button><button data-roll="fumble">falha crít.</button></div></div>
       <div class="tp-sec"><b>📖 Telas</b><div class="tp-row">
         <button id="tpGuide">Roteiro</button><button id="tpMap">Mapa</button></div></div>
+      <div class="tp-sec"><b>👁 Ver HP como</b><div class="tp-row">
+        <button id="tpView">alternar</button> <span id="tpViewLbl"></span></div></div>
       <div class="tp-sec"><b>🎬 Ir para cena</b><div class="tp-row">
         <select id="tpScene">${scenes.map(s=>`<option value="${s}">${s}</option>`).join('')}</select><button id="tpGo">ir</button></div></div>
     </div>`;
@@ -2170,6 +2189,9 @@ function injectTestPanel(){
   el.querySelectorAll('[data-roll]').forEach(b => b.onclick = () => tpTestRoll(b.dataset.roll));
   el.querySelector('#tpGuide').onclick = () => openGuide();
   el.querySelector('#tpMap').onclick = () => openMapMp();
+  const tpUpdateView = () => { const l = el.querySelector('#tpViewLbl'); if (l) l.textContent = ROOM.admin_plays ? '🛡 Jogador (oculto)' : '👑 Mestre (exato)'; };
+  el.querySelector('#tpView').onclick = () => { ROOM.admin_plays = !ROOM.admin_plays; tpUpdateView(); renderGame(); };
+  tpUpdateView();
   el.querySelector('#tpGo').onclick = () => { const s = el.querySelector('#tpScene').value; const st = ROOM.state; st.sceneId = s; st.combat = null; LAST_COMBAT = false; mpMarkSceneVisited(st); renderGame(); };
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
