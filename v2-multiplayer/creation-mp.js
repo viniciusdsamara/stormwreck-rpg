@@ -350,40 +350,67 @@ function finishCreationMp(){
   if (ON_DONE) ON_DONE(char);
 }
 
-// ---- retrato: upload + redução para thumbnail embutido na ficha ----
+// ---- retrato: upload OU geração por IA, embutido na ficha ----
 function wirePortraitUpload(){
-  const input = $('#pf_portrait_input'), btn = $('#pf_portrait_btn'),
-        clear = $('#pf_portrait_clear'), prev = $('#pf_portrait_preview');
+  const input = $('#pf_portrait_input'), btn = $('#pf_portrait_btn'), clear = $('#pf_portrait_clear'),
+        ai = $('#pf_portrait_ai'), prev = $('#pf_portrait_preview');
   if (!input || !btn || !prev) return;
   const refresh = () => {
-    if (DRAFT.portrait){ prev.style.backgroundImage = `url('${DRAFT.portrait}')`; prev.classList.add('has');
-      if (clear) clear.style.display = ''; btn.textContent = '📷 Trocar imagem'; }
-    else { prev.style.backgroundImage = ''; prev.classList.remove('has');
+    if (DRAFT.portrait){ prev.style.backgroundImage = `url('${DRAFT.portrait}')`; prev.classList.add('has'); prev.textContent = '';
+      if (clear) clear.style.display = ''; btn.textContent = '📷 Trocar'; }
+    else { prev.style.backgroundImage = ''; prev.classList.remove('has'); if (!prev.classList.contains('gen')) prev.textContent = '';
       if (clear) clear.style.display = 'none'; btn.textContent = '📷 Enviar imagem'; }
   };
   refresh();
   btn.onclick = () => input.click();
   if (clear) clear.onclick = () => { DRAFT.portrait = null; input.value = ''; refresh(); };
   input.onchange = () => { const f = input.files && input.files[0]; if (f) shrinkPortrait(f, (dataUrl) => { DRAFT.portrait = dataUrl; refresh(); }); };
+  if (ai) ai.onclick = () => {
+    if (!DRAFT.race || !DRAFT.cls){ toast('Escolha raça e classe primeiro.'); return; }
+    const lbl = ai.textContent; ai.disabled = true; ai.textContent = '⏳ gerando…';
+    prev.classList.add('gen'); prev.textContent = '✨'; prev.style.backgroundImage = '';
+    generatePortraitAI(
+      (result) => { DRAFT.portrait = result; prev.classList.remove('gen'); refresh(); ai.disabled = false; ai.textContent = lbl; },
+      () => { toast('A IA não respondeu — tente de novo.'); prev.classList.remove('gen'); refresh(); ai.disabled = false; ai.textContent = lbl; }
+    );
+  };
 }
-// reduz qualquer imagem para um quadrado de 220px (JPEG) — leve o bastante para a ficha
+// desenha uma <img> num quadrado de 220px (cover) e devolve data URL JPEG
+function drawPortrait(img){
+  const S = 220, cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+  const ctx = cv.getContext('2d');
+  const scale = Math.max(S / img.width, S / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+  return cv.toDataURL('image/jpeg', 0.72);
+}
 function shrinkPortrait(file, cb){
   if (!file.type || !file.type.startsWith('image/')){ toast('Escolha um arquivo de imagem.'); return; }
   const reader = new FileReader();
-  reader.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      const S = 220, cv = document.createElement('canvas'); cv.width = S; cv.height = S;
-      const ctx = cv.getContext('2d');
-      const scale = Math.max(S / img.width, S / img.height);
-      const w = img.width * scale, h = img.height * scale;
-      ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);   // recorte centralizado (cover)
-      try { cb(cv.toDataURL('image/jpeg', 0.72)); } catch(err){ toast('Não consegui processar a imagem.'); }
-    };
-    img.onerror = () => toast('Imagem inválida.');
-    img.src = e.target.result;
-  };
+  reader.onload = e => { const img = new Image();
+    img.onload = () => { try { cb(drawPortrait(img)); } catch(err){ toast('Não consegui processar a imagem.'); } };
+    img.onerror = () => toast('Imagem inválida.'); img.src = e.target.result; };
   reader.readAsDataURL(file);
+}
+// monta o prompt do retrato a partir da ficha (aparência + raça/classe)
+function portraitPrompt(){
+  const d = DRAFT, p = d.profile || {}; const bits = [];
+  if (p.appearance && p.appearance.trim()) bits.push(p.appearance.trim());
+  bits.push(`${d.race||'human'}${d.subrace?' '+d.subrace:''} ${d.cls||'adventurer'}`);
+  bits.push('fantasy character portrait, head and shoulders, dungeons and dragons, painterly digital art, dramatic lighting, detailed face, dark fantasy');
+  return bits.join(', ');
+}
+// gera o retrato pela Pollinations (grátis) e embute como data URL; fallback = URL externa
+function generatePortraitAI(onOk, onErr){
+  const seed = Math.floor(Math.random() * 100000);
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(portraitPrompt())}?width=512&height=512&seed=${seed}&nologo=true&model=flux`;
+  const img = new Image(); img.crossOrigin = 'anonymous';
+  let done = false;
+  const timer = setTimeout(() => { if (!done){ done = true; if (onErr) onErr(); } }, 45000);
+  img.onload = () => { if (done) return; done = true; clearTimeout(timer);
+    try { onOk(drawPortrait(img)); } catch(e){ onOk(url); } };          // CORS ok → embute; senão guarda a URL
+  img.onerror = () => { if (done) return; done = true; clearTimeout(timer); onOk(url); };  // CORS bloqueou o canvas → usa a URL (exibe igual)
+  img.src = url;
 }
 
 // ====================================================================
