@@ -1265,6 +1265,36 @@ function renderRollLog(st){
   const list = $('#rollLogList'); if (!list) return;
   list.innerHTML = rolls.length ? rolls.slice().reverse().map(rollLogEntryHtml).join('') : '<div class="rolllog-empty">Nenhuma rolagem ainda.</div>';
 }
+// balões FIXOS de rolagem (um por jogador) — em combate substituem a lista que
+// crescia e empurrava o chat. Cada balão mostra a última rolagem que envolve
+// aquele PC (ataque/save dele OU ataque inimigo contra ele = dano que tomou).
+function renderCombatBalloons(st){
+  const box = $('#combatBalloons'); if (!box) return;
+  if (!mpCombatActive(st)){ box.innerHTML = ''; return; }
+  const rolls = (st.history||[]).filter(m => m.role==='roll');
+  const cur = mpCurrentActor(st);
+  const activeOwner = (cur && cur.kind==='pc') ? ((st.characters[cur.idx]||{}).owner) : null;
+  box.innerHTML = (st.characters||[]).map(c => {
+    let last = null;
+    for (let i=rolls.length-1;i>=0;i--){ if ((rolls[i].label||'').includes(c.name)){ last = rolls[i]; break; } }
+    const av = c.portrait
+      ? `<div class="cbll-av" style="background-image:url('${c.portrait}')"></div>`
+      : `<div class="cbll-av">${escapeHtml(tacInitials(c.name))}</div>`;
+    let body;
+    if (last){
+      const totCls = last.crit ? 'crit' : (last.fumble && !last.autoFail) ? 'fumble' : '';
+      const out = last.outcome ? `<span class="cbll-out ${/SUCESSO|ACERTO/i.test(last.outcome)?'ok':'bad'}">${escapeHtml(last.outcome)}</span>` : '';
+      const det = last.autoFail ? 'falha automática' : `d20 ${last.nat!=null?last.nat:'—'} ${fmtMod(last.mod||0)}${last.dc?` · CD ${last.dc}`:''}`;
+      const dmg = last.dmg ? `<div class="cbll-dmg">✕ ${last.dmg.total} dano</div>` : '';
+      body = `<div class="cbll-row"><span class="cbll-total ${totCls}">${last.total}</span>${out}</div>`
+           + `<div class="cbll-detail">${det}</div>${dmg}`
+           + `<div class="cbll-label">${escapeHtml(last.label||'')}</div>`;
+    } else {
+      body = `<div class="cbll-empty">sem rolagem ainda</div>`;
+    }
+    return `<div class="cbll ${c.owner===activeOwner?'act':''}">${av}<div class="cbll-main"><div class="cbll-name">${escapeHtml(c.name)}</div>${body}</div></div>`;
+  }).join('');
+}
 // detecção tolerante do pedido de rolagem: aceita ROLL/ROLAR/ROLE/TESTE/DADO,
 // espaços, prefixo CD/DC e atributo por extenso/inglês. Grupos: tipo, atributo, CD, tag?
 const ROLL_RE = /\[\s*(?:ROLL|ROLAR|ROLE|ROLAGEM|TESTE|DADO)\s*:\s*([^:\]]+?)\s*:\s*([^:\]]+?)\s*:\s*(?:CD|DC)?\s*(\d+)\s*(?::\s*([^\]]+?)\s*)?\]/i;
@@ -1517,6 +1547,7 @@ function renderGame(){
   // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
   renderRollLog(st);
+  renderCombatBalloons(st);   // balões fixos por jogador (só em combate)
   // selo de conexão (mostra/atualiza visibilidade)
   setConn(CONN);
   // vez / compositor — trava para TODOS enquanto o Mestre pensa/digita, há level-up, ou o Mestre saiu
