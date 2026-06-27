@@ -99,7 +99,7 @@ function tacSeed(st){
   const pos={}; let si=0;
   (st.characters||[]).forEach(c=>{ const sp=m.pcSpawn[si++ % m.pcSpawn.length]; if (sp) pos[c.owner]=[sp[0],sp[1]]; });
   (st.combat.enemies||[]).forEach(e=>{ const sp=m.enemySpawn[e.id]; if (sp) pos[e.id]=[sp[0],sp[1]]; });
-  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{} };
+  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{}, reacted:{} };
   tacReveal(st);
 }
 function tacLOS(m,x0,y0,x1,y1){ const dx=x1-x0,dy=y1-y0,steps=Math.max(Math.abs(dx),Math.abs(dy)); if (!steps) return true;
@@ -258,10 +258,12 @@ async function tacMoveToken(st,owner,x,y){
   const ac=(st.characters||[]).find(c=>c.owner===owner); const budget=tacMoveBudget(ac);
   if (budget<=0) return;                                            // condição impede o movimento
   if (!tacReachable(st,m,from,budget).has(tacKey(x,y))) return;     // valida alcance (Speed) no servidor
-  st.tactical.pos[owner]=[x,y];
+  const fell = resolveOpportunity(st, owner, from, [x,y]);          // sair do alcance provoca ataque de oportunidade
   st.tactical.moved=st.tactical.moved||{}; st.tactical.moved[owner]=true;
+  if (st.tactical.pos[owner]) st.tactical.pos[owner]=[x,y];         // guard: tacKill apaga a pos se o PC caiu na OA
   tacReveal(st);
   await saveState(st); renderGame();
+  if (fell && mpCombatActive(st)) await tacAdvanceFromPc(st);       // PC caiu na OA → encerra o turno dele e segue
 }
 
 // ============================================================
@@ -363,6 +365,54 @@ function mpUndeadFortitude(st, e, dmg, dtype, opts){
   return false;
 }
 function dmgMultNote(mult){ return mult==='imune'?' (imune)':mult==='vulnerável'?' (vulnerável ×2)':mult==='resistência'?' (resistência ½)':''; }
+
+// ============================================================
+//  P1 — ATAQUES DE OPORTUNIDADE (reações). Sair do alcance corpo-a-corpo
+//  de um inimigo provoca um ataque dele (1 reação por rodada). Determinístico.
+// ============================================================
+function tacReachOfEnemy(e){ return aiProfile(e).reach||1; }
+function pcThreatReach(c){ return pcAttackRange(c)<=1 ? 1 : 0; }   // só ameaça OA quem tem corpo-a-corpo
+function tacHasReaction(st,id){ return !((st.tactical&&st.tactical.reacted||{})[id]); }
+function tacSpendReaction(st,id){ st.tactical.reacted=st.tactical.reacted||{}; st.tactical.reacted[id]=true; }
+function resetReactionFor(st,id){ if(st.tactical&&st.tactical.reacted) delete st.tactical.reacted[id]; }
+function oaEnemyStrike(st,e,pc){
+  const tam=(typeof targetAttackMods==='function')?targetAttackMods(pc,true):{adv:false,dis:false,autoCrit:false};
+  const atk=mpD20(null, e.mod||0, { adv:tam.adv, dis:tam.dis });
+  const hit=atk.crit||(!atk.fumble&&atk.total>=(pc.ca||10)); if(hit&&tam.autoCrit&&!atk.fumble) atk.crit=true;
+  st.history.push({ role:'roll', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat });
+  if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); applyDamage(pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e}); }
+}
+function oaPcStrike(st,c,e){
+  const tam=(typeof targetAttackMods==='function')?targetAttackMods(e,true):{adv:false,dis:false,autoCrit:false};
+  const card=doMpRoll(c, ['','ataque','FOR','0',e.name], { adv:tam.adv, dis:tam.dis, autoCrit:tam.autoCrit });
+  card.label=`${c.name} · ataque de oportunidade → ${e.name}`; card.dc=e.ca;
+  const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
+  st.history.push(card);
+  if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult; }
+}
+// chamado ANTES de mover 'moverId' de 'from' para 'to'; resolve OAs de quem ele deixa.
+// Devolve true se o próprio movedor caiu (parar o movimento).
+function resolveOpportunity(st, moverId, from, to){
+  if(!st.tactical||!from||!to||!mpCombatActive(st)) return false;
+  const pos=st.tactical.pos;
+  const moverPc=(st.characters||[]).find(c=>c.owner===moverId);
+  if(moverPc){
+    for(const e of (st.combat.enemies||[])){ if(e.curHp<=0) continue; const ep=pos[e.id]; if(!ep) continue;
+      const reach=tacReachOfEnemy(e);
+      if(tacDist(from,ep)<=reach && tacDist(to,ep)>reach && tacHasReaction(st,e.id) && !(e.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))){
+        tacSpendReaction(st,e.id); oaEnemyStrike(st,e,moverPc); if((moverPc.hp||0)<=0) break; }
+    }
+    return (moverPc.hp||0)<=0;
+  } else {
+    const e=(st.combat.enemies||[]).find(x=>x.id===moverId); if(!e) return false;
+    for(const c of (st.characters||[])){ if((c.hp||0)<=0) continue; const cp=pos[c.owner]; if(!cp) continue;
+      const reach=pcThreatReach(c);
+      if(reach>0 && tacDist(from,cp)<=reach && tacDist(to,cp)>reach && tacHasReaction(st,c.owner) && !(c.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))){
+        tacSpendReaction(st,c.owner); oaPcStrike(st,c,e); if(e.curHp<=0) break; }
+    }
+    return e.curHp<=0;
+  }
+}
 function tacDist(a,b){ return (a&&b) ? Math.max(Math.abs(a[0]-b[0]), Math.abs(a[1]-b[1])) : 0; }
 function tacLegendAt(m,x,y){ return m.legend[[...(m.cells[y]||'')][x]] || null; }
 function tacIsHazard(m,x,y){ const t=tacLegendAt(m,x,y); return !!(t&&t.hazard); }
@@ -495,7 +545,7 @@ function aiRunEnemyTurn(st,e,ev){
   if(prof.flee>0 && (e.curHp/e.hp)<prof.flee){   // moral: recua se muito ferido
     if(m&&self&&eSpeed>0){ const reach=aiReach(st,m,self,eSpeed,prof.fly), t=aiPickTarget(st,e), tp=t&&t.pos; let best=self,bd=-1;
       if(tp){ for(const k of reach.keys()){ const [x,y]=k.split(',').map(Number), d=tacDist([x,y],tp); if(d>bd){bd=d;best=[x,y];} } }
-      if(best[0]!==self[0]||best[1]!==self[1]){ st.tactical.pos[e.id]=best; tacReveal(st); } }
+      if(best[0]!==self[0]||best[1]!==self[1]){ resolveOpportunity(st,e.id,self,best); if(st.tactical.pos[e.id]) st.tactical.pos[e.id]=best; tacReveal(st); } }
     ev.push({kind:'flee',srcName:e.name}); return; }
   if(prof.breath && e.breathReady===false && mpRollDie(6)>=5) e.breathReady=true;   // recarga do sopro
   const target=aiPickTarget(st,e);
@@ -503,7 +553,7 @@ function aiRunEnemyTurn(st,e,ev){
   if(prof.breath && e.breathReady){ aiDragonBreath(st,m,e,prof,ev); e.breathReady=false; return; }
   if(m&&self&&target.pos&&tacDist(self,target.pos)>prof.reach && eSpeed>0){   // move até o alcance (se puder andar)
     const dest=aiMoveDest(st,m,e,mProf,target);
-    if(dest[0]!==self[0]||dest[1]!==self[1]){ st.tactical.pos[e.id]=dest; tacReveal(st); ev.push({kind:'move',srcName:e.name,tgtName:target.pc.name}); } }
+    if(dest[0]!==self[0]||dest[1]!==self[1]){ const dead=resolveOpportunity(st,e.id,self,dest); if(st.tactical.pos[e.id]) st.tactical.pos[e.id]=dest; tacReveal(st); ev.push({kind:'move',srcName:e.name,tgtName:target.pc.name}); if(dead||e.curHp<=0) return; } }
   const now=(m&&st.tactical&&st.tactical.pos[e.id]) ? tacDist(st.tactical.pos[e.id],target.pos) : prof.reach;
   if(now<=prof.reach){ aiEnemyAttack(st,e,prof,target,ev); if(prof.trait) aiApplyTrait(st,e,prof,target,ev); }
   else ev.push({kind:'idle',srcName:e.name});
@@ -2293,7 +2343,11 @@ function mpAdvanceCombat(st){
     const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
     if (!dead) break;
   } while (++guard < cb.order.length * 2);
-  if (st.tactical) st.tactical.moved = {};   // novo turno → renova o deslocamento
+  if (st.tactical){ st.tactical.moved = {};   // novo turno → renova o deslocamento
+    const o = cb.order[cb.turn]; const id = o.kind==='pc' ? (st.characters[o.idx]||{}).owner : (cb.enemies[o.idx]||{}).id;
+    if (id) resetReactionFor(st, id);          // renova a reação de quem entra no turno (ataque de oportunidade disponível)
+    if (cb._surge && !(o.kind==='pc' && (st.characters[o.idx]||{}).owner===cb._surge)) delete cb._surge;   // limpa Surto não-usado ao trocar de ator
+  }
 }
 function mpEndCombat(st, victory){
   st.combat = null; st.tactical = null;
@@ -3054,7 +3108,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627u';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627v';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
