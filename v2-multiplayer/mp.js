@@ -192,6 +192,7 @@ async function tacMoveToken(st,owner,x,y){
 //  Regra de alvo (pedido do usuário): mira o PC MAIS PRÓXIMO; entre os
 //  mais próximos, o de MENOR HP. Dados rolados pelo código.
 // ============================================================
+let TEST_MODE = false;   // ?teste=1 → sem login/IA; narração de inimigo usa template
 const ATTACK_PREFIX = '@@ATK@@', ENDTURN_PREFIX = '@@ENDTURN@@';
 const MONSTER_AI = {
   'Zumbi Afogado': { speed:4, reach:1, fly:false, multiattack:1, flee:0 },
@@ -310,8 +311,8 @@ function summarizeRoundForAI(ev){
 }
 async function deliverEnemyNarration(st,ev){
   if(!ev.length) return; let text='';
-  try { const reply=await callDm(st, summarizeRoundForAI(ev)); text=(reply||'').replace(/\[[^\]]*\]/g,'').trim(); } catch(e){}
-  if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero
+  if(!TEST_MODE){ try { const reply=await callDm(st, summarizeRoundForAI(ev)); text=(reply||'').replace(/\[[^\]]*\]/g,'').trim(); } catch(e){} }
+  if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero (e padrão no modo teste)
   if(text) st.history.push({ role:'dm', text });
 }
 // SUBSTITUI mpRunEnemyTurns: inimigos agem 100% por código; 1 narração por bloco
@@ -2472,6 +2473,7 @@ function makeStubSupa(){
   };
 }
 function initTestMode(){
+  TEST_MODE = true;
   supa = makeStubSupa();
   ME = { id:'test-admin', email:'mestre@teste' };
   MEMBERS = [{ user_id:'test-admin', role:'admin', display_name:'Mestre', ready:true, online:true }];
@@ -2496,6 +2498,60 @@ function tpTestRoll(outcome){
                  dmg: outcome==='crit' ? { total:12, type:'cortante', detail:'2d6(5,3)+4' } : null };
   setTimeout(()=> settleDiceAnim(card), 1500);
 }
+// ---- COMBATE SIMULADO (modo teste): a engine joga sozinha, p/ ver o motor ----
+let TP_SIM = false;
+// garante 2 heróis no tabuleiro (mostra a regra de alvo: perto + menor HP)
+function tpEnsureParty(st){
+  if ((st.characters||[]).length >= 2) return;
+  const h2 = JSON.parse(JSON.stringify(st.characters[0]));
+  h2.name = 'Aliada de Teste'; h2.owner = 'test-ally'; h2.ownerName = 'Aliada'; h2.player = 'Aliada'; h2.slot = 1;
+  h2.maxHp = Math.max(8, Math.round(h2.maxHp * 0.55)); h2.hp = Math.round(h2.maxHp * 0.45);   // menos vida → alvo preferido quando perto
+  h2.weapon = 'Arco curto'; h2.weapons = ['Arco curto']; h2.ca = 13;
+  st.characters.push(h2);
+}
+// turno automático de um PC: anda até o inimigo mais próximo e ataca (sem rodar inimigos aqui)
+async function tpAutoPcTurn(st, c){
+  const m = tacMap(st);
+  const live = (st.combat.enemies||[]).filter(e => e.curHp > 0);
+  if (!live.length){ advanceTurn(st); await saveState(st); renderGame(); return; }
+  const pos = (st.tactical && st.tactical.pos) || {};
+  let pp = pos[c.owner];
+  // alvo: inimigo mais próximo
+  let tgt = live[0], bd = Infinity;
+  live.forEach(e => { const ep = pos[e.id]; const d = (ep && pp) ? tacDist(pp, ep) : 99; if (d < bd){ bd = d; tgt = e; } });
+  const rng = pcAttackRange(c);
+  let ep = pos[tgt.id];
+  if (m && pp && ep && tacDist(pp, ep) > rng){                       // longe → anda pra perto
+    const reach = tacReachable(st, m, pp, TAC_MOVE); let best = pp, bs = Infinity;
+    for (const k of reach.keys()){ const [x,y] = k.split(',').map(Number); const d = tacDist([x,y], ep); if (d < bs){ bs = d; best = [x,y]; } }
+    if (best[0] !== pp[0] || best[1] !== pp[1]){ await tacMoveToken(st, c.owner, best[0], best[1]); await mpSleep(380); }
+  }
+  pp = (st.tactical && st.tactical.pos) ? st.tactical.pos[c.owner] : null; ep = (st.tactical && st.tactical.pos) ? st.tactical.pos[tgt.id] : null;
+  if (pp && ep && tacDist(pp, ep) <= rng){ await playerAttack(c.owner, tgt.id, st); await mpSleep(300); }
+  if (mpCombatActive(st)) advanceTurn(st);                           // encerra o turno do PC (inimigos rodam no loop externo)
+  await saveState(st); renderGame();
+}
+async function tpRunAuto(st){
+  st.busy = true; await saveState(st); renderGame();                // esconde os botões manuais durante a simulação
+  let guard = 0;
+  while (TP_SIM && mpCombatActive(st) && guard++ < 80){
+    const cur = mpCurrentActor(st); if (!cur) break;
+    if (cur.kind === 'enemy'){ await mpRunEnemyTurnsAuto(st); await mpSleep(250); continue; }
+    const c = st.characters[cur.idx];
+    if (!c || c.hp <= 0){ advanceTurn(st); await saveState(st); renderGame(); await mpSleep(120); continue; }
+    await tpAutoPcTurn(st, c);
+    await mpSleep(420);
+  }
+  st.busy = false; await saveState(st); renderGame();
+}
+async function tpSimCombat(encId){
+  const st = ROOM.state;
+  tpEnsureParty(st);
+  const sc = Object.keys(CAMPAIGN.scenes).find(s => CAMPAIGN.scenes[s].combat === encId);   // alinha cena ↔ encontro
+  if (sc){ st.sceneId = sc; mpMarkSceneVisited(st); }
+  st.combat = null; LAST_COMBAT = false; mpStartCombat(st, encId); renderGame();
+  await tpRunAuto(st);
+}
 function injectTestPanel(){
   if (document.getElementById('testPanel')) return;
   const encs = Object.keys((typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters) || {});
@@ -2507,6 +2563,9 @@ function injectTestPanel(){
       <div class="tp-sec"><b>⚔ Combate (reveal + arte)</b><div class="tp-row">
         ${encs.map(e=>`<button data-enc="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</button>`).join('')}
       </div><button data-endc="1" class="wide">encerrar combate</button></div>
+      <div class="tp-sec"><b>🤖 Combate simulado (a engine joga sozinha)</b><div class="tp-row">
+        <select id="tpSimEnc">${encs.map(e=>`<option value="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</option>`).join('')}</select>
+        <button id="tpSimGo">▶ simular</button><button id="tpSimStop">parar</button></div></div>
       <div class="tp-sec"><b>🎲 Dado 3D</b><div class="tp-row">
         <button data-roll="success">sucesso</button><button data-roll="fail">falha</button>
         <button data-roll="crit">crítico</button><button data-roll="fumble">falha crít.</button></div></div>
@@ -2524,7 +2583,11 @@ function injectTestPanel(){
     if (sc){ st.sceneId = sc; mpMarkSceneVisited(st); }
     st.combat = null; LAST_COMBAT = false; mpStartCombat(st, enc); renderGame();
   });
-  const endc = el.querySelector('[data-endc]'); if (endc) endc.onclick = () => { if (ROOM.state.combat){ mpEndCombat(ROOM.state, true); renderGame(); } };
+  const endc = el.querySelector('[data-endc]'); if (endc) endc.onclick = () => { TP_SIM = false; if (ROOM.state.combat){ mpEndCombat(ROOM.state, true); renderGame(); } };
+  const simGo = el.querySelector('#tpSimGo'), simStop = el.querySelector('#tpSimStop');
+  if (simGo) simGo.onclick = () => { if (TP_SIM) return; TP_SIM = true; simGo.disabled = true;
+    tpSimCombat(el.querySelector('#tpSimEnc').value).catch(e=>toast('Sim: '+e.message)).finally(()=>{ TP_SIM = false; simGo.disabled = false; }); };
+  if (simStop) simStop.onclick = () => { TP_SIM = false; };
   el.querySelectorAll('[data-roll]').forEach(b => b.onclick = () => tpTestRoll(b.dataset.roll));
   el.querySelector('#tpGuide').onclick = () => openGuide();
   el.querySelector('#tpMap').onclick = () => openMapMp();
