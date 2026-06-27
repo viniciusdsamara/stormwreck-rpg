@@ -19,7 +19,7 @@ function openGuidedCreation(){
   DRAFT = { race:null, subrace:null, cls:null, base:{ FOR:8, DES:8, CON:8, INT:8, SAB:8, CAR:8 },
             skills:[], skillsExtra:[], asiChoices:[], armor:'Nenhuma', shield:false, weapon:null,
             fightingStyle:null, archetype:null, cantrips:[], spells:[], expertise:[],
-            player: PLAYER_NAME,
+            player: PLAYER_NAME, portrait: null,
             profile:{ appearance:'', context:'', motivation:'', flaw:'', quality:'' } };
   show('screen-create');
   renderCreationForm();
@@ -61,6 +61,7 @@ function renderCreationForm(){
   ['appearance','context','motivation','flaw','quality'].forEach(k => {
     const el = $('#pf_'+k); if (el){ el.value=''; el.oninput = () => DRAFT.profile[k] = el.value; }
   });
+  wirePortraitUpload();
   $('#cCreateBtn').onclick = finishCreationMp;
   $('#cBackBtn').onclick = () => show('screen-cmode');
   checkCreationReady();
@@ -345,7 +346,44 @@ function finishCreationMp(){
     cantrips: [...DRAFT.cantrips], spells: [...DRAFT.spells], expertise: [...DRAFT.expertise],
     profile: { ...DRAFT.profile }
   });
+  char.portrait = DRAFT.portrait || null;
   if (ON_DONE) ON_DONE(char);
+}
+
+// ---- retrato: upload + redução para thumbnail embutido na ficha ----
+function wirePortraitUpload(){
+  const input = $('#pf_portrait_input'), btn = $('#pf_portrait_btn'),
+        clear = $('#pf_portrait_clear'), prev = $('#pf_portrait_preview');
+  if (!input || !btn || !prev) return;
+  const refresh = () => {
+    if (DRAFT.portrait){ prev.style.backgroundImage = `url('${DRAFT.portrait}')`; prev.classList.add('has');
+      if (clear) clear.style.display = ''; btn.textContent = '📷 Trocar imagem'; }
+    else { prev.style.backgroundImage = ''; prev.classList.remove('has');
+      if (clear) clear.style.display = 'none'; btn.textContent = '📷 Enviar imagem'; }
+  };
+  refresh();
+  btn.onclick = () => input.click();
+  if (clear) clear.onclick = () => { DRAFT.portrait = null; input.value = ''; refresh(); };
+  input.onchange = () => { const f = input.files && input.files[0]; if (f) shrinkPortrait(f, (dataUrl) => { DRAFT.portrait = dataUrl; refresh(); }); };
+}
+// reduz qualquer imagem para um quadrado de 220px (JPEG) — leve o bastante para a ficha
+function shrinkPortrait(file, cb){
+  if (!file.type || !file.type.startsWith('image/')){ toast('Escolha um arquivo de imagem.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const S = 220, cv = document.createElement('canvas'); cv.width = S; cv.height = S;
+      const ctx = cv.getContext('2d');
+      const scale = Math.max(S / img.width, S / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);   // recorte centralizado (cover)
+      try { cb(cv.toDataURL('image/jpeg', 0.72)); } catch(err){ toast('Não consegui processar a imagem.'); }
+    };
+    img.onerror = () => toast('Imagem inválida.');
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 // ====================================================================

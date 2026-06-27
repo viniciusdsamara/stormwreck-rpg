@@ -197,6 +197,22 @@
   /* arte no Roteiro do Mestre */
   .g-enc-arts{ display:flex; gap:8px; margin-bottom:9px; flex-wrap:wrap; }
   .g-enc-arts img{ width:74px; height:96px; object-fit:cover; border-radius:7px; border:1px solid var(--basalt-600); }
+  /* Retrato do personagem: upload na criação + exibição */
+  .portrait-row{ display:flex; gap:14px; align-items:center; }
+  .portrait-preview{ width:88px; height:88px; border-radius:10px; border:1px dashed var(--basalt-600); background:#15101a;
+          background-size:cover; background-position:center; flex-shrink:0; }
+  .portrait-preview.has{ border-style:solid; border-color:var(--ember); }
+  .portrait-ctrl{ display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+  .cc-head{ display:flex; gap:9px; align-items:center; margin-bottom:6px; }
+  .cc-head .cc-hd-txt{ min-width:0; flex:1; }
+  .cc-avatar{ width:46px; height:46px; border-radius:8px; background-size:cover; background-position:center;
+          border:1px solid var(--ember); flex-shrink:0; }
+  .sh-id{ display:flex; gap:12px; align-items:center; }
+  .sh-portrait{ width:72px; height:72px; border-radius:10px; background-size:cover; background-position:center;
+          border:2px solid var(--ember); flex-shrink:0; }
+  .ros-id{ display:flex; gap:10px; align-items:center; }
+  .ros-avatar{ width:42px; height:42px; border-radius:8px; background-size:cover; background-position:center;
+          border:1px solid var(--basalt-600); flex-shrink:0; }
   /* Painel de teste (?teste=1) */
   #testPanel{ position:fixed; top:64px; right:10px; z-index:90; width:232px; background:rgba(14,18,28,0.96);
           border:1px solid var(--ember); border-radius:10px; font-family:Georgia, serif; color:var(--parch);
@@ -719,6 +735,19 @@
       </div>
 
       <div class="subsection">
+        <label class="field"><span>Retrato (opcional — uma imagem do seu personagem)</span></label>
+        <div class="portrait-row">
+          <div class="portrait-preview" id="pf_portrait_preview"></div>
+          <div class="portrait-ctrl">
+            <input type="file" id="pf_portrait_input" accept="image/*" style="display:none">
+            <button type="button" class="btn ghost" id="pf_portrait_btn">📷 Enviar imagem</button>
+            <button type="button" class="btn ghost" id="pf_portrait_clear" style="display:none">✕ Remover</button>
+            <div class="note" style="margin:6px 0 0">A imagem é reduzida e guardada na ficha (JPEG ~220px).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="subsection">
         <label class="field"><span>Perfil (opcional — o Mestre usa para te conhecer)</span></label>
         <div class="pf-grid">
           <label class="pf"><span>Aparência</span><textarea id="pf_appearance" rows="2"></textarea></label>
@@ -874,10 +903,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627c"></script>
-<script src="campaign.js?v=20260627c"></script>
-<script src="creation-mp.js?v=20260627c"></script>
-<script src="sfx.js?v=20260627c"></script>
-<script src="mp.js?v=20260627c"></script>
+<script src="rules.js?v=20260627d"></script>
+<script src="campaign.js?v=20260627d"></script>
+<script src="creation-mp.js?v=20260627d"></script>
+<script src="sfx.js?v=20260627d"></script>
+<script src="mp.js?v=20260627d"></script>
 </body>
 </html>

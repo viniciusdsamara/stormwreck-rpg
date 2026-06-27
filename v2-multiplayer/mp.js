@@ -329,10 +329,11 @@ async function rosterDelete(id){
 function rosterCardHtml(r){
   const s = r.sheet || r.base || {};
   const lvlBtns = [1,2,3].map(n=>`<button class="lvl-btn ${r.level===n?'on':''}" data-lvl="${n}" data-cid="${r.id}">${n}</button>`).join('');
+  const avatar = s.portrait ? `<div class="ros-avatar" style="background-image:url('${s.portrait}')"></div>` : '';
   return `<div class="ros-card">
     <div class="ros-top">
-      <div><div class="ros-name">${escapeHtml(s.name||r.name||'Herói')}</div>
-        <div class="ros-sub">${s.race||''}${s.subrace?` (${s.subrace})`:''} ${s.cls||''}${s.archetype?` [${s.archetype}]`:''}${s.fightingStyle?` · ${s.fightingStyle}`:''} · CA ${s.ca} · ${s.maxHp} HP</div></div>
+      <div class="ros-id">${avatar}<div><div class="ros-name">${escapeHtml(s.name||r.name||'Herói')}</div>
+        <div class="ros-sub">${s.race||''}${s.subrace?` (${s.subrace})`:''} ${s.cls||''}${s.archetype?` [${s.archetype}]`:''}${s.fightingStyle?` · ${s.fightingStyle}`:''} · CA ${s.ca} · ${s.maxHp} HP</div></div></div>
       <button class="mini-x" data-del="${r.id}" title="Excluir">✕</button>
     </div>
     <div class="ros-actions">
@@ -830,10 +831,13 @@ function mpCharCard(c, active, idx, luPending){
     ? `<div class="cond-chips">${c.conditions.map(n=>`<span class="cond-chip ro" title="${escapeHtml((((typeof RULES!=='undefined'&&RULES.conditions[n])||{}).desc)||'')}">${escapeHtml(n)}</span>`).join('')}</div>`
     : '';
   const luBadge = luPending ? `<div class="lu-badge">⬆ Subir de nível — toque para escolher</div>` : '';
+  const avatar = c.portrait ? `<div class="cc-avatar" style="background-image:url('${c.portrait}')"></div>` : '';
   return `<div class="char-card ${active?'active-turn':''} ${luPending?'levelup-pending':''}" data-sheet="${idx}" title="${luPending?'Subir de nível':'Ver ficha completa'}">
     ${luBadge}
-    <div class="cc-name">${escapeHtml(c.name)}</div>
-    <div class="cc-sub"><span class="player-tag ${active?'p1':'p2'}">${escapeHtml(c.ownerName||c.player||'')}</span> · ${sub}</div>
+    <div class="cc-head">${avatar}<div class="cc-hd-txt">
+      <div class="cc-name">${escapeHtml(c.name)}</div>
+      <div class="cc-sub"><span class="player-tag ${active?'p1':'p2'}">${escapeHtml(c.ownerName||c.player||'')}</span> · ${sub}</div>
+    </div></div>
     <div class="hpbar-wrap"><div class="hpbar" style="width:${pct}%"></div><div class="hpbar-label">${c.hp} / ${c.maxHp} HP</div></div>
     <div class="stat-row"><span>AC <b>${c.ca}</b></span><span>Speed <b>${c.speed}m</b></span><span>Prof <b>+${c.prof}</b></span></div>
     <div class="mini-abilities">${minis}</div>
@@ -1299,7 +1303,7 @@ function mpSheetHtml(c, i){
   const pf = (k,label) => `<div><span class="sh-prof-lbl">${label}</span><div class="sh-prof-txt">${escapeHtml(p[k]||'—')}</div></div>`;
   return `
   <div class="sh-top">
-    <div><div class="sh-name">${escapeHtml(c.name)}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${escapeHtml(c.ownerName||c.player||'')}</div></div>
+    <div class="sh-id">${c.portrait?`<div class="sh-portrait" style="background-image:url('${c.portrait}')"></div>`:''}<div><div class="sh-name">${escapeHtml(c.name)}</div><div class="sh-sub">${c.race}${c.subrace?` (${c.subrace})`:''} · ${c.cls}${c.archetype?` [${c.archetype}]`:''}${c.fightingStyle?` · ${c.fightingStyle}`:''} · Nível ${c.level} · ${escapeHtml(c.ownerName||c.player||'')}</div></div></div>
     <button class="rp-close" id="sheetCloseBtn">✕</button>
   </div>
   <div class="sh-stats">
