@@ -579,12 +579,15 @@ function tacKill(st,id){ if(st.tactical&&st.tactical.pos) delete st.tactical.pos
 function aiEnemyAttack(st,e,prof,target,ev){
   const melee=(prof.reach||1)<=1;
   const tam=(typeof targetAttackMods==='function')?targetAttackMods(target.pc, melee):{adv:false,dis:false,autoCrit:false};
+  const tgtCA=effCA(st, target.pc, target.pc.ca||10);   // Escudo da Fé soma +2 na CA do PC
+  const bane=effBanePenalty(st, e.id);                  // Perdição no inimigo: -1d4 no ataque
   for(let k=0;k<(prof.multiattack||1);k++){
     if((target.pc.hp||0)<=0) break;
     const atk=mpD20(null, e.mod||0, { adv:tam.adv, dis:tam.dis });
-    let hit=atk.crit||(!atk.fumble&&atk.total>=(target.pc.ca||10));
+    if(bane){ const b=mpRollDmgExpr(bane).total; atk.total-=b; }
+    let hit=atk.crit||(!atk.fumble&&atk.total>=tgtCA);
     if(hit && tam.autoCrit && !atk.fumble) atk.crit=true;   // alvo paralisado/inconsciente: acerto corpo-a-corpo é crítico
-    st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.pc.ca, tipo:'ataque', nat:atk.nat });
+    st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:tgtCA, tipo:'ataque', nat:atk.nat });
     if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
       fxEmit(st, { kind:(prof.reach||1)<=1?'melee':'ranged', dtype:enemyDmgType(e), src:e.id, tgt:target.pc.owner, result:fxResult(true,atk.crit), mult:res.mult, seq:k });
       ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
@@ -648,6 +651,7 @@ function tacTickConditions(st, c){
     else keep.push(cond);
   }
   c.conditions=keep;
+  effIncapacitatedCheck(st, c);   // se ficou atordoado/paralisado/inconsciente, perde a concentração
 }
 function tacTickEnemyConditions(st, e){   // versão leve p/ inimigos (save plano por e.mod)
   if(!(e.conditions||[]).length) return;
@@ -665,7 +669,7 @@ function tacTickEnemyConditions(st, e){   // versão leve p/ inimigos (save plan
 function tacTickCurrentPc(st){
   if(!mpCombatActive(st)) return;
   const cur=mpCurrentActor(st);
-  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0) tacTickConditions(st,c); }
+  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0){ tacTickConditions(st,c); tickEffectsTurnStart(st,c); } }
 }
 function aiRunEnemyTurn(st,e,ev){
   tacTickEnemyConditions(st,e);   // tenta encerrar condições temporárias no início do turno
@@ -751,12 +755,14 @@ async function playerAttack(owner,enemyId,st){
   if(m&&pp&&ep&&tacDist(pp,ep)>pcAttackRange(c)) return;   // fora de alcance
   const melee = pcAttackRange(c)<=1; const atr = melee?'FOR':'DES';
   const tam = (typeof targetAttackMods==='function') ? targetAttackMods(e, melee) : {adv:false,dis:false,autoCrit:false};
-  const card=doMpRoll(c, ['','ataque',atr,'0',e.name], { adv:tam.adv, dis:tam.dis, autoCrit:tam.autoCrit }); card.dc=e.ca;
+  const adv = tam.adv || effAttackedAdv(st, e.id);   // Fada de Fogo no alvo dá vantagem a quem o ataca
+  const bless = effBlessDie(st, owner);              // Bênção no atacante: +1d4
+  const card=doMpRoll(c, ['','ataque',atr,'0',e.name], { adv, dis:tam.dis, autoCrit:tam.autoCrit, extraAtkDie:bless }); card.dc=e.ca;
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
   if(hit&&card.dmg){
     if(c.raging && melee) card.dmg.total += 2;   // Fúria: +2 de dano corpo-a-corpo
-    // Ataque Furtivo (Ladino): com vantagem OU aliado adjacente ao alvo
-    if(c.cls==='Ladino' && (tam.adv || pcAllyAdjacentToEnemy(st,owner,e))){ const sd=Math.ceil((c.level||1)/2); const sneak=mpRollDmgExpr(sd+'d6').total; card.dmg.total+=sneak; card.dmg.detail=(card.dmg.detail||'')+` + furtivo ${sd}d6(${sneak})`; }
+    if(c.cls==='Ladino' && (adv || pcAllyAdjacentToEnemy(st,owner,e))){ const sd=Math.ceil((c.level||1)/2); const sneak=mpRollDmgExpr(sd+'d6').total; card.dmg.total+=sneak; card.dmg.detail=(card.dmg.detail||'')+` + furtivo ${sd}d6(${sneak})`; }
+    const mark=effMarkDie(st, owner, e.id); if(mark){ const md=mpRollDmgExpr(mark).total; card.dmg.total+=md; card.dmg.detail=(card.dmg.detail||'')+` + marca ${mark}(${md})`; }   // Marca do Caçador
   }
   st.history.push(card);
   if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult;
@@ -817,6 +823,15 @@ const SPELL_FX = {
   'Repreensão Infernal': { lvl:1, kind:'save',   range:8, save:'DES', dmg:'2d10', dtype:'fogo', half:true },
   'Curar Ferimentos':    { lvl:1, kind:'heal',   range:1, dmg:'1d8', addMod:true },
   'Palavra Curativa':    { lvl:1, kind:'heal',   range:8, dmg:'1d4', addMod:true },
+  // efeitos contínuos / concentração (buffs e debuffs)
+  'Bênção':              { lvl:1, kind:'effect', effect:'Bênção',            range:6,  aim:'ally' },
+  'Perdição':            { lvl:1, kind:'effect', effect:'Perdição',          range:6,  aim:'enemy' },
+  'Marca do Caçador':    { lvl:1, kind:'effect', effect:'Marca do Caçador',  range:18, aim:'enemy' },
+  'Escudo da Fé':        { lvl:1, kind:'effect', effect:'Escudo da Fé',      range:12, aim:'ally' },
+  'Heroísmo':            { lvl:1, kind:'effect', effect:'Heroísmo',          range:1,  aim:'ally' },
+  'Fada de Fogo':        { lvl:1, kind:'effect', effect:'Fada de Fogo',      range:12, aim:'enemy' },
+  'Enfeitiçar Pessoa':   { lvl:1, kind:'effect', effect:'Enfeitiçar Pessoa', range:6,  aim:'enemy' },
+  'Santuário':           { lvl:1, kind:'effect', effect:'Santuário',         range:6,  aim:'ally' },
 };
 function spellCastMod(c){ return abilityMod((c.abilities||{})[c.spellAbility||'INT']||10); }
 function spellAtkBonus(c){ return (c.prof||2)+spellCastMod(c); }
@@ -841,8 +856,8 @@ function castableFeatures(c){
 }
 function pcAllyAdjacentToEnemy(st, owner, e){ const pos=(st.tactical&&st.tactical.pos)||{}, ep=pos[e.id]; if(!ep) return false;
   return (st.characters||[]).some(a=>a.owner!==owner && (a.hp||0)>0 && pos[a.owner] && tacDist(pos[a.owner],ep)<=1); }
-function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
-function abilityTargetSide(fx){ if(fx.side) return fx.side; return fx.kind==='heal' ? 'ally' : 'enemy'; }
+function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; if(fx.kind==='effect') return true; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
+function abilityTargetSide(fx){ if(fx.side) return fx.side; if(fx.kind==='effect') return fx.aim||'ally'; return fx.kind==='heal' ? 'ally' : 'enemy'; }
 // lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot)
 function castableAbilities(c){
   if(!c) return [];
@@ -894,6 +909,23 @@ async function castAbility(owner, name, targetId, st){
     const h=mpRollDmgExpr(fx.dmg).total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
     fxEmit(st, { kind:'heal', tgt:(ally.owner!=null?ally.owner:owner) });
     st.history.push({ role:'roll', noRoll:true, tipo:'cura', label:`${c.name} · ${name} → ${ally.name}`, total:h, outcome:`+${h} HP`, heal:h });
+  } else if(fx.kind==='effect'){
+    const efx=EFFECT_FX[fx.effect]||{}; const aim=fx.aim||'ally';
+    if(aim==='enemy'){
+      const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
+      if(efx.cond && enemyCondImmune(e, efx.cond)){ st.history.push({ role:'scene', text:`✦ ${e.name} é imune a ${efx.cond}.` }); }
+      else if(efx.save){   // debuff em inimigo permite save
+        const smod=(efx.mind&&fxProfile(e).mind!==undefined)?fxProfile(e).mind:(e.mod||0);
+        const sv=mpD20(null, smod), saved=sv.total>=dc;
+        st.history.push({ role:'roll', tipo:'save', label:`${e.name} · save ${efx.save} (${name})`, total:sv.total, mod:smod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'AFETADO' });
+        if(!saved){ applyEffect(st, owner, fx.effect, targetId); if(efx.cond){ e.conditions=e.conditions||[]; if(!e.conditions.includes(efx.cond)) e.conditions.push(efx.cond); } fxEmit(st,{kind:'stun',tgt:e.id}); }
+      } else { applyEffect(st, owner, fx.effect, targetId); fxEmit(st,{kind:'stun',tgt:e.id}); }
+    } else {
+      const ally=(st.characters||[]).find(x=>x.owner===targetId)||c;
+      applyEffect(st, owner, fx.effect, ally.owner); if(efx.tempHpTurn) ally.tempHp=Math.max(ally.tempHp||0, efx.tempHpTurn);
+      fxEmit(st,{kind:'heal',tgt:ally.owner});
+    }
+    st.history.push({ role:'scene', text:`✦ ${c.name} conjura ${name}.` });
   } else {
     st.history.push({ role:'scene', text:`✦ ${c.name} usa ${name}.` });
   }
@@ -929,6 +961,59 @@ async function castFeature(owner, name, targetId, st){
   }
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
+}
+
+// ============================================================
+//  P2 — EFEITOS CONTÍNUOS + CONCENTRAÇÃO (buffs/debuffs).
+//  st.activeEffects: [{name,fx,caster,target,isEnemy}]. Concentração: 1 por
+//  conjurador, quebra ao tomar dano (save CON DC max(10,½ dano)) ou incapacitar.
+//  Efeitos duram a luta (ou até quebrar a concentração) — sem expiry por rodada.
+// ============================================================
+const EFFECT_FX = {
+  'Bênção':            { side:'ally',  conc:true,  atkDie:'1d4', saveDie:'1d4' },
+  'Perdição':          { side:'enemy', conc:true,  atkPenalty:'1d4', save:'CAR', mind:true },
+  'Marca do Caçador':  { side:'enemy', conc:true,  dmgDie:'1d6' },
+  'Escudo da Fé':      { side:'ally',  conc:true,  caBonus:2 },
+  'Heroísmo':          { side:'ally',  conc:true,  tempHpTurn:5, fearImmune:true },
+  'Fada de Fogo':      { side:'enemy', conc:true,  attackedAdv:true, save:'DES' },
+  'Enfeitiçar Pessoa': { side:'enemy', conc:false, cond:'Enfeitiçado', save:'SAB', mind:true },
+  'Santuário':         { side:'ally',  conc:false, sanctuary:true },
+};
+function effList(st){ return (st && st.activeEffects) || []; }
+function effectsOn(st, id){ return effList(st).filter(e=>e.target===id); }
+function casterEffects(st, casterId){ return effList(st).filter(e=>e.caster===casterId); }
+function breakConcentration(st, casterId){
+  if(!st.activeEffects) return; const had=st.activeEffects.filter(e=>e.caster===casterId && e.fx.conc);
+  if(!had.length) return;
+  st.activeEffects = st.activeEffects.filter(e=>!(e.caster===casterId && e.fx.conc));
+  const c=(st.characters||[]).find(x=>x.owner===casterId); if(c) c.concentrating=null;
+  had.forEach(e=> st.history.push({ role:'scene', text:`✦ ${(c&&c.name)||'O conjurador'} perde a concentração em ${e.name}.` }));
+}
+function applyEffect(st, casterOwner, effectName, targetId){
+  st.activeEffects = st.activeEffects || [];
+  const fx=EFFECT_FX[effectName]; if(!fx) return;
+  const c=(st.characters||[]).find(x=>x.owner===casterOwner);
+  if(fx.conc && c){ breakConcentration(st, casterOwner); c.concentrating=effectName; }   // só uma concentração por vez
+  const isEnemy = (fx.side==='enemy');
+  st.activeEffects.push({ name:effectName, fx, caster:casterOwner, target:targetId, isEnemy });
+}
+function concentrationCheckOnDamage(st, pc, dmg){
+  if(!pc || !pc.concentrating) return; const dc=Math.max(10, Math.floor(dmg/2));
+  const sv=mpD20(pc, abilityMod((pc.abilities||{}).CON) + ((pc.saves||[]).includes('CON')?(pc.prof||0):0));
+  st.history.push({ role:'roll', tipo:'save', label:`${pc.name} · concentração (save CON)`, total:sv.total, mod:abilityMod((pc.abilities||{}).CON), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome: sv.total>=dc?'MANTÉM':'PERDE' });
+  if(sv.total<dc) breakConcentration(st, pc.owner);
+}
+// quebra concentração de quem ficou incapacitado (chamado no tick de condições)
+function effIncapacitatedCheck(st, pc){ if(pc && pc.concentrating && (pc.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))) breakConcentration(st, pc.owner); }
+// ---- leitura no pipeline de ataque ----
+function effHas(st, id, key){ return effectsOn(st,id).some(e=>e.fx[key]); }
+function effBlessDie(st, attackerId){ const e=effectsOn(st,attackerId).find(x=>x.fx.atkDie); return e?e.fx.atkDie:null; }   // Bênção no atacante
+function effBanePenalty(st, attackerId){ const e=effectsOn(st,attackerId).find(x=>x.fx.atkPenalty); return e?e.fx.atkPenalty:null; }   // Perdição no atacante
+function effMarkDie(st, attackerId, defenderId){ const e=effList(st).find(x=>x.caster===attackerId && x.target===defenderId && x.fx.dmgDie); return e?e.fx.dmgDie:null; }   // Marca do Caçador
+function effCA(st, c, baseCA){ let ca=baseCA; effectsOn(st, c.owner!=null?c.owner:c.id).forEach(e=>{ if(e.fx.caBonus) ca+=e.fx.caBonus; }); return ca; }   // Escudo da Fé
+function effAttackedAdv(st, defenderId){ return effHas(st, defenderId, 'attackedAdv'); }   // Fada de Fogo
+function tickEffectsTurnStart(st, pc){   // Heroísmo: HP temporário a cada turno
+  effectsOn(st, pc.owner).forEach(e=>{ if(e.fx.tempHpTurn){ pc.tempHp = Math.max(pc.tempHp||0, e.fx.tempHpTurn); } });
 }
 // estado de mira de habilidade (local do cliente que está agindo)
 let PENDING_ABILITY = null, ABILITY_MENU_OPEN = false;
@@ -2554,7 +2639,8 @@ function mpAdvanceCombat(st){
   }
 }
 function mpEndCombat(st, victory){
-  (st.characters||[]).forEach(c=>{ c.raging=false; c.inspiration=null; c.resUsed={}; });   // descanso curto: recarrega Surto/Fôlego/Fúria/Canalizar/Inspiração
+  (st.characters||[]).forEach(c=>{ c.raging=false; c.inspiration=null; c.resUsed={}; c.concentrating=null; });   // descanso curto: recarrega Surto/Fôlego/Fúria/Canalizar/Inspiração; encerra concentração
+  st.activeEffects = [];   // buffs/debuffs de combate não persistem fora dele
   st.combat = null; st.tactical = null;
   st.history = st.history || [];
   st.history.push({ role:'scene', text: victory ? '— inimigos derrotados! fim do combate —' : '— fim do combate —' });
@@ -3324,7 +3410,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627y';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627z';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
