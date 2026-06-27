@@ -47,7 +47,10 @@ const MONSTER_ART = {
   'Ghoul':         'assets/monsters/ghoul.png',
   'Dragão Jovem':  'assets/monsters/dragao_jovem.png',
 };
-function monsterArt(name){ return MONSTER_ART[name] || null; }
+function monsterArt(name){ if(!name) return null; if(MONSTER_ART[name]) return MONSTER_ART[name];
+  const parts=String(name).split(' ');   // spawn renomeado ("Zumbi Thordek") → tenta o nome-base
+  for(let i=parts.length-1;i>0;i--){ const key=parts.slice(0,i).join(' '); if(MONSTER_ART[key]) return MONSTER_ART[key]; }
+  return null; }
 let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematográfico
 
 // ============================================================
@@ -400,7 +403,7 @@ const MONSTER_AI = {
   'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'fogo' } },
 };
 const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0 };
-function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[e.name]||{}); }
+function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[(e&&(e.baseName||e.name))]||{}); }
 
 // ============================================================
 //  P0 — TIPOS DE DANO, STAT BLOCKS E PIPELINE ÚNICO DE DANO
@@ -432,7 +435,7 @@ const MONSTER_FX = {
   'Dragão Jovem': { type:'dragão', physType:'perfurante', element:'fogo', immune:['fogo'], condImmune:['Amedrontado'] },
 };
 const MONSTER_FX_DEFAULT = { type:'humanoide', physType:'concussão', resist:[], immune:[], vuln:[], condImmune:[], traits:{} };
-function fxProfile(e){ return Object.assign({}, MONSTER_FX_DEFAULT, MONSTER_FX[(e&&e.name)]||{}); }
+function fxProfile(e){ return Object.assign({}, MONSTER_FX_DEFAULT, MONSTER_FX[(e&&(e.baseName||e.name))]||{}); }
 function enemyDmgType(e){ return fxProfile(e).physType || 'concussão'; }
 function enemyCondImmune(e, cond){ return (fxProfile(e).condImmune||[]).includes(cond); }
 function enemyType(e){ return fxProfile(e).type; }
@@ -507,7 +510,7 @@ function oaEnemyStrike(st,e,pc){
   const tam=(typeof targetAttackMods==='function')?targetAttackMods(pc,true):{adv:false,dis:false,autoCrit:false};
   const atk=mpD20(null, e.mod||0, { adv:tam.adv, dis:tam.dis });
   const hit=atk.crit||(!atk.fumble&&atk.total>=(pc.ca||10)); if(hit&&tam.autoCrit&&!atk.fumble) atk.crit=true;
-  st.history.push({ role:'roll', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat });
+  st.history.push({ role:'roll', side:'foe', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat });
   if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); applyDamage(pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e}); }
   fxEmit(st, { kind:'oa', src:e.id, tgt:pc.owner, result:fxResult(hit,atk.crit) });
   if(hit) fxEmit(st, { kind:'melee', dtype:enemyDmgType(e), src:e.id, tgt:pc.owner, result:fxResult(true,atk.crit) });
@@ -590,7 +593,7 @@ function aiEnemyAttack(st,e,prof,target,ev){
     if(bane){ const b=mpRollDmgExpr(bane).total; atk.total-=b; }
     let hit=atk.crit||(!atk.fumble&&atk.total>=tgtCA);
     if(hit && tam.autoCrit && !atk.fumble) atk.crit=true;   // alvo paralisado/inconsciente: acerto corpo-a-corpo é crítico
-    st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:tgtCA, tipo:'ataque', nat:atk.nat });
+    st.history.push({ role:'roll', side:'foe', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:tgtCA, tipo:'ataque', nat:atk.nat });
     if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
       fxEmit(st, { kind:(prof.reach||1)<=1?'melee':'ranged', dtype:enemyDmgType(e), src:e.id, tgt:target.pc.owner, result:fxResult(true,atk.crit), mult:res.mult, seq:k });
       ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
@@ -672,7 +675,15 @@ function tacTickEnemyConditions(st, e){   // versão leve p/ inimigos (save plan
 function tacTickCurrentPc(st){
   if(!mpCombatActive(st)) return;
   const cur=mpCurrentActor(st);
-  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0){ tacTickConditions(st,c); tickEffectsTurnStart(st,c); } }
+  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0){ tacTickConditions(st,c); tickEffectsTurnStart(st,c); pushTurnHeader(st, c.name, 'pc'); } }
+}
+// cabeçalho de turno no log (separa visualmente quem age); evita repetir o mesmo cabeçalho sem ação entre eles
+function pushTurnHeader(st, name, who){
+  const h = st.history || (st.history = []);
+  for(let i=h.length-1;i>=0;i--){ const m=h[i];
+    if(m.role==='turn'||m.role==='intent'){ if(m.name===name) return; break; }
+    if(m.role==='roll'||m.role==='dm'||m.role==='player') break; }
+  h.push({ role:'turn', name, who });
 }
 function aiRunEnemyTurn(st,e,ev){
   tacTickEnemyConditions(st,e);   // tenta encerrar condições temporárias no início do turno
@@ -697,6 +708,20 @@ function aiRunEnemyTurn(st,e,ev){
   const now=(m&&st.tactical&&st.tactical.pos[e.id]) ? tacDist(st.tactical.pos[e.id],target.pos) : prof.reach;
   if(now<=prof.reach){ aiEnemyAttack(st,e,prof,target,ev); if(prof.trait) aiApplyTrait(st,e,prof,target,ev); }
   else ev.push({kind:'idle',srcName:e.name});
+}
+// telegrafa a INTENÇÃO do inimigo ANTES de executar (leitura, não altera estado)
+function aiTelegraph(st,e){
+  const econds=e.conditions||[];
+  if(econds.some(n=>NO_ACT_CONDS.includes(n))) return { icon:'💫', text:`${e.name} está incapacitado e não consegue agir.` };
+  const prof=aiProfile(e); const self=st.tactical&&st.tactical.pos[e.id];
+  const afraid=econds.includes('Amedrontado');
+  if(afraid || (prof.flee>0 && (e.curHp/e.hp)<prof.flee)) return { icon:'🏃', text:`${e.name} está acuado — prepara-se para recuar.` };
+  if(prof.breath && e.breathReady) return { icon:'🔥', text:`${e.name} infla o peito — vai liberar seu sopro!` };
+  const target=aiPickTarget(st,e);
+  if(!target) return { icon:'👁️', text:`${e.name} espreita, à procura de uma presa.` };
+  const dist=(self&&target.pos)?tacDist(self,target.pos):prof.reach;
+  if(dist<=prof.reach) return { icon:'⚔️', text:`${e.name} arma o bote contra ${target.pc.name}!` };
+  return { icon:'➡️', text:`${e.name} avança na direção de ${target.pc.name}.` };
 }
 function narrateRoundTemplate(ev){
   const L=[]; ev.forEach(x=>{
@@ -743,7 +768,11 @@ async function mpRunEnemyTurnsAuto(st){
     if(!acting.length) break;
     const ev=[];
     for(const e of acting){ if(e.curHp<=0) continue;
-      aiRunEnemyTurn(st,e,ev); await saveState(st); renderGame(); await mpSleep(450);
+      const tg=aiTelegraph(st,e);                                   // 1) anuncia a intenção e PARA p/ o jogador ler
+      st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
+      await saveState(st); renderGame(); await mpSleep(950);
+      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola o dado) e PARA p/ ver a rolagem
+      await saveState(st); renderGame(); await mpSleep(750);
       if(mpAllPcsDead(st)) break; }
     await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
@@ -1845,6 +1874,19 @@ function enterGame(){
 // ---------------- SONS (teste) — diffing do estado dispara os SFX em todos ----------------
 function toggleSfx(){ if (typeof SFX==='undefined') return; SFX.setEnabled(!SFX.isEnabled()); updateSfxBtn(); if (SFX.isEnabled()) SFX.turn(); }
 function updateSfxBtn(){ const b = document.getElementById('sfxBtn'); if (b && typeof SFX!=='undefined') b.textContent = SFX.isEnabled() ? '🔊' : '🔇'; }
+// dado 3D para QUALQUER rolagem nova (não só o fluxo [ROLL]): ataques no tabuleiro,
+// magias e rolagens dos inimigos passam a aparecer na tela, espelhados a todos.
+let DICE_SEEN_COUNT = -1;
+function diceTick(st, pendingJustResolved){
+  const rolls = (st.history||[]).filter(m => m.role==='roll');
+  if (DICE_SEEN_COUNT < 0){ DICE_SEEN_COUNT = rolls.length; return; }   // 1ª passada: só memoriza
+  if (rolls.length <= DICE_SEEN_COUNT){ DICE_SEEN_COUNT = rolls.length; return; }
+  const card = rolls[rolls.length-1]; DICE_SEEN_COUNT = rolls.length;
+  if (pendingJustResolved) return;                  // o fluxo [ROLL] já anima esta carta
+  if (DICE_SPINNING) return;                        // já está girando (o rolador clicou)
+  if (card.noRoll || card.nat == null || !(card.dice && card.dice.length)) return;   // só d20 reais
+  if (typeof settleDiceAnim === 'function') settleDiceAnim(card);   // gira rápido e assenta no resultado
+}
 let SND = null;
 function soundTick(st){
   if (typeof SFX === 'undefined' || !SFX.isEnabled()){ SND = null; return; }
@@ -1928,6 +1970,8 @@ let TYPING = false, typeTimer = null, revealedCount = -1, localBusy = false, typ
 function clearTyping(){ if (typeTimer){ clearInterval(typeTimer); typeTimer = null; } TYPING = false; }
 function msgHtml(m){
   if (m.role==='scene') return `<div style="align-self:center;font-family:var(--font-mono);font-size:0.74rem;letter-spacing:0.1em;color:var(--ember)">${escapeHtml(m.text)}</div>`;
+  if (m.role==='turn') return `<div class="turn-divider ${m.who==='enemy'?'foe':'hero'}"><span class="td-line"></span><span class="td-label">${m.who==='enemy'?'⚔':'🎯'} ${escapeHtml(m.name||'')}</span><span class="td-line"></span></div>`;
+  if (m.role==='intent') return `<div class="intent-line"><span class="intent-ico">${m.icon||'⚔'}</span><span class="intent-tx">${escapeHtml(m.text||'')}</span></div>`;
   if (m.role==='player') return `<div class="msg player"><div class="who">${escapeHtml(m.who||'')}</div><div class="body">${escapeHtml(m.text)}</div></div>`;
   if (m.role==='roll') return rollCardHtml(m);
   return `<div class="msg dm"><div class="body">${fmtNarr(escapeHtml(m.text))}</div></div>`;
@@ -1985,7 +2029,7 @@ function rollCardHtml(card){
   const numClass = card.crit ? 'crit' : card.fumble ? 'fumble' : '';
   const diceStr = (card.dice||[]).join(', ');
   const dmgLine = card.dmg ? `<div class="rbreak" style="margin-top:6px;color:var(--blood)">⚔ Dano se acertar <b style="color:var(--parch)">${card.dmg.total}</b> [${card.dmg.type}]${dmgMultNote(card.dmg.mult)}</div>` : '';
-  return `<div class="roll-card"><div class="rtype">${escapeHtml(card.label)}</div>
+  return `<div class="roll-card ${card.side==='foe'?'foe':'hero'}"><div class="rtype">${escapeHtml(card.label)}</div>
     <div class="rnum ${numClass}">${card.autoFail?'✗':card.total}</div>
     <div class="rbreak">d20 [${diceStr}] ${card.mod>=0?'+':''}${card.mod}${card.crit?' · CRÍTICO!':''}${card.fumble?' · FALHA CRÍTICA':''}</div>
     ${outcome}${dmgLine}</div>`;
@@ -2245,10 +2289,10 @@ function settleDiceAnim(card){
 function showCombatReveal(st){
   const ov = $('#combatReveal'); if (!ov || !st.combat) return;
   const seen = new Set(), uniq = [];
-  (st.combat.enemies||[]).forEach(e => { if (!seen.has(e.name)){ seen.add(e.name); uniq.push(e); } });
+  (st.combat.enemies||[]).forEach(e => { const k=e.baseName||e.name; if (!seen.has(k)){ seen.add(k); uniq.push(e); } });   // intro mostra os TIPOS (um card por monstro)
   if (!uniq.length) return;
-  const cards = uniq.map(e => { const art = monsterArt(e.name);
-    return `<div class="cr-card">${art?`<img src="${art}" alt="">`:'<div class="cr-noart">⚔</div>'}<div class="cr-name">${escapeHtml(e.name)}</div></div>`;
+  const cards = uniq.map(e => { const art = monsterArt(e.baseName||e.name);
+    return `<div class="cr-card">${art?`<img src="${art}" alt="">`:'<div class="cr-noart">⚔</div>'}<div class="cr-name">${escapeHtml(e.baseName||e.name)}</div></div>`;
   }).join('');
   $('#crInner').innerHTML = `<div class="cr-head">⚔ Combate! ⚔</div><div class="cr-cards">${cards}</div>`;
   if (ov._t) clearTimeout(ov._t);
@@ -2338,9 +2382,11 @@ function renderGame(){
   // botão do Roteiro: só para o Mestre-puro (tem spoilers; some pro admin-jogador)
   const gb = $('#guideBtn'); if (gb) gb.style.display = isCommandMode() ? '' : 'none';
   // rolagem: botão flutuante para quem rola + dado 3D quando a rolagem resolve
+  const pendingJustResolved = LAST_PENDING && !st.pendingRoll;
   if (st.pendingRoll) showRollFab(st.pendingRoll); else hideRollFab();
-  if (LAST_PENDING && !st.pendingRoll) settleDiceAnim(lastRollCard(st));
+  if (pendingJustResolved) settleDiceAnim(lastRollCard(st));
   LAST_PENDING = !!st.pendingRoll;
+  diceTick(st, pendingJustResolved);   // mostra o dado 3D para QUALQUER nova rolagem (ataques no mapa, magias e inimigos)
   // reveal de monstros quando o combate começa
   const inCombat = mpCombatActive(st);
   if (inCombat && !LAST_COMBAT) showCombatReveal(st);
@@ -2692,11 +2738,22 @@ function mpActivePc(st){
   return (st.characters||[])[st.turnIndex||0];
 }
 // inicia combate a partir de um encontro do campaign.js; rola iniciativa (PCs e inimigos)
+// nomes próprios inventados p/ desambiguar spawns repetidos (sabor de fantasia)
+const SPAWN_NAMES = ['Thordek','Grisha','Morvath','Kethra','Bralk','Vossuln','Dranna','Korgath','Yslin','Mughra',
+  'Tharrok','Vexna','Goruln','Senka','Brakka','Ulfgar','Nydra','Hosk','Varn','Zelka',
+  'Throgar','Murnik','Olvash','Druska','Krenn','Volga','Hardek','Sirna','Grull','Wexa'];
+function mpNameSpawns(enemies){
+  const count = {};
+  (enemies||[]).forEach(e => { e.baseName = e.baseName || e.name; count[e.baseName] = (count[e.baseName]||0)+1; });
+  let i = 0;
+  (enemies||[]).forEach(e => { if (count[e.baseName] > 1){ e.name = `${e.baseName} ${SPAWN_NAMES[i % SPAWN_NAMES.length]}`; i++; } });
+}
 function mpStartCombat(st, encId){
   const enc = (typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters[encId]);
   if (!enc) return false;
   fxClear(st);   // zera a fila de animações no início do combate (não no fim, p/ não cortar fx do 2º cliente)
   st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp, conditions: [], tempHp: 0 })), order:[], turn:0, round:1 };
+  mpNameSpawns(st.combat.enemies);   // spawns de mesmo nome ganham um nome próprio (ex.: "Zumbi Thordek")
   const order = [];
   (st.characters||[]).forEach((c,idx) => order.push({ kind:'pc', idx, name:c.name, init: mpD20(c, abilityMod(c.abilities.DES)).total }));
   st.combat.enemies.forEach((e,idx) => order.push({ kind:'enemy', idx, name:e.name, init: mpD20(null, e.mod||0).total }));
@@ -3511,7 +3568,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ab';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ac';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
