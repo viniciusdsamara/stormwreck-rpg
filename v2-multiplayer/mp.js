@@ -57,6 +57,19 @@ let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematog
 // ============================================================
 const TAC_CELL = 42, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';
 let TAC_PREV_POS = {};   // px {id:[cx,cy]} da renderização anterior → anima o deslocamento
+// condições que zeram o deslocamento e que impedem agir (Apêndice A do D&D 5e)
+const MOVE_BLOCK_CONDS = ['Agarrado','Impedido','Paralisado','Atordoado','Inconsciente','Petrificado'];
+const NO_ACT_CONDS = ['Paralisado','Atordoado','Inconsciente','Petrificado'];
+function tacSpeedSquares(spd){ return Math.max(0, Math.round((spd||9)/1.5)); }   // 1 quadrado = 1,5 m
+// orçamento de deslocamento (em quadrados) de um combatente, já com as condições
+function tacMoveBudget(c){
+  if (!c) return TAC_MOVE;
+  const cs = c.conditions || [];
+  if (cs.some(n => MOVE_BLOCK_CONDS.includes(n))) return 0;   // agarrado/impedido/incapacitado → não anda
+  let b = c.speed != null ? tacSpeedSquares(c.speed) : TAC_MOVE;
+  if (cs.includes('Caído')) b = Math.floor(b/2);              // levantar-se custa metade do movimento
+  return b;
+}
 const TAC_TILE = {
   sand:{f:'#2a2430',s:'#39313f'}, surf:{f:'#1b3e50',s:'#27566e'}, sea:{f:'#0e2533',s:'#143242'},
   debris:{f:'#2a2320',s:'#3a2f29'}, ship_hull:{f:'#0c0a10',s:'#1a1620'}, cliff:{f:'#0c0a10',s:'#1a1620'},
@@ -118,12 +131,14 @@ function renderTacticalMap(st,m){
   const W=m.w,H=m.h,vw=W*TAC_CELL,vh=H*TAC_CELL;
   const seen=new Set((st.tactical&&st.tactical.seen)||[]); const visible=tacVisible(st,m);
   const activeId=tacActiveOwner(st); const pos=(st.tactical&&st.tactical.pos)||{};
-  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]);
-  const reach = canMove ? tacReachable(st,m,pos[activeId],TAC_MOVE) : new Map();
+  const activeChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
+  const moveBudget = tacMoveBudget(activeChar);   // alcance vem da Speed do PC, zerado por condições
+  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]) && moveBudget>0;
+  const reach = canMove ? tacReachable(st,m,pos[activeId],moveBudget) : new Map();
   // alvos de ataque: durante meu turno, inimigos vivos e visíveis dentro do alcance
   const meChar = activeId ? (st.characters||[]).find(c=>c.owner===activeId) : null;
   const myPos = activeId ? pos[activeId] : null;
-  const canAtk = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).includes('Paralisado');
+  const canAtk = tacMyTurn(st) && meChar && myPos && (meChar.hp||0)>0 && !(meChar.conditions||[]).some(n=>NO_ACT_CONDS.includes(n));
   const foeTargets = new Set();
   if (canAtk && mpCombatActive(st)){ const rng = pcAttackRange(meChar);
     (st.combat.enemies||[]).forEach(e=>{ const ep=pos[e.id]; if (!ep||e.curHp<=0) return;
@@ -199,7 +214,9 @@ async function tacMoveToken(st,owner,x,y){
   const m=tacMap(st); if (!m||!st.tactical) return;
   if (m._imp.has(tacKey(x,y))||tacOccupant(st,x,y)) return;
   const from=st.tactical.pos[owner]; if (!from) return;
-  if (!tacReachable(st,m,from,TAC_MOVE).has(tacKey(x,y))) return;   // valida alcance no servidor
+  const ac=(st.characters||[]).find(c=>c.owner===owner); const budget=tacMoveBudget(ac);
+  if (budget<=0) return;                                            // condição impede o movimento
+  if (!tacReachable(st,m,from,budget).has(tacKey(x,y))) return;     // valida alcance (Speed) no servidor
   st.tactical.pos[owner]=[x,y];
   st.tactical.moved=st.tactical.moved||{}; st.tactical.moved[owner]=true;
   tacReveal(st);
@@ -288,9 +305,13 @@ function aiDragonBreath(st,m,e,prof,ev){
   ev.push({kind:'breath',srcName:e.name,tgtName:names.join(', ')||'ninguém'});
 }
 function aiRunEnemyTurn(st,e,ev){
+  const econds=e.conditions||[];
+  if(econds.some(n=>NO_ACT_CONDS.includes(n))){ ev.push({kind:'idle',srcName:e.name}); return; }   // incapacitado: não age
   const prof=aiProfile(e), m=tacMap(st), self=st.tactical&&st.tactical.pos[e.id];
+  const eSpeed=econds.some(n=>MOVE_BLOCK_CONDS.includes(n))?0:prof.speed;   // agarrado/impedido: não anda (mas ataca quem alcança)
+  const mProf=eSpeed===prof.speed?prof:Object.assign({},prof,{speed:eSpeed});
   if(prof.flee>0 && (e.curHp/e.hp)<prof.flee){   // moral: recua se muito ferido
-    if(m&&self){ const reach=aiReach(st,m,self,prof.speed,prof.fly), t=aiPickTarget(st,e), tp=t&&t.pos; let best=self,bd=-1;
+    if(m&&self&&eSpeed>0){ const reach=aiReach(st,m,self,eSpeed,prof.fly), t=aiPickTarget(st,e), tp=t&&t.pos; let best=self,bd=-1;
       if(tp){ for(const k of reach.keys()){ const [x,y]=k.split(',').map(Number), d=tacDist([x,y],tp); if(d>bd){bd=d;best=[x,y];} } }
       if(best[0]!==self[0]||best[1]!==self[1]){ st.tactical.pos[e.id]=best; tacReveal(st); } }
     ev.push({kind:'flee',srcName:e.name}); return; }
@@ -298,8 +319,8 @@ function aiRunEnemyTurn(st,e,ev){
   const target=aiPickTarget(st,e);
   if(!target){ ev.push({kind:'idle',srcName:e.name}); return; }
   if(prof.breath && e.breathReady){ aiDragonBreath(st,m,e,prof,ev); e.breathReady=false; return; }
-  if(m&&self&&target.pos&&tacDist(self,target.pos)>prof.reach){   // move até o alcance
-    const dest=aiMoveDest(st,m,e,prof,target);
+  if(m&&self&&target.pos&&tacDist(self,target.pos)>prof.reach && eSpeed>0){   // move até o alcance (se puder andar)
+    const dest=aiMoveDest(st,m,e,mProf,target);
     if(dest[0]!==self[0]||dest[1]!==self[1]){ st.tactical.pos[e.id]=dest; tacReveal(st); ev.push({kind:'move',srcName:e.name,tgtName:target.pc.name}); } }
   const now=(m&&st.tactical&&st.tactical.pos[e.id]) ? tacDist(st.tactical.pos[e.id],target.pos) : prof.reach;
   if(now<=prof.reach){ aiEnemyAttack(st,e,prof,target,ev); if(prof.trait) aiApplyTrait(st,e,prof,target,ev); }
@@ -358,7 +379,7 @@ function pcAttackRange(c){ const w=String(c.weapon||(c.weapons&&c.weapons[0])||'
 async function playerAttack(owner,enemyId,st){
   if(!mpCombatActive(st)) return;
   const c=(st.characters||[]).find(x=>x.owner===owner), e=(st.combat.enemies||[]).find(x=>x.id===enemyId);
-  if(!c||!e||e.curHp<=0||(c.conditions||[]).includes('Paralisado')) return;
+  if(!c||!e||e.curHp<=0||(c.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))) return;
   const m=tacMap(st), pp=st.tactical&&st.tactical.pos[owner], ep=st.tactical&&st.tactical.pos[e.id];
   if(m&&pp&&ep&&tacDist(pp,ep)>pcAttackRange(c)) return;   // fora de alcance
   const atr = pcAttackRange(c)>1?'DES':'FOR';
@@ -373,6 +394,11 @@ async function playerAttack(owner,enemyId,st){
 async function tacAdvanceFromPc(st){
   if(!mpCombatActive(st)){ await saveState(st); renderGame(); return; }
   advanceTurn(st); await saveState(st); renderGame();
+  await tacKickEnemiesIfNeeded(st);
+}
+// se a vez atual é de inimigo, conduz os inimigos por código até cair num PC vivo
+async function tacKickEnemiesIfNeeded(st){
+  if(!mpCombatActive(st)) return;
   const cur=mpCurrentActor(st);
   if(cur&&cur.kind==='enemy'){ st.busy=true; await saveState(st); renderGame(); await mpRunEnemyTurnsAuto(st); st.busy=false; await saveState(st); renderGame(); }
 }
@@ -2634,7 +2660,7 @@ function injectTestPanel(){
   el.innerHTML = `
     <div class="tp-head">🧪 Painel de Teste <button id="tpToggle" title="Mostrar/esconder">▾</button></div>
     <div class="tp-body" id="tpBody">
-      <div class="tp-sec"><b>⚔ Combate (reveal + arte)</b><div class="tp-row">
+      <div class="tp-sec"><b>⚔ Combate — você controla o herói</b><div class="tp-hint">clique no mapa pra mover (alcance = Speed); clique no inimigo pra atacar; os inimigos agem sozinhos</div><div class="tp-row">
         ${encs.map(e=>`<button data-enc="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</button>`).join('')}
       </div><button data-endc="1" class="wide">encerrar combate</button></div>
       <div class="tp-sec"><b>🤖 Combate simulado (a engine joga sozinha)</b><div class="tp-row">
@@ -2651,11 +2677,12 @@ function injectTestPanel(){
         <select id="tpScene">${scenes.map(s=>`<option value="${s}">${s}</option>`).join('')}</select><button id="tpGo">ir</button></div></div>
     </div>`;
   document.body.appendChild(el);
-  el.querySelectorAll('[data-enc]').forEach(b => b.onclick = () => {
+  el.querySelectorAll('[data-enc]').forEach(b => b.onclick = async () => {
     const st = ROOM.state, enc = b.dataset.enc;
     const sc = Object.keys(CAMPAIGN.scenes).find(s => CAMPAIGN.scenes[s].combat === enc);   // alinha cena ↔ encontro (mapa tático)
     if (sc){ st.sceneId = sc; mpMarkSceneVisited(st); }
     st.combat = null; LAST_COMBAT = false; mpStartCombat(st, enc); renderGame();
+    await tacKickEnemiesIfNeeded(st);   // se um inimigo tem a iniciativa, ele age e a vez volta pro herói
   });
   const endc = el.querySelector('[data-endc]'); if (endc) endc.onclick = () => { TP_SIM = false; if (ROOM.state.combat){ mpEndCombat(ROOM.state, true); renderGame(); } };
   const simGo = el.querySelector('#tpSimGo'), simStop = el.querySelector('#tpSimStop');
