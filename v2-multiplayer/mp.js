@@ -760,6 +760,7 @@ async function deliverEnemyNarration(st,ev){
 }
 // SUBSTITUI mpRunEnemyTurns: inimigos agem 100% por código; 1 narração por bloco
 async function mpRunEnemyTurnsAuto(st){
+  try { await COMBAT_INTRO_DONE; } catch(e){}   // espera o intro de iniciativa antes do 1º turno
   let guard=0;
   while(mpCombatActive(st) && guard++<12){
     if(mpAllPcsDead(st)){ st.history.push({role:'scene',text:'⚰ O grupo tombou em combate…'}); mpEndCombat(st,false); break; }
@@ -771,11 +772,11 @@ async function mpRunEnemyTurnsAuto(st){
     if(!acting.length) break;
     const ev=[];
     for(const e of acting){ if(e.curHp<=0) continue;
-      const tg=aiTelegraph(st,e);                                   // 1) anuncia a intenção e PARA p/ o jogador ler
-      st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
-      await saveState(st); renderGame(); await mpSleep(1500);
-      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola o dado) e PARA ~3,5s p/ ver os dados
-      await saveState(st); renderGame(); await mpSleep(3500);
+      announceTurn(e.name, monsterArt(e.baseName||e.name), 'enemy', 'Inimigo');   // 1) card "é a vez de X" (~3s)
+      const tg=aiTelegraph(st,e); st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });   // + intenção no log
+      await saveState(st); renderGame(); await mpSleep(3000);
+      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola os dados) e PARA p/ ver
+      await saveState(st); renderGame(); await mpSleep(3000);
       if(mpAllPcsDead(st)) break; }
     await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
@@ -1796,8 +1797,9 @@ async function leaveRoomQuietly(opts){
   clearTyping(); revealedCount = -1; localBusy = false; MESTRE_PRESENTE = true;
   DM_DRAFT = null; engineBusy = false;
   ROLL_RESOLVER = null; LAST_PENDING = false; DICE_SPINNING = false; LAST_COMBAT = false;
+  LAST_PC_ANNOUNCE = null; COMBAT_INTRO_DONE = Promise.resolve();
   if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
-  hideRollFab(); stopDice3D(); hideCombatReveal(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); }
+  hideRollFab(); stopDice3D(); hideCombatReveal(); { const ov = $('#diceOverlay'); if (ov) ov.classList.add('hide'); const tc = $('#turnCard'); if (tc) tc.classList.add('hide'); }
   ROOM = null; MEMBERS = [];
 }
 async function leaveRoom(){
@@ -2409,22 +2411,51 @@ function startDiceAnim(pr){
 }
 function settleDiceAnim(card){ if (card) playDiceRoll(card); }   // assenta com a forma certa (cobre PC e inimigos)
 
-// reveal cinematográfico quando o combate começa — arte + nome (SEM stats, pra não dar spoiler)
+// imagem + nome de um combatente (PC = retrato; inimigo = arte do monstro)
+function combatActorInfo(st, o){
+  if (o.kind==='pc'){ const c=(st.characters||[])[o.idx]||{}; return { name:c.name, img:c.portrait, sub:`${term(c.race||'')} ${term(c.cls||'')}`.trim()||'Herói' }; }
+  const e=(st.combat.enemies||[])[o.idx]||{}; return { name:e.name, img:monsterArt(e.baseName||e.name), sub:'Inimigo' };
+}
+// INTRO DE COMBATE — rola a iniciativa: lista a ordem com retratos e os valores "subindo"
+let COMBAT_INTRO_DONE = Promise.resolve();
 function showCombatReveal(st){
-  const ov = $('#combatReveal'); if (!ov || !st.combat) return;
-  const seen = new Set(), uniq = [];
-  (st.combat.enemies||[]).forEach(e => { const k=e.baseName||e.name; if (!seen.has(k)){ seen.add(k); uniq.push(e); } });   // intro mostra os TIPOS (um card por monstro)
-  if (!uniq.length) return;
-  const cards = uniq.map(e => { const art = monsterArt(e.baseName||e.name);
-    return `<div class="cr-card">${art?`<img src="${art}" alt="">`:'<div class="cr-noart">⚔</div>'}<div class="cr-name">${escapeHtml(e.baseName||e.name)}</div></div>`;
+  const ov = $('#combatReveal'); if (!ov || !st.combat || !st.combat.order || !st.combat.order.length) return;
+  const rows = st.combat.order.map((o,i)=>{ const a=combatActorInfo(st,o);
+    return `<div class="ini-row ${o.kind} ${i===0?'first':''}"><span class="ini-rank">${i+1}</span>`+
+      `${a.img?`<div class="ini-img" style="background-image:url('${a.img}')"></div>`:`<div class="ini-img noart">${o.kind==='pc'?'🛡️':'⚔'}</div>`}`+
+      `<span class="ini-name">${escapeHtml(a.name)}</span><span class="ini-val" data-to="${o.init}">0</span></div>`;
   }).join('');
-  $('#crInner').innerHTML = `<div class="cr-head">⚔ Combate! ⚔</div><div class="cr-cards">${cards}</div>`;
+  $('#crInner').innerHTML = `<div class="cr-head">⚔ Iniciativa ⚔</div><div class="ini-list">${rows}</div>`;
   if (ov._t) clearTimeout(ov._t);
-  ov.classList.remove('hide');
-  ov._t = setTimeout(()=> ov.classList.add('hide'), 4000);
-  ov.onclick = ()=> ov.classList.add('hide');
+  ov.classList.remove('hide'); ov.onclick = ()=> ov.classList.add('hide');
+  try { [...ov.querySelectorAll('.ini-val')].forEach(el=>{ const to=+el.dataset.to||0; let n=0;   // "rolando" os valores
+    const iv=setInterval(()=>{ n+=Math.max(1,Math.ceil(to/12)); if(n>=to){ n=to; clearInterval(iv); } el.textContent=n; }, 55); }); } catch(e){}
+  COMBAT_INTRO_DONE = new Promise(res=>{ ov._t = setTimeout(()=>{ ov.classList.add('hide'); res(); try{ renderGame(); }catch(e){} }, 4200); });
 }
 function hideCombatReveal(){ const ov = $('#combatReveal'); if (ov) ov.classList.add('hide'); }
+// CARD "DE QUEM É A VEZ" — retrato grande por ~3s antes de cada turno
+function announceTurn(name, img, kind, sub){
+  try {
+    const ov = $('#turnCard'); if (!ov || !ov.classList) return;
+    const inner = $('#turnCardInner'); if (!inner) return;
+    inner.innerHTML = `<div class="tc-card ${kind}">`+
+      `${img?`<div class="tc-img" style="background-image:url('${img}')"></div>`:`<div class="tc-img noart">${kind==='pc'?'🛡️':'⚔'}</div>`}`+
+      `<div class="tc-turn">${kind==='pc'?'Sua vez':'É a vez de'}</div><div class="tc-name">${escapeHtml(name||'')}</div>`+
+      `<div class="tc-sub">${escapeHtml(sub||'')}</div></div>`;
+    if (ov._t) clearTimeout(ov._t);
+    ov.classList.remove('hide');
+    ov._t = setTimeout(()=>{ try{ ov.classList.add('hide'); }catch(e){} }, 3000);
+  } catch(e){}
+}
+let LAST_PC_ANNOUNCE = null;
+function maybeAnnouncePc(st){   // anuncia o turno do PC (uma vez por turno), depois do intro de iniciativa
+  if (!mpCombatActive(st)) return;
+  const reveal = $('#combatReveal'); if (reveal && reveal.classList && !reveal.classList.contains('hide')) return;
+  const cur = mpCurrentActor(st); if (!cur || cur.kind!=='pc') return;
+  const key = `${st.combat.round}:${st.combat.turn}`; if (key===LAST_PC_ANNOUNCE) return;
+  LAST_PC_ANNOUNCE = key; const c=(st.characters||[])[cur.idx]||{};
+  announceTurn(c.name, c.portrait, 'pc', `${term(c.race||'')} ${term(c.cls||'')}`.trim());
+}
 
 // layout de combate: mapa grande no centro; chat + compositor vão para a
 // lateral direita (rolagens viram uma faixa compacta no topo). Só em telas
@@ -2511,10 +2542,11 @@ function renderGame(){
   if (pendingJustResolved) settleDiceAnim(lastRollCard(st));
   LAST_PENDING = !!st.pendingRoll;
   diceTick(st, pendingJustResolved);   // mostra o dado 3D para QUALQUER nova rolagem (ataques no mapa, magias e inimigos)
-  // reveal de monstros quando o combate começa
+  // reveal de iniciativa quando o combate começa
   const inCombat = mpCombatActive(st);
-  if (inCombat && !LAST_COMBAT) showCombatReveal(st);
+  if (inCombat && !LAST_COMBAT){ LAST_PC_ANNOUNCE = null; showCombatReveal(st); }
   LAST_COMBAT = inCombat;
+  if (inCombat) maybeAnnouncePc(st);   // card "sua vez" quando a vez é de um PC
   soundTick(st);   // efeitos (teste): dispara SFX conforme o estado muda
 }
 
@@ -2879,9 +2911,9 @@ function mpStartCombat(st, encId){
   st.combat = { enc: encId, name: enc.name, enemies: enc.enemies.map(e => ({ ...e, curHp: e.hp, conditions: [], tempHp: 0 })), order:[], turn:0, round:1 };
   mpNameSpawns(st.combat.enemies);   // spawns de mesmo nome ganham um nome próprio (ex.: "Zumbi Thordek")
   const order = [];
-  (st.characters||[]).forEach((c,idx) => order.push({ kind:'pc', idx, name:c.name, init: mpD20(c, abilityMod(c.abilities.DES)).total }));
-  st.combat.enemies.forEach((e,idx) => order.push({ kind:'enemy', idx, name:e.name, init: mpD20(null, e.mod||0).total }));
-  order.sort((a,b) => b.init - a.init);
+  (st.characters||[]).forEach((c,idx) => { const r = mpD20(c, abilityMod(c.abilities.DES)); order.push({ kind:'pc', idx, name:c.name, init:r.total, initNat:r.nat, initMod:abilityMod(c.abilities.DES) }); });
+  st.combat.enemies.forEach((e,idx) => { const r = mpD20(null, e.mod||0); order.push({ kind:'enemy', idx, name:e.name, init:r.total, initNat:r.nat, initMod:(e.mod||0) }); });
+  order.sort((a,b) => b.init - a.init || (b.initNat||0)-(a.initNat||0));   // empate: maior d20 vai primeiro
   st.combat.order = order; st.combat.turn = 0; st.combat.round = 1;
   st.history = st.history || [];
   st.history.push({ role:'scene', text:`⚔ COMBATE: ${(enc.name||'').toUpperCase()} ⚔` });
@@ -3692,7 +3724,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ae';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627af';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
