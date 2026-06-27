@@ -395,14 +395,14 @@ async function tacMoveToken(st,owner,x,y){
 let TEST_MODE = false;   // ?teste=1 → sem login/IA; narração de inimigo usa template
 const ATTACK_PREFIX = '@@ATK@@', ENDTURN_PREFIX = '@@ENDTURN@@';
 const MONSTER_AI = {
-  'Zumbi Afogado': { speed:4, reach:1, fly:false, multiattack:1, flee:0 },
-  'Zumbi':         { speed:4, reach:1, fly:false, multiattack:1, flee:0 },
-  'Polvo de Fungo':{ speed:3, reach:1, fly:false, multiattack:2, flee:0.25, trait:'grapple', anchor:true },
-  'Fume Drake':    { speed:5, reach:3, fly:true,  multiattack:1, flee:0.5, kite:true },
-  'Ghoul':         { speed:5, reach:1, fly:false, multiattack:2, flee:0, trait:'paralyze', saveDC:10 },
-  'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'fogo' } },
+  'Zumbi Afogado': { speed:4, reach:1, fly:false, multiattack:1, flee:0, atkName:'Pancada' },
+  'Zumbi':         { speed:4, reach:1, fly:false, multiattack:1, flee:0, atkName:'Pancada' },
+  'Polvo de Fungo':{ speed:3, reach:1, fly:false, multiattack:2, flee:0.25, trait:'grapple', anchor:true, atkName:'Tentáculos' },
+  'Fume Drake':    { speed:5, reach:3, fly:true,  multiattack:1, flee:0.5, kite:true, atkName:'Mordida flamejante' },
+  'Ghoul':         { speed:5, reach:1, fly:false, multiattack:2, flee:0, trait:'paralyze', saveDC:10, atkName:'Garras' },
+  'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'fogo' }, atkName:'Mordida e garras' },
 };
-const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0 };
+const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0, atkName:'ataque' };
 function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[(e&&(e.baseName||e.name))]||{}); }
 
 // ============================================================
@@ -712,19 +712,20 @@ function aiRunEnemyTurn(st,e,ev){
   if(now<=prof.reach){ aiEnemyAttack(st,e,prof,target,ev); if(prof.trait) aiApplyTrait(st,e,prof,target,ev); }
   else ev.push({kind:'idle',srcName:e.name});
 }
-// telegrafa a INTENÇÃO do inimigo ANTES de executar (leitura, não altera estado)
+// telegrafa a INTENÇÃO do inimigo ANTES de executar (leitura, não altera estado).
+// .action = frase sem o nome (o card já mostra o nome); .text = frase completa p/ o log.
 function aiTelegraph(st,e){
-  const econds=e.conditions||[];
-  if(econds.some(n=>NO_ACT_CONDS.includes(n))) return { icon:'💫', text:`${e.name} está incapacitado e não consegue agir.` };
-  const prof=aiProfile(e); const self=st.tactical&&st.tactical.pos[e.id];
-  const afraid=econds.includes('Amedrontado');
-  if(afraid || (prof.flee>0 && (e.curHp/e.hp)<prof.flee)) return { icon:'🏃', text:`${e.name} está acuado — prepara-se para recuar.` };
-  if(prof.breath && e.breathReady) return { icon:'🔥', text:`${e.name} infla o peito — vai liberar seu sopro!` };
+  const econds=e.conditions||[]; const prof=aiProfile(e); const self=st.tactical&&st.tactical.pos[e.id];
+  const wrap=(icon,action)=>({ icon, action, text:`${e.name} ${action}.` });
+  if(econds.some(n=>NO_ACT_CONDS.includes(n))) return wrap('💫','está incapacitado e não consegue agir');
+  if(econds.includes('Amedrontado') || (prof.flee>0 && (e.curHp/e.hp)<prof.flee)) return wrap('🏃','está acuado e recua');
+  if(prof.breath && e.breathReady) return wrap('🔥','infla o peito e vai liberar seu sopro flamejante!');
   const target=aiPickTarget(st,e);
-  if(!target) return { icon:'👁️', text:`${e.name} espreita, à procura de uma presa.` };
+  if(!target) return wrap('👁️','espreita à procura de uma presa');
+  const atk=prof.atkName||'ataque', multi=(prof.multiattack||1)>1?` (${prof.multiattack}×)`:'';
   const dist=(self&&target.pos)?tacDist(self,target.pos):prof.reach;
-  if(dist<=prof.reach) return { icon:'⚔️', text:`${e.name} arma o bote contra ${target.pc.name}!` };
-  return { icon:'➡️', text:`${e.name} avança na direção de ${target.pc.name}.` };
+  if(dist<=prof.reach) return wrap('⚔️',`ataca ${target.pc.name} com ${atk}${multi}`);
+  return wrap('➡️',`avança até ${target.pc.name} e ataca com ${atk}${multi}`);
 }
 function narrateRoundTemplate(ev){
   const L=[]; ev.forEach(x=>{
@@ -758,31 +759,29 @@ async function deliverEnemyNarration(st,ev){
   if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero (e padrão no modo teste)
   if(text) st.history.push({ role:'dm', text });
 }
-// SUBSTITUI mpRunEnemyTurns: inimigos agem 100% por código; 1 narração por bloco
+// Inimigos agem 100% por código, UM POR VEZ — o ponteiro de iniciativa FICA no inimigo
+// que está agindo (o indicador de turno não pula pro PC antes da hora) e só avança depois.
 async function mpRunEnemyTurnsAuto(st){
   try { await COMBAT_INTRO_DONE; } catch(e){}   // espera o intro de iniciativa antes do 1º turno
-  let guard=0;
-  while(mpCombatActive(st) && guard++<12){
+  const ev=[]; let guard=0;
+  while(mpCombatActive(st) && guard++<24){
     if(mpAllPcsDead(st)){ st.history.push({role:'scene',text:'⚰ O grupo tombou em combate…'}); mpEndCombat(st,false); break; }
     if(mpAllEnemiesDead(st)){ mpEndCombat(st,true); break; }
-    const acting=[];
-    while(mpCombatActive(st)){ const cur=mpCurrentActor(st); if(!cur) break;
-      if(cur.kind==='pc'){ if((st.characters[cur.idx]||{}).hp>0) break; mpAdvanceCombat(st); continue; }
-      const e=st.combat.enemies[cur.idx]; if(e.curHp>0) acting.push(e); mpAdvanceCombat(st); }
-    if(!acting.length) break;
-    const ev=[];
-    for(const e of acting){ if(e.curHp<=0) continue;
-      announceTurn(e.name, monsterArt(e.baseName||e.name), 'enemy', 'Inimigo');   // 1) card "é a vez de X" (~3s)
-      const tg=aiTelegraph(st,e); st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });   // + intenção no log
-      await saveState(st); renderGame(); await mpSleep(3000);
-      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola os dados) e PARA p/ ver
-      await saveState(st); renderGame(); await mpSleep(3000);
-      if(mpAllPcsDead(st)) break; }
-    await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
+    const cur=mpCurrentActor(st); if(!cur) break;
+    if(cur.kind==='pc'){ if((st.characters[cur.idx]||{}).hp>0) break; mpAdvanceCombat(st); continue; }   // PC vivo → para; caído → pula
+    const e=st.combat.enemies[cur.idx];
+    if(!e || e.curHp<=0){ mpAdvanceCombat(st); continue; }
+    const tg=aiTelegraph(st,e);
+    announceTurn(e.name, monsterArt(e.baseName||e.name), 'enemy', tg.action);   // 1) card "é a vez de X — <ação>"
+    st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
+    await saveState(st); renderGame(); await mpSleep(2600);
+    aiRunEnemyTurn(st,e,ev);                                                     // 2) executa (rola os dados) e para p/ ver
+    await saveState(st); renderGame(); await mpSleep(2400);
+    mpAdvanceCombat(st);   // só agora passa o ponteiro (mantém o indicador correto durante a animação)
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
   }
-  tacTickCurrentPc(st);   // controle volta a um PC → tica as condições dele no começo do turno
-  if(mpCombatActive(st)){ await saveState(st); renderGame(); }
+  await deliverEnemyNarration(st,ev); await saveState(st); renderGame();   // 1 narração por bloco de inimigos
+  if(mpCombatActive(st)){ tacTickCurrentPc(st); await saveState(st); renderGame(); }   // volta a um PC → tica condições
 }
 // ---- ataque do jogador no tabuleiro ----
 function pcAttackRange(c){ const w=String(c.weapon||(c.weapons&&c.weapons[0])||'').toLowerCase(); return /arco|besta|funda|dardo|azagaia|estilingue/.test(w)?8:1; }
@@ -888,6 +887,9 @@ const FEATURE_FX = {
   'Expulsar Mortos-Vivos': { cls:'Clérigo', minLevel:2, trigger:'action', side:'aoe', kind:'turnUndead', cost:{res:'channel',max:()=>1}, save:'SAB', radius:6, desc:'Canalizar Divindade: mortos-vivos a 9m fazem save de SAB ou ficam Amedrontados e recuam (1×/descanso).' },
 };
 function featureFx(name, cls){ const f=FEATURE_FX[name]; return (f && (!f.cls || f.cls===cls)) ? f : null; }
+// Ações bônus (Fúria, Retomar Fôlego, Inspiração) e Surto de Ação NÃO encerram a vez;
+// só features de 'action' (Imposição, Expulsar) consomem a ação e passam o turno.
+function featureEndsTurn(name, c){ const fx = c && featureFx(name, c.cls); return !fx || fx.trigger==='action'; }
 function featureUsesLeft(c, fx){ if(!fx||!fx.cost) return Infinity; if(fx.cost.slot) return c.spellSlots?(c.spellSlots.max-(c.spellSlots.used||0)):0; const max=typeof fx.cost.max==='function'?fx.cost.max(c):(fx.cost.max||1); return max-((c.resUsed||{})[fx.cost.res]||0); }
 function castableFeatures(c){
   if(!c) return [];
@@ -1150,7 +1152,11 @@ function tacCastOnTarget(targetId){
 }
 async function tacDoCast(owner, name, targetId, feat){
   const st=ROOM.state||{};
-  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ if(feat) await castFeature(owner,name,targetId,st); else await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{
+      if(feat){ await castFeature(owner,name,targetId,st); const c=(st.characters||[]).find(x=>x.owner===owner);
+        if(featureEndsTurn(name,c)) await tacAdvanceFromPc(st); else { await saveState(st); renderGame(); } }   // bônus/Surto: não passa a vez
+      else { await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); }
+    } finally { engineBusy=false; } }
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:feat?'(habilidade)':'(magia)', text: (feat?FEATURE_PREFIX:ABILITY_PREFIX)+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
 }
 
@@ -3103,7 +3109,8 @@ async function onPlayerAction(action){
     engineBusy = true; PROCESSED_IDS.add(action.id);
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(FEATURE_PREFIX.length));
-      if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st); await tacAdvanceFromPc(st); } }
+      if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st);
+        const c=(st.characters||[]).find(x=>x.owner===d.owner); if(featureEndsTurn(d.name,c)) await tacAdvanceFromPc(st); else { await saveState(st); renderGame(); } } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3724,7 +3731,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627af';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ag';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
