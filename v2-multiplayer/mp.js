@@ -775,8 +775,8 @@ async function mpRunEnemyTurnsAuto(st){
     announceTurn(e.name, monsterArt(e.baseName||e.name), 'enemy', tg.action);   // 1) card "é a vez de X — <ação>"
     st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
     await saveState(st); renderGame(); await mpSleep(2600);
-    aiRunEnemyTurn(st,e,ev);                                                     // 2) executa (rola os dados) e para p/ ver
-    await saveState(st); renderGame(); await mpSleep(2400);
+    aiRunEnemyTurn(st,e,ev);                                                     // 2) executa (rola os dados) e para ~8s p/ ver
+    await saveState(st); renderGame(); await mpSleep(8000);
     mpAdvanceCombat(st);   // só agora passa o ponteiro (mantém o indicador correto durante a animação)
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
   }
@@ -3731,7 +3731,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ag';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ah';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
