@@ -439,19 +439,19 @@ const RULES = {
 
   // Condições — Apêndice A (efeitos resumidos; 'ef' = ganchos mecânicos)
   conditions: {
-    'Agarrado':     { desc:'Deslocamento 0; acaba se o agarrador for incapacitado.', ef:{} },
-    'Amedrontado':  { desc:'Desvantagem em testes e ataques enquanto vê a fonte.', ef:{ disAttack:true, disChecks:true } },
-    'Atordoado':    { desc:'Incapacitado; falha automática em saves de FOR e DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
-    'Caído':        { desc:'Desvantagem nos próprios ataques; corpo-a-corpo contra tem vantagem, à distância desvantagem.', ef:{ disAttack:true } },
+    'Agarrado':     { desc:'Deslocamento 0; acaba se o agarrador for incapacitado ou afastado.', ef:{ speed0:true } },
+    'Amedrontado':  { desc:'Desvantagem em testes e ataques enquanto vê a fonte; não se aproxima dela.', ef:{ disAttack:true, disChecks:true } },
+    'Atordoado':    { desc:'Incapacitado; deslocamento 0; falha auto em saves FOR/DES; ataques contra têm vantagem.', ef:{ incapacitated:true, speed0:true, autoFailStrDex:true, attackedAdv:true } },
+    'Caído':        { desc:'Desvantagem nos próprios ataques; corpo-a-corpo contra tem vantagem, à distância desvantagem.', ef:{ disAttack:true, attackedAdvMelee:true, attackedDisRanged:true, prone:true } },
     'Cego':         { desc:'Falha em testes que exigem visão; desvantagem nos ataques; ataques contra têm vantagem.', ef:{ disAttack:true, attackedAdv:true } },
-    'Enfeitiçado':  { desc:'Não pode atacar quem o enfeitiçou.', ef:{} },
+    'Enfeitiçado':  { desc:'Não pode atacar nem mirar quem o enfeitiçou.', ef:{} },
     'Envenenado':   { desc:'Desvantagem em ataques e testes de habilidade.', ef:{ disAttack:true, disChecks:true } },
-    'Impedido':     { desc:'Deslocamento 0; desvantagem em ataques e saves de DES; ataques contra têm vantagem.', ef:{ disAttack:true, disDexSaves:true, attackedAdv:true } },
+    'Impedido':     { desc:'Deslocamento 0; desvantagem em ataques e saves de DES; ataques contra têm vantagem.', ef:{ speed0:true, disAttack:true, disDexSaves:true, attackedAdv:true } },
     'Incapacitado': { desc:'Não realiza ações nem reações.', ef:{ incapacitated:true } },
-    'Inconsciente': { desc:'Incapacitado e caído; falha auto em saves de FOR/DES; ataques contra têm vantagem.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
-    'Invisível':    { desc:'Vantagem nos ataques; desvantagem para quem o ataca.', ef:{ advAttack:true } },
-    'Paralisado':   { desc:'Incapacitado; falha auto em saves de FOR/DES; ataques contra têm vantagem; crit a ≤1,5m.', ef:{ incapacitated:true, autoFailStrDex:true, attackedAdv:true } },
-    'Petrificado':  { desc:'Incapacitado; resistência a todo dano; imune a veneno e doença.', ef:{ incapacitated:true } },
+    'Inconsciente': { desc:'Incapacitado; caído; deslocamento 0; falha auto em saves FOR/DES; ataques contra têm vantagem; crit corpo-a-corpo a ≤1,5m.', ef:{ incapacitated:true, speed0:true, prone:true, autoFailStrDex:true, attackedAdv:true, autoCritMelee:true } },
+    'Invisível':    { desc:'Ataques contra têm desvantagem; seus ataques têm vantagem.', ef:{ advAttack:true, attackedDis:true } },
+    'Paralisado':   { desc:'Incapacitado; deslocamento 0; falha auto em saves FOR/DES; ataques contra têm vantagem; crit corpo-a-corpo a ≤1,5m.', ef:{ incapacitated:true, speed0:true, autoFailStrDex:true, attackedAdv:true, autoCritMelee:true } },
+    'Petrificado':  { desc:'Incapacitado; deslocamento 0; falha auto em saves FOR/DES; ataques contra têm vantagem; resistência a todo dano.', ef:{ incapacitated:true, speed0:true, autoFailStrDex:true, attackedAdv:true, resistAll:true } },
     'Surdo':        { desc:'Falha em testes que exigem audição.', ef:{} }
   },
 
@@ -834,12 +834,27 @@ function levelUpNeeds(c, newLevel) {
 
 // Agrega os efeitos das condições ativas que afetam quem rola (Fase 5).
 function conditionEffects(c) {
-  const out = { disAttack:false, advAttack:false, disChecks:false, disDexSaves:false, autoFailStrDex:false, incapacitated:false };
-  (c.conditions || []).forEach(name => {
+  const out = {
+    disAttack:false, advAttack:false, disChecks:false, disDexSaves:false,
+    autoFailStrDex:false, incapacitated:false, speed0:false, prone:false,
+    attackedAdv:false, attackedDis:false, attackedAdvMelee:false,
+    attackedDisRanged:false, autoCritMelee:false, resistAll:false
+  };
+  (c && c.conditions || []).forEach(name => {
     const cd = RULES.conditions[name];
     if (cd && cd.ef) for (const k in cd.ef) if (out[k] !== undefined) out[k] = out[k] || cd.ef[k];
   });
   return out;
+}
+// Vantagem/desvantagem/auto-crit de QUEM ATACA 'target' (lado do alvo). melee=true se corpo-a-corpo.
+function targetAttackMods(target, melee) {
+  if (!target) return { adv:false, dis:false, autoCrit:false };
+  const te = conditionEffects(target);
+  let adv = te.attackedAdv, dis = te.attackedDis, autoCrit = false;
+  if (melee){ if (te.attackedAdvMelee) adv = true; if (te.autoCritMelee){ adv = true; autoCrit = true; } }
+  else { if (te.attackedDisRanged) dis = true; }
+  if (adv && dis){ adv = false; dis = false; }
+  return { adv, dis, autoCrit };
 }
 
 // ============================================================

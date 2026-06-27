@@ -398,9 +398,13 @@ function aiMoveDest(st,m,e,prof,target){
 }
 function tacKill(st,id){ if(st.tactical&&st.tactical.pos) delete st.tactical.pos[id]; }   // tira o token morto do tabuleiro
 function aiEnemyAttack(st,e,prof,target,ev){
+  const melee=(prof.reach||1)<=1;
+  const tam=(typeof targetAttackMods==='function')?targetAttackMods(target.pc, melee):{adv:false,dis:false,autoCrit:false};
   for(let k=0;k<(prof.multiattack||1);k++){
     if((target.pc.hp||0)<=0) break;
-    const atk=mpD20(null,e.mod||0); const hit=atk.crit||(!atk.fumble&&atk.total>=(target.pc.ca||10));
+    const atk=mpD20(null, e.mod||0, { adv:tam.adv, dis:tam.dis });
+    let hit=atk.crit||(!atk.fumble&&atk.total>=(target.pc.ca||10));
+    if(hit && tam.autoCrit && !atk.fumble) atk.crit=true;   // alvo paralisado/inconsciente: acerto corpo-a-corpo é crítico
     st.history.push({ role:'roll', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:target.pc.ca, tipo:'ataque', nat:atk.nat });
     if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
       ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
@@ -410,7 +414,10 @@ function aiEnemyAttack(st,e,prof,target,ev){
 }
 function aiApplyTrait(st,e,prof,target,ev){
   if((target.pc.hp||0)<=0) return; const c=target.pc; c.conditions=c.conditions||[];
-  if(prof.trait==='paralyze'){ const sv=mpD20(c, abilityMod(c.abilities.CON)), ok=sv.total>=(prof.saveDC||10);
+  if(prof.trait==='paralyze'){
+    const fxClaws=(fxProfile(e).traits||{}).paralyzingClaws||{};
+    if(fxClaws.elfImmune && /elfo/i.test(c.race||'')){ st.history.push({ role:'scene', text:`✦ ${c.name} (elfo) é imune à paralisia do ${e.name}.` }); return; }
+    const sv=mpD20(c, abilityMod(c.abilities.CON)), ok=sv.total>=(prof.saveDC||10);
     st.history.push({ role:'roll', label:`${c.name} · save CON`, total:sv.total, mod:abilityMod(c.abilities.CON), dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc:prof.saveDC||10, tipo:'save', nat:sv.nat });
     if(!ok && !c.conditions.includes('Paralisado')) c.conditions.push('Paralisado');
     ev.push({kind:'trait',tgtName:c.name,cond:'paralisado',saved:ok}); }
@@ -559,8 +566,9 @@ async function playerAttack(owner,enemyId,st){
   if(!c||!e||e.curHp<=0||(c.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))) return;
   const m=tacMap(st), pp=st.tactical&&st.tactical.pos[owner], ep=st.tactical&&st.tactical.pos[e.id];
   if(m&&pp&&ep&&tacDist(pp,ep)>pcAttackRange(c)) return;   // fora de alcance
-  const atr = pcAttackRange(c)>1?'DES':'FOR';
-  const card=doMpRoll(c, ['','ataque',atr,'0',e.name]); card.dc=e.ca;
+  const melee = pcAttackRange(c)<=1; const atr = melee?'FOR':'DES';
+  const tam = (typeof targetAttackMods==='function') ? targetAttackMods(e, melee) : {adv:false,dis:false,autoCrit:false};
+  const card=doMpRoll(c, ['','ataque',atr,'0',e.name], { adv:tam.adv, dis:tam.dis, autoCrit:tam.autoCrit }); card.dc=e.ca;
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
   st.history.push(card);
   if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult; }
@@ -648,7 +656,9 @@ async function castAbility(owner, name, targetId, st){
   const dc=spellSaveDC(c), atk=spellAtkBonus(c), cmod=spellCastMod(c);
   if(fx.kind==='attack'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
-    const roll=mpD20(c, atk); const hit=roll.crit||(!roll.fumble&&roll.total>=e.ca);
+    const tam=(typeof targetAttackMods==='function')?targetAttackMods(e, (fx.range||1)<=1):{adv:false,dis:false,autoCrit:false};
+    const roll=mpD20(c, atk, { adv:tam.adv, dis:tam.dis }); if(roll.crit===false && tam.autoCrit && !roll.fumble) roll.crit=true;
+    const hit=roll.crit||(!roll.fumble&&roll.total>=e.ca);
     const card={ role:'roll', tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:roll.total, mod:atk, dice:roll.dice, crit:roll.crit, fumble:roll.fumble, dc:e.ca, nat:roll.nat, outcome:hit?'ACERTO':'ERRO' };
     if(hit){ const d=mpRollDmgExpr(fx.dmg, roll.crit); const res=applyDamage(e, d.total, fx.dtype, st, {crit:roll.crit}); card.dmg={ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult }; }
     st.history.push(card);
@@ -1677,15 +1687,19 @@ function mpRollDmgExpr(expr, crit){
   return { total: Math.max(0, total), detail: detail.join(' ') };
 }
 // resolve uma [ROLL] para o personagem 'c'; devolve o card (espelhado no estado)
-function doMpRoll(c, rollM){
+function doMpRoll(c, rollM, opts){
+  opts = opts || {};
   const [, tipo, atr, cd, tag] = rollM;
   const abr = mpNormAbility(atr);
   const rm = rollModifiers(c, tipo, abr, tag);
-  const { adv, dis, prof } = rm;
+  let adv = rm.adv || opts.adv, dis = rm.dis || opts.dis; const prof = rm.prof;
+  if (adv && dis){ adv = false; dis = false; }   // vantagem + desvantagem se anulam
   const cdNum = +cd > 0 ? +cd : null;
   const result = rm.autoFail
     ? { nat:'—', total:0, mod:rm.mod, dice:[], crit:false, fumble:true }
     : mpD20(c, rm.mod, { adv, dis });
+  if (opts.autoCrit && !result.fumble) result.crit = true;   // acerto crítico automático (alvo paralisado/inconsciente ≤1,5m)
+  if (!rm.autoFail && opts.extraAtkDie){ const r = mpRollDmgExpr(opts.extraAtkDie).total; result.total += r; }   // Bênção/Inspiração (P2)
   let dmg = null;
   if ((tipo.toLowerCase()==='ataque' || tipo.toLowerCase()==='attack') && !rm.autoFail){
     const ap = attackProfile(c, abr, adv && !dis);
@@ -3040,7 +3054,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627t';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627u';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
