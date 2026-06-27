@@ -250,7 +250,7 @@ function tacAnimateMoves(){
 //  Mesmo padrão de tacAnimateMoves()/TAC_PREV_POS.
 // ════════════════════════════════════════════════════════════════════════
 const FX_NS='http://www.w3.org/2000/svg', FX_MAX=24, FX_TTL_MS=5000;
-let FX_SEQ=0, FX_SEEDED=false; const FX_SEEN=new Set();
+let FX_SEQ=0, FX_SEEDED=false, ROLLS_DEFAULTED=false; const FX_SEEN=new Set();
 function fxReduce(){ return (typeof window!=='undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
 function fxCellPx(c){ return c ? [c[0]*TAC_CELL+TAC_CELL/2, c[1]*TAC_CELL+TAC_CELL/2] : null; }
 function fxPosOf(st,id){ const p=(st&&st.tactical&&st.tactical.pos)||{}; return fxCellPx(p[id]); }
@@ -1677,6 +1677,8 @@ function enterGame(){
     G_WIRED = true;
   }
   if (!FX_SEEDED){ fxSeedSeen(ROOM.state||{}); FX_SEEDED = true; }   // não re-toca fx recentes ao (re)carregar a página
+  if (!ROLLS_DEFAULTED){ ROLLS_DEFAULTED = true;   // no celular o painel de rolagens é overlay → começa fechado (abre no ⚄)
+    if (window.innerWidth <= 1100){ const gl=$('.game-layout'); if (gl) gl.classList.add('rolls-hidden'); } }
   updateSfxBtn();
   renderGame();
   if (amIAdmin()) processBacklog();   // ao entrar/voltar, processa ações pendentes
@@ -3322,7 +3324,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627x';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627y';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();

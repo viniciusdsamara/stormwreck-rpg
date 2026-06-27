@@ -592,6 +592,28 @@
   .cbll-empty{ font-size:0.66rem; color:var(--stone-400); padding-top:6px; }
   @media(max-width:1100px){ .game-layout, .game-layout.rolls-hidden{ grid-template-columns:300px 1fr; } .rollpanel{ position:fixed; top:0; right:0; bottom:0; width:300px; z-index:40; box-shadow:-10px 0 30px -12px rgba(0,0,0,0.7); } .game-layout.rolls-hidden .rollpanel{ display:none; } }
   @media(max-width:820px){ .game-layout, .game-layout.rolls-hidden{ grid-template-columns:1fr; } .sidebar{ display:none; } .sidebar.mobile-open{ display:block; position:fixed; inset:0; z-index:50; overflow-y:auto; } .chars-btn{ display:inline-block; } .sidebar.mobile-open .sidebar-close{ display:block; } }
+  /* ===== AJUSTES MOBILE (telas estreitas) — topo, barra de iniciativa, mapa ===== */
+  @media(max-width:820px){
+    /* topo: deixa os botões quebrarem linha em vez de transbordar/cortar */
+    .topbar{ flex-wrap:wrap; gap:8px; padding:10px 12px; }
+    .topbar .loc{ font-size:1rem; flex:1 1 100%; }
+    .topbar .row{ flex-wrap:wrap; gap:6px; width:100%; justify-content:flex-start; }
+    .topbar .row .btn{ padding:7px 11px; font-size:0.78rem; }
+    /* barra de combate: tokens compactos (sem a arte do monstro), rolam na horizontal;
+       os botões do Mestre vão para a própria linha (não transbordam mais).
+       #combatBar p/ ganhar especificidade das regras-base que vêm depois no CSS */
+    #combatBar.combat-bar{ padding:8px 10px; gap:8px 10px; }
+    #combatBar .cb-art{ display:none; }
+    #combatBar .cb-list{ flex:0 0 100%; order:3; flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+    #combatBar .cb-tok{ min-width:64px; padding:5px 8px; flex:0 0 auto; }
+    #combatBar .cb-tok .cb-init{ font-size:0.95rem; }
+    #combatBar .cb-btns{ margin-left:auto; }
+    /* mapa ocupa a largura toda no celular */
+    .tac-card{ max-width:none; }
+    /* painel de teste: mais estreito e abaixo do topo pra não cobrir o título */
+    #testPanel{ width:200px; right:6px; top:auto; bottom:12px; }
+    #testPanel .tp-body{ max-height:50vh; }
+  }
   .chars-btn{ display:none; }
   .sidebar-close{ display:none; width:100%; margin-bottom:12px; }
   .sidebar{ background:var(--basalt-800); border-right:1px solid var(--basalt-600); padding:20px 16px; overflow-y:auto; max-height:100vh; }
@@ -1066,11 +1088,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627x"></script>
-<script src="campaign.js?v=20260627x"></script>
-<script src="tactical-maps.js?v=20260627x"></script>
-<script src="creation-mp.js?v=20260627x"></script>
-<script src="sfx.js?v=20260627x"></script>
-<script src="mp.js?v=20260627x"></script>
+<script src="rules.js?v=20260627y"></script>
+<script src="campaign.js?v=20260627y"></script>
+<script src="tactical-maps.js?v=20260627y"></script>
+<script src="creation-mp.js?v=20260627y"></script>
+<script src="sfx.js?v=20260627y"></script>
+<script src="mp.js?v=20260627y"></script>
 </body>
 </html>
