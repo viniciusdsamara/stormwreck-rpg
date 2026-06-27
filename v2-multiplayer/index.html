@@ -331,6 +331,24 @@
   .map-marker.cur .map-lbl, .map-marker.seen .map-lbl{ fill:#e8dccd; }
   .map-pulse{ fill:none; stroke:var(--ember); stroke-width:2; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.8s ease-out infinite; }
   @keyframes mapPulse{ 0%{ transform:scale(0.7); opacity:0.9; } 100%{ transform:scale(1.9); opacity:0; } }
+  /* ---- mapa tático (grade de combate · névoa) ---- */
+  .tac-card{ max-width:540px; margin:0 auto 10px; overflow:auto; -webkit-overflow-scrolling:touch;
+          border:1px solid var(--basalt-600); border-radius:12px; background:#0e0b12; }
+  .tac-card.hide{ display:none; }
+  .tac-svg{ display:block; width:100%; height:auto; }
+  .tac-grid line{ stroke:#000; stroke-width:0.5; opacity:0.32; }
+  .tac-fog{ fill:#07060a; }
+  .tac-fog.remembered{ fill:rgba(7,6,10,0.62); }
+  .tac-move{ fill:rgba(232,132,60,0.16); stroke:var(--ember); stroke-width:1.5; stroke-dasharray:3 3; cursor:pointer; transition:fill .12s; outline:none; }
+  .tac-move:hover, .tac-move:focus{ fill:rgba(232,132,60,0.36); }
+  .tac-disc{ filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6)); stroke-width:2.5; }
+  .tac-tok.pc .tac-disc{ stroke:var(--ember); } .tac-tok.enemy .tac-disc{ stroke:var(--blood); }
+  .tac-tok.dead{ opacity:0.5; } .tac-tok.dead .tac-disc{ stroke:#4a4048; }
+  .tac-init{ font-family:Georgia, serif; font-size:15px; fill:var(--parch); font-weight:700; }
+  .tac-x{ font-size:18px; fill:var(--blood); font-weight:700; }
+  .tac-pulse{ fill:none; stroke-width:2.5; transform-origin:center; transform-box:fill-box; animation:mapPulse 1.6s ease-out infinite; }
+  .tac-pulse.pc{ stroke:var(--ember); } .tac-pulse.enemy{ stroke:var(--blood); }
+  @media (prefers-reduced-motion: reduce){ .tac-pulse{ animation:none; } }
   .map-detail{ margin-top:14px; background:var(--basalt-900); border:1px solid var(--basalt-600); border-radius:10px; padding:12px 14px; min-height:64px; }
   .map-d-head{ font-size:0.98rem; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .map-d-chap{ font-family:var(--font-mono); font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--ember); margin:3px 0 6px; }
@@ -808,6 +826,7 @@
         </div>
       </div>
       <div class="combat-bar hide" id="combatBar"></div>
+      <div id="tacticalCard" class="tac-card hide"></div>
       <div class="narrative" id="narrative"></div>
       <div class="composer">
         <div class="dm-console" id="dmConsole" style="display:none"></div>
@@ -922,10 +941,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627h"></script>
-<script src="campaign.js?v=20260627h"></script>
-<script src="creation-mp.js?v=20260627h"></script>
-<script src="sfx.js?v=20260627h"></script>
-<script src="mp.js?v=20260627h"></script>
+<script src="rules.js?v=20260627i"></script>
+<script src="campaign.js?v=20260627i"></script>
+<script src="tactical-maps.js?v=20260627i"></script>
+<script src="creation-mp.js?v=20260627i"></script>
+<script src="sfx.js?v=20260627i"></script>
+<script src="mp.js?v=20260627i"></script>
 </body>
 </html>

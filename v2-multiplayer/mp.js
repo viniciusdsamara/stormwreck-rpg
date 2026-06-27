@@ -50,6 +50,127 @@ const MONSTER_ART = {
 function monsterArt(name){ return MONSTER_ART[name] || null; }
 let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematográfico
 
+// ============================================================
+//  MAPA TÁTICO (grade de combate · névoa de guerra)
+//  Posições vivem em st.tactical (espelhado a todos). Só o admin (engine)
+//  muta; jogadores clicam numa célula → ação @@MOVE@@ que o admin aplica.
+// ============================================================
+const TAC_CELL = 42, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';
+const TAC_TILE = {
+  sand:{f:'#2a2430',s:'#39313f'}, surf:{f:'#1b3e50',s:'#27566e'}, sea:{f:'#0e2533',s:'#143242'},
+  debris:{f:'#2a2320',s:'#3a2f29'}, ship_hull:{f:'#0c0a10',s:'#1a1620'}, cliff:{f:'#0c0a10',s:'#1a1620'},
+  cave_floor:{f:'#201b29',s:'#2c2536'}, rock_wall:{f:'#0b0910',s:'#17131d'}, pool:{f:'#13303f',s:'#1b3e50'},
+  fungus:{f:'#1d2c22',s:'#2a4031'}, tomb_floor:{f:'#241c22',s:'#332632'}, lava_fissure:{f:'#3a1d16',s:'#b8501f'},
+  ash_mound:{f:'#2a2622',s:'#3a342c'}, hull_wall:{f:'#0c0a10',s:'#1a1620'}, ship_deck:{f:'#241d18',s:'#33291f'},
+  hold_gap:{f:'#080709',s:'#15111a'}, orcus_sigil:{f:'#2a0e16',s:'#c4485a'}, stone_wall:{f:'#0c0a10',s:'#1a1620'},
+  sky_edge:{f:'#0a1018',s:'#1b2a3a'}, dome_floor:{f:'#221c2b',s:'#2f2840'}, rubble:{f:'#2a2320',s:'#3a2f29'},
+  altar:{f:'#2c2536',s:'#d9c48a'},
+};
+function tacKey(x,y){ return x+','+y; }
+function tacMap(st){
+  if (typeof TACTICAL_MAPS === 'undefined') return null;
+  const m = TACTICAL_MAPS[st.sceneId]; if (!m) return null;
+  if (!m._imp){ const s = new Set(); for (let y=0;y<m.h;y++){ const row=[...(m.cells[y]||'')]; for (let x=0;x<m.w;x++){ const t=m.legend[row[x]]; if (t&&t.impassable) s.add(tacKey(x,y)); } } m._imp = s; }
+  return m;
+}
+function tacTileType(m,x,y){ const t = m.legend[[...(m.cells[y]||'')][x]]; return (t&&t.type) || 'cave_floor'; }
+function tacOccupant(st,x,y){ const pos=(st.tactical&&st.tactical.pos)||{}; for (const id in pos){ if (pos[id][0]===x && pos[id][1]===y) return id; } return null; }
+function tacActiveOwner(st){
+  if (mpCombatActive(st)){ const cur=mpCurrentActor(st); if (cur&&cur.kind==='pc') return (st.characters[cur.idx]||{}).owner||null; return null; }
+  const ap=mpActivePc(st); return ap?ap.owner:null;
+}
+function tacMyTurn(st){ const o=tacActiveOwner(st); return !!o && o===ME.id && !st.busy && !engineBusy; }
+function tacSeed(st){
+  const m=tacMap(st); if (!m){ st.tactical=null; return; }
+  const pos={}; let si=0;
+  (st.characters||[]).forEach(c=>{ const sp=m.pcSpawn[si++ % m.pcSpawn.length]; if (sp) pos[c.owner]=[sp[0],sp[1]]; });
+  (st.combat.enemies||[]).forEach(e=>{ const sp=m.enemySpawn[e.id]; if (sp) pos[e.id]=[sp[0],sp[1]]; });
+  st.tactical={ sceneId:st.sceneId, pos, seen:[], moved:{} };
+  tacReveal(st);
+}
+function tacLOS(m,x0,y0,x1,y1){ const dx=x1-x0,dy=y1-y0,steps=Math.max(Math.abs(dx),Math.abs(dy)); if (!steps) return true;
+  for (let i=1;i<steps;i++){ const x=Math.round(x0+dx*i/steps),y=Math.round(y0+dy*i/steps); if (m._imp.has(tacKey(x,y))) return false; } return true; }
+function tacVisible(st,m){
+  const vis=new Set(); const pos=(st.tactical&&st.tactical.pos)||{}; const R=m.fogR||5;
+  (st.characters||[]).forEach(c=>{ if ((c.hp||0)<=0) return; const p=pos[c.owner]; if (!p) return;
+    for (let dy=-R;dy<=R;dy++) for (let dx=-R;dx<=R;dx++){ const x=p[0]+dx,y=p[1]+dy; if (x<0||y<0||x>=m.w||y>=m.h) continue; if (tacLOS(m,p[0],p[1],x,y)) vis.add(tacKey(x,y)); } });
+  return vis;
+}
+function tacReveal(st){ const m=tacMap(st); if (!m||!st.tactical) return; const seen=new Set(st.tactical.seen||[]); tacVisible(st,m).forEach(k=>seen.add(k)); st.tactical.seen=[...seen]; }
+function tacReachable(st,m,from,budget){
+  const out=new Map(); if (!from) return out; out.set(tacKey(from[0],from[1]),0); let fr=[[from[0],from[1],0]];
+  const D=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  while (fr.length){ const nx=[]; for (const [x,y,c] of fr){ if (c>=budget) continue; for (const [ddx,ddy] of D){ const a=x+ddx,b=y+ddy,k=tacKey(a,b);
+    if (a<0||b<0||a>=m.w||b>=m.h||out.has(k)||m._imp.has(k)||tacOccupant(st,a,b)) continue;
+    if (ddx&&ddy&&m._imp.has(tacKey(x+ddx,y))&&m._imp.has(tacKey(x,y+ddy))) continue; out.set(k,c+1); nx.push([a,b,c+1]); } } fr=nx; }
+  out.delete(tacKey(from[0],from[1])); return out;
+}
+function tacTokenRef(st,id){
+  const pc=(st.characters||[]).find(c=>c.owner===id);
+  if (pc) return { kind:'pc', name:pc.name, img:pc.portrait||null, hp:pc.hp, maxHp:pc.maxHp };
+  if (mpCombatActive(st)){ const e=(st.combat.enemies||[]).find(e=>e.id===id); if (e) return { kind:'enemy', name:e.name, img:monsterArt(e.name), hp:e.curHp, maxHp:e.hp }; }
+  return null;
+}
+function tacCssId(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+function tacInitials(n){ return (n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase(); }
+function renderTacticalMap(st,m){
+  const W=m.w,H=m.h,vw=W*TAC_CELL,vh=H*TAC_CELL;
+  const seen=new Set((st.tactical&&st.tactical.seen)||[]); const visible=tacVisible(st,m);
+  const activeId=tacActiveOwner(st); const pos=(st.tactical&&st.tactical.pos)||{};
+  const canMove = tacMyTurn(st) && activeId && pos[activeId] && !((st.tactical.moved||{})[activeId]);
+  const reach = canMove ? tacReachable(st,m,pos[activeId],TAC_MOVE) : new Map();
+  let terrain='',fog='',moves='';
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++){
+    const px=x*TAC_CELL,py=y*TAC_CELL,k=tacKey(x,y); const tl=TAC_TILE[tacTileType(m,x,y)]||TAC_TILE.cave_floor;
+    terrain+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" fill="${tl.f}" stroke="${tl.s}" stroke-width="1"/>`;
+    if (!seen.has(k)) fog+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" class="tac-fog"/>`;
+    else if (!visible.has(k)) fog+=`<rect x="${px}" y="${py}" width="${TAC_CELL}" height="${TAC_CELL}" class="tac-fog remembered"/>`;
+    if (reach.has(k)&&visible.has(k)) moves+=`<rect x="${px+3}" y="${py+3}" width="${TAC_CELL-6}" height="${TAC_CELL-6}" rx="6" class="tac-move" data-xy="${k}" tabindex="0" role="button"/>`;
+  }
+  const grid=`<g class="tac-grid">`+Array.from({length:W+1},(_,i)=>`<line x1="${i*TAC_CELL}" y1="0" x2="${i*TAC_CELL}" y2="${vh}"/>`).join('')+Array.from({length:H+1},(_,j)=>`<line x1="0" y1="${j*TAC_CELL}" x2="${vw}" y2="${j*TAC_CELL}"/>`).join('')+`</g>`;
+  let defs='';
+  for (const id in pos){ const ref=tacTokenRef(st,id); if (ref&&ref.img) defs+=`<pattern id="tok-${tacCssId(id)}" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${ref.img}" x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice"/></pattern>`; }
+  let tokens='';
+  for (const id in pos){ const [x,y]=pos[id],ref=tacTokenRef(st,id); if (!ref) continue; const k=tacKey(x,y);
+    if (ref.kind==='enemy' && !visible.has(k)) continue;
+    if (ref.kind==='pc' && !visible.has(k) && !seen.has(k)) continue;
+    const cx=x*TAC_CELL+TAC_CELL/2, cy=y*TAC_CELL+TAC_CELL/2, r=TAC_CELL*0.40;
+    const fill=ref.img?`url(#tok-${tacCssId(id)})`:(ref.kind==='enemy'?'#3a1820':'#1e2a33'); const dead=ref.hp<=0;
+    const pulse=(id===activeId)?`<circle cx="${cx}" cy="${cy}" r="${r}" class="tac-pulse ${ref.kind}"/>`:'';
+    const label=ref.img?'':`<text x="${cx}" y="${cy}" class="tac-init" text-anchor="middle" dominant-baseline="central">${escapeHtml(tacInitials(ref.name))}</text>`;
+    const pct=Math.max(0,Math.min(1,ref.hp/(ref.maxHp||1))), bw=r*1.8, bx=cx-bw/2, by=cy+r+3, hpc=pct>0.5?'#5a8f6b':pct>0.25?'#d9c48a':'#c4485a';
+    const hpbar=dead?'':`<rect x="${bx}" y="${by}" width="${bw}" height="3" rx="1.5" fill="#0c0a10"/><rect x="${bx}" y="${by}" width="${(bw*pct).toFixed(1)}" height="3" rx="1.5" fill="${hpc}"/>`;
+    tokens+=`<g class="tac-tok ${ref.kind} ${dead?'dead':''}">${pulse}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" class="tac-disc"/>${label}${hpbar}${dead?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" class="tac-x">✕</text>`:''}</g>`;
+  }
+  return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
+}
+function renderTactical(st){
+  const card=$('#tacticalCard'); if (!card) return;
+  const m = mpCombatActive(st) ? tacMap(st) : null;
+  if (!m || !st.tactical){ card.classList.add('hide'); card.innerHTML=''; return; }
+  card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m);
+  $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
+    el.onclick=()=>tacRequestMove(x,y); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestMove(x,y); } }; });
+}
+async function tacRequestMove(x,y){
+  const st=ROOM.state||{}, m=tacMap(st); if (!m||!st.tactical) return;
+  const owner=tacActiveOwner(st);
+  if (!owner||owner!==ME.id||!tacMyTurn(st)||((st.tactical.moved||{})[owner])) return;
+  if (m._imp.has(tacKey(x,y))||tacOccupant(st,x,y)) return;
+  if (amIAdmin()){ await tacMoveToken(st,owner,x,y); }
+  else { try { await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(mov)', text: MOVE_PREFIX+JSON.stringify({owner,x,y}) }); } catch(e){} }
+}
+async function tacMoveToken(st,owner,x,y){
+  const m=tacMap(st); if (!m||!st.tactical) return;
+  if (m._imp.has(tacKey(x,y))||tacOccupant(st,x,y)) return;
+  const from=st.tactical.pos[owner]; if (!from) return;
+  if (!tacReachable(st,m,from,TAC_MOVE).has(tacKey(x,y))) return;   // valida alcance no servidor
+  st.tactical.pos[owner]=[x,y];
+  st.tactical.moved=st.tactical.moved||{}; st.tactical.moved[owner]=true;
+  tacReveal(st);
+  await saveState(st); renderGame();
+}
+
 function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
 // marca o local da cena atual como visitado (roda na engine do admin)
 function mpMarkSceneVisited(st){
@@ -1150,6 +1271,7 @@ function renderGame(){
   $$('#charPanel [data-sheet]').forEach(el => el.onclick = () => { const i = +el.dataset.sheet; if (luPend[i]) openLevelUp(i); else openSheet(i); });
   // barra de combate (espelhada a todos)
   renderCombatBar(st);
+  renderTactical(st);   // mapa tático (grade + névoa + tokens)
   // narrativa (com digitação do Mestre) + painel de rolagens espelhado
   renderNarrative(st);
   renderRollLog(st);
@@ -1539,6 +1661,7 @@ function mpStartCombat(st, encId){
   st.combat.order = order; st.combat.turn = 0; st.combat.round = 1;
   st.history = st.history || [];
   st.history.push({ role:'scene', text:`⚔ COMBATE: ${(enc.name||'').toUpperCase()} ⚔` });
+  tacSeed(st);   // posiciona PCs e inimigos no mapa tático da cena (se houver)
   return true;
 }
 // avança o ponteiro de iniciativa, pulando quem está caído; conta rodadas
@@ -1552,9 +1675,10 @@ function mpAdvanceCombat(st){
     const dead = o.kind==='enemy' ? cb.enemies[o.idx].curHp <= 0 : (st.characters[o.idx]||{}).hp <= 0;
     if (!dead) break;
   } while (++guard < cb.order.length * 2);
+  if (st.tactical) st.tactical.moved = {};   // novo turno → renova o deslocamento
 }
 function mpEndCombat(st, victory){
-  st.combat = null;
+  st.combat = null; st.tactical = null;
   st.history = st.history || [];
   st.history.push({ role:'scene', text: victory ? '— inimigos derrotados! fim do combate —' : '— fim do combate —' });
 }
@@ -1700,6 +1824,16 @@ async function onPlayerAction(action){
     PROCESSED_IDS.add(action.id);
     if (ROLL_RESOLVER) ROLL_RESOLVER();
     try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){}
+    return;
+  }
+  // movimento no mapa tático: o admin aplica a posição enviada pelo jogador
+  if (typeof action.text === 'string' && action.text.startsWith(MOVE_PREFIX)){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
+    engineBusy = true; PROCESSED_IDS.add(action.id);
+    const st = ROOM.state || {};
+    try { const d = JSON.parse(action.text.slice(MOVE_PREFIX.length)); if (d && d.owner === tacActiveOwner(st)) await tacMoveToken(st, d.owner, d.x, d.y); }
+    catch(e){}
+    finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
   }
   if (engineBusy){ setTimeout(()=>onPlayerAction(action), 800); return; }   // serializa
@@ -2188,7 +2322,12 @@ function injectTestPanel(){
         <select id="tpScene">${scenes.map(s=>`<option value="${s}">${s}</option>`).join('')}</select><button id="tpGo">ir</button></div></div>
     </div>`;
   document.body.appendChild(el);
-  el.querySelectorAll('[data-enc]').forEach(b => b.onclick = () => { const st = ROOM.state; st.combat = null; LAST_COMBAT = false; mpStartCombat(st, b.dataset.enc); renderGame(); });
+  el.querySelectorAll('[data-enc]').forEach(b => b.onclick = () => {
+    const st = ROOM.state, enc = b.dataset.enc;
+    const sc = Object.keys(CAMPAIGN.scenes).find(s => CAMPAIGN.scenes[s].combat === enc);   // alinha cena ↔ encontro (mapa tático)
+    if (sc){ st.sceneId = sc; mpMarkSceneVisited(st); }
+    st.combat = null; LAST_COMBAT = false; mpStartCombat(st, enc); renderGame();
+  });
   const endc = el.querySelector('[data-endc]'); if (endc) endc.onclick = () => { if (ROOM.state.combat){ mpEndCombat(ROOM.state, true); renderGame(); } };
   el.querySelectorAll('[data-roll]').forEach(b => b.onclick = () => tpTestRoll(b.dataset.roll));
   el.querySelector('#tpGuide').onclick = () => openGuide();
