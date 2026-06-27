@@ -167,15 +167,27 @@
   .dice-box{ text-align:center; max-width:92%; }
   .dice-title{ color:var(--parch); opacity:0.8; font-size:0.9rem; margin-bottom:6px; }
   .dice-target{ color:var(--ember); font-weight:700; letter-spacing:0.05em; font-size:0.82rem; text-transform:uppercase; margin-bottom:8px; min-height:1em; }
-  .dice-stage{ position:relative; width:210px; height:210px; margin:0 auto; }
-  .dice-canvas{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
-  .dice-canvas canvas{ filter:drop-shadow(0 12px 26px rgba(0,0,0,0.6)); }
-  .dice-num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-          font-size:3rem; font-weight:800; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,0.95), 0 0 20px rgba(0,0,0,0.6);
-          z-index:2; pointer-events:none; transition:transform .2s ease-out; }
-  .dice-overlay.settled .dice-num{ transform:scale(1.18); }
-  .dice-num.crit{ color:#8ff0a0; text-shadow:0 0 22px rgba(110,224,127,0.85), 0 2px 6px rgba(0,0,0,0.8); }
-  .dice-num.fumble{ color:#ff6f80; text-shadow:0 0 22px rgba(196,72,90,0.85), 0 2px 6px rgba(0,0,0,0.8); }
+  /* bandeja de dados poliédricos 2D — cada rolagem mostra os dados com a forma certa */
+  .dice-tray{ display:flex; flex-wrap:wrap; gap:14px 12px; align-items:center; justify-content:center;
+          max-width:min(92vw,460px); margin:0 auto; min-height:78px; padding:6px 4px 12px; }
+  .die{ position:relative; width:62px; height:62px; }
+  .die.dmg, .die.heal{ width:52px; height:52px; }
+  .die svg{ width:100%; height:100%; overflow:visible; display:block; }
+  .die .die-poly{ fill:#2a1d10; stroke:#e8843c; stroke-width:3.5; stroke-linejoin:round; filter:drop-shadow(0 6px 12px rgba(0,0,0,0.5)); }
+  .die.dmg .die-poly{ stroke:#ff9a86; fill:#2c1410; }
+  .die.heal .die-poly{ stroke:#6ee07f; fill:#13261a; }
+  .die .die-val{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+          font-weight:800; font-size:1.3rem; color:#fff; text-shadow:0 1px 5px rgba(0,0,0,0.95); pointer-events:none; }
+  .die.dmg .die-val, .die.heal .die-val{ font-size:1.1rem; }
+  .die .die-tag{ position:absolute; bottom:-13px; left:0; right:0; text-align:center; font-size:0.58rem;
+          letter-spacing:0.08em; color:var(--stone-300); text-transform:uppercase; }
+  .die.rolling{ animation:dieTumble 0.5s linear infinite; }
+  .die.settle{ animation:dieSettle 0.4s cubic-bezier(.2,1.3,.4,1); }
+  .die.faded{ opacity:0.38; }   /* d20 não escolhido (vantagem/desvantagem) */
+  .die.crit .die-poly{ stroke:#6ee07f; } .die.crit .die-val{ color:#8ff0a0; }
+  .die.fumble .die-poly{ stroke:#c4485a; } .die.fumble .die-val{ color:#ff6f80; }
+  @keyframes dieTumble{ 0%{transform:rotate(0) scale(1)} 25%{transform:rotate(90deg) scale(1.07)} 50%{transform:rotate(180deg) scale(.94)} 75%{transform:rotate(270deg) scale(1.07)} 100%{transform:rotate(360deg) scale(1)} }
+  @keyframes dieSettle{ 0%{transform:rotate(35deg) scale(1.28)} 60%{transform:rotate(-7deg) scale(.94)} 100%{transform:rotate(0) scale(1)} }
   .dice-result{ margin-top:18px; min-height:24px; }
   .dice-mods{ color:var(--parch); font-size:1.02rem; } .dice-mods b{ color:#fff; font-size:1.25rem; }
   .dice-verdict{ margin-top:8px; font-weight:800; font-size:1.18rem; letter-spacing:0.03em; }
@@ -1072,10 +1084,7 @@
     <div class="dice-box">
       <div class="dice-title" id="diceTitle"></div>
       <div class="dice-target" id="diceTarget"></div>
-      <div class="dice-stage">
-        <div class="dice-canvas" id="diceCanvasWrap"></div>
-        <div class="dice-num" id="diceNum">?</div>
-      </div>
+      <div class="dice-tray" id="diceTray"></div>
       <div class="dice-result" id="diceResult"></div>
     </div>
   </div>
@@ -1114,12 +1123,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627ac"></script>
-<script src="i18n.js?v=20260627ac"></script>
-<script src="campaign.js?v=20260627ac"></script>
-<script src="tactical-maps.js?v=20260627ac"></script>
-<script src="creation-mp.js?v=20260627ac"></script>
-<script src="sfx.js?v=20260627ac"></script>
-<script src="mp.js?v=20260627ac"></script>
+<script src="rules.js?v=20260627ad"></script>
+<script src="i18n.js?v=20260627ad"></script>
+<script src="campaign.js?v=20260627ad"></script>
+<script src="tactical-maps.js?v=20260627ad"></script>
+<script src="creation-mp.js?v=20260627ad"></script>
+<script src="sfx.js?v=20260627ad"></script>
+<script src="mp.js?v=20260627ad"></script>
 </body>
 </html>

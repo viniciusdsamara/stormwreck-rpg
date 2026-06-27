@@ -510,8 +510,9 @@ function oaEnemyStrike(st,e,pc){
   const tam=(typeof targetAttackMods==='function')?targetAttackMods(pc,true):{adv:false,dis:false,autoCrit:false};
   const atk=mpD20(null, e.mod||0, { adv:tam.adv, dis:tam.dis });
   const hit=atk.crit||(!atk.fumble&&atk.total>=(pc.ca||10)); if(hit&&tam.autoCrit&&!atk.fumble) atk.crit=true;
-  st.history.push({ role:'roll', side:'foe', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat });
-  if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); applyDamage(pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e}); }
+  const card={ role:'roll', side:'foe', label:`${e.name} · ataque de oportunidade → ${pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:pc.ca, tipo:'ataque', nat:atk.nat };
+  st.history.push(card);
+  if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); card.dmg={ total:d.total, type:enemyDmgType(e), detail:d.detail }; applyDamage(pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e}); }
   fxEmit(st, { kind:'oa', src:e.id, tgt:pc.owner, result:fxResult(hit,atk.crit) });
   if(hit) fxEmit(st, { kind:'melee', dtype:enemyDmgType(e), src:e.id, tgt:pc.owner, result:fxResult(true,atk.crit) });
 }
@@ -593,8 +594,10 @@ function aiEnemyAttack(st,e,prof,target,ev){
     if(bane){ const b=mpRollDmgExpr(bane).total; atk.total-=b; }
     let hit=atk.crit||(!atk.fumble&&atk.total>=tgtCA);
     if(hit && tam.autoCrit && !atk.fumble) atk.crit=true;   // alvo paralisado/inconsciente: acerto corpo-a-corpo é crítico
-    st.history.push({ role:'roll', side:'foe', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:tgtCA, tipo:'ataque', nat:atk.nat });
+    const card={ role:'roll', side:'foe', label:`${e.name} ataca ${target.pc.name}`, total:atk.total, mod:e.mod||0, dice:atk.dice, crit:atk.crit, fumble:atk.fumble, dc:tgtCA, tipo:'ataque', nat:atk.nat };
+    st.history.push(card);
     if(hit){ const d=mpRollDmgExpr(e.dmg||'1d6',atk.crit); const res=applyDamage(target.pc, d.total, enemyDmgType(e), st, {crit:atk.crit, srcEnemy:e});
+      card.dmg={ total:res.applied, type:enemyDmgType(e), detail:d.detail, mult:res.mult };   // anexa os dados de dano p/ animar
       fxEmit(st, { kind:(prof.reach||1)<=1?'melee':'ranged', dtype:enemyDmgType(e), src:e.id, tgt:target.pc.owner, result:fxResult(true,atk.crit), mult:res.mult, seq:k });
       ev.push({kind:'attack',srcName:e.name,tgtName:target.pc.name,hit:true,crit:atk.crit,dmg:res.applied,down:res.down});
       if(res.down){ break; } }
@@ -770,9 +773,9 @@ async function mpRunEnemyTurnsAuto(st){
     for(const e of acting){ if(e.curHp<=0) continue;
       const tg=aiTelegraph(st,e);                                   // 1) anuncia a intenção e PARA p/ o jogador ler
       st.history.push({ role:'intent', icon:tg.icon, text:tg.text, name:e.name });
-      await saveState(st); renderGame(); await mpSleep(950);
-      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola o dado) e PARA p/ ver a rolagem
-      await saveState(st); renderGame(); await mpSleep(750);
+      await saveState(st); renderGame(); await mpSleep(1500);
+      aiRunEnemyTurn(st,e,ev);                                      // 2) executa (rola o dado) e PARA ~3,5s p/ ver os dados
+      await saveState(st); renderGame(); await mpSleep(3500);
       if(mpAllPcsDead(st)) break; }
     await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
@@ -969,7 +972,7 @@ async function castAbility(owner, name, targetId, st){
       const raw=saved?(fx.half?Math.floor(full.total/2):0):full.total;
       const res=applyDamage(tgt, raw, fx.dtype, st, {});
       const who = v.isEnemy ? tgt.name : `⚠ ${tgt.name} (fogo amigo)`;
-      st.history.push({ role:'roll', tipo:'save', label:`${who} · save ${fx.save} (${name})`, total:sv.total, mod:smod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
+      st.history.push({ role:'roll', tipo:'save', label:`${who} · save ${fx.save} (${name})`, total:sv.total, mod:smod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:full.detail, mult:res.mult }:null });
     }
   } else if(fx.kind==='save'){
     const e=(st.combat.enemies||[]).find(x=>x.id===targetId); if(!e||e.curHp<=0){ await saveState(st); renderGame(); return; }
@@ -979,7 +982,7 @@ async function castAbility(owner, name, targetId, st){
     const center=(st.tactical&&st.tactical.pos[targetId]);
     if((fx.range||1)<=2) fxEmit(st, { kind:'area', cone:true, dtype:fx.dtype, src:owner, center, radius:1, mult:res.mult });   // cone (Mãos Flamejantes)
     else fxEmit(st, { kind:'ranged', dtype:fx.dtype, src:owner, tgt:targetId, result:'hit', mult:res.mult });               // raio (Chama Sagrada, Repreensão…)
-    st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:fx.dmg, mult:res.mult }:null });
+    st.history.push({ role:'roll', tipo:'save', label:`${c.name} · ${name} (${e.name} save ${fx.save})`, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, dc, nat:sv.nat, outcome:saved?'RESISTIU':'FALHOU', dmg: res.applied>0?{ total:res.applied, type:fx.dtype, detail:full.detail, mult:res.mult }:null });
   } else if(fx.kind==='sleep'){
     // SONO: esfera; soma 5d8 de HP; derruba Inconsciente do menor HP p/ cima até esgotar; pula mortos-vivos/imunes a charme; pega aliados (fogo amigo).
     const center=tgtPos; if(!center){ await saveState(st); renderGame(); return; }
@@ -1008,9 +1011,9 @@ async function castAbility(owner, name, targetId, st){
     st.history.push({ role:'roll', noRoll:true, tipo:'magia', label:`${c.name} · ${name} → ${e.name}`, total:res.applied, outcome:'ACERTO AUTOMÁTICO', dmg:{ total:res.applied, type:fx.dtype, detail:d.detail, mult:res.mult } });
   } else if(fx.kind==='heal'){
     const ally=(st.characters||[]).find(x=>x.owner===targetId) || c;
-    const h=mpRollDmgExpr(fx.dmg).total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
+    const hr=mpRollDmgExpr(fx.dmg); const h=hr.total + (fx.addMod?cmod:0); ally.hp=Math.min(ally.maxHp, ally.hp+Math.max(1,h));
     fxEmit(st, { kind:'heal', tgt:(ally.owner!=null?ally.owner:owner) });
-    st.history.push({ role:'roll', noRoll:true, tipo:'cura', label:`${c.name} · ${name} → ${ally.name}`, total:h, outcome:`+${h} HP`, heal:h });
+    st.history.push({ role:'roll', noRoll:true, tipo:'cura', label:`${c.name} · ${name} → ${ally.name}`, total:h, outcome:`+${h} HP`, heal:h, healDetail:hr.detail });
   } else if(fx.kind==='effect'){
     const efx=EFFECT_FX[fx.effect]||{}; const aim=fx.aim||'ally';
     if(aim==='enemy'){
@@ -1884,8 +1887,10 @@ function diceTick(st, pendingJustResolved){
   const card = rolls[rolls.length-1]; DICE_SEEN_COUNT = rolls.length;
   if (pendingJustResolved) return;                  // o fluxo [ROLL] já anima esta carta
   if (DICE_SPINNING) return;                        // já está girando (o rolador clicou)
-  if (card.noRoll || card.nat == null || !(card.dice && card.dice.length)) return;   // só d20 reais
-  if (typeof settleDiceAnim === 'function') settleDiceAnim(card);   // gira rápido e assenta no resultado
+  const hasD20 = card.nat != null && card.dice && card.dice.length && !card.autoFail;
+  const hasRollDice = /\d+d\d+\([\d,]+\)/.test((card.dmg && card.dmg.detail) || card.healDetail || '');
+  if (!hasD20 && !hasRollDice) return;              // precisa ter d20 OU dados de dano/cura com valores
+  if (typeof settleDiceAnim === 'function') settleDiceAnim(card);   // gira e assenta cada dado na forma certa
 }
 let SND = null;
 function soundTick(st){
@@ -2243,47 +2248,92 @@ async function triggerRoll(){
   try { await supa.from('room_actions').insert({ room_id: ROOM.id, user_id: ME.id, display_name: pr.name, text: ROLL_PREFIX }); }
   catch(e){ toast('Erro ao rolar: ' + e.message); }
 }
+// ---- dados poliédricos 2D (SVG): cada rolagem mostra os dados com a forma certa ----
+function diePolygon(sides){   // pontos num viewBox 0..100 (null = quadrado via <rect>)
+  switch(sides){
+    case 4:  return '50,8 92,84 8,84';                       // d4 triângulo
+    case 6:  return null;                                     // d6 quadrado
+    case 8:  return '50,4 94,50 50,96 6,50';                  // d8 losango
+    case 10: return '50,3 90,40 72,93 28,93 10,40';          // d10 pentágono irregular
+    case 12: return '50,4 89,33 74,90 26,90 11,33';          // d12 pentágono
+    case 20: return '50,3 89,26 89,74 50,97 11,74 11,26';    // d20 hexágono
+    default: return '50,3 89,26 89,74 50,97 11,74 11,26';
+  }
+}
+function dieSvg(sides, val, cls){
+  const poly = diePolygon(sides);
+  const shape = poly ? `<polygon class="die-poly" points="${poly}"/>` : `<rect class="die-poly" x="9" y="9" width="82" height="82" rx="14"/>`;
+  return `<div class="die ${cls||''}" data-sides="${sides}"><svg viewBox="0 0 100 100">${shape}</svg><div class="die-val">${val}</div><div class="die-tag">d${sides}</div></div>`;
+}
+// monta a lista de dados a animar a partir de um card de rolagem
+function diceListFromCard(card){
+  const list = [];
+  if (card.dice && card.dice.length && card.nat != null && !card.autoFail){   // d20(s) do teste/ataque/save
+    let markedChosen = false;
+    card.dice.forEach(v => { const chosen = !markedChosen && v===card.nat; if (chosen) markedChosen = true; list.push({ sides:20, value:v, kind:'d20', chosen }); });
+  }
+  const detail = (card.dmg && card.dmg.detail) || card.healDetail || '';   // dados de dano/cura (valores entre parênteses)
+  if (detail){ for (const m of String(detail).matchAll(/(\d+)d(\d+)\(([\d,]+)\)/g)){
+    const sides = +m[2]; m[3].split(',').forEach(x => list.push({ sides, value:+x, kind: card.heal?'heal':'dmg' })); } }
+  return list;
+}
+function diceSummaryHtml(card){
+  let html = '';
+  if (card.autoFail){ html = `<div class="dice-mods">falha automática (condição)</div>`; }
+  else if (card.nat != null && card.dice && card.dice.length){
+    const crit = card.crit ? ' · CRÍTICO!' : (card.fumble ? ' · FALHA CRÍTICA' : '');
+    html += `<div class="dice-mods">🎲 ${card.nat} ${fmtMod(card.mod||0)} = <b>${card.total}</b>${crit}</div>`;
+    if (card.dc != null){ const ok = card.total >= card.dc; html += `<div class="dice-verdict ${ok?'ok':'fail'}">${ok?'SUCESSO':'FALHA'} · CD ${card.dc}</div>`; }
+  }
+  if (card.dmg) html += `<div class="dice-dmg">⚔ Dano <b>${card.dmg.total}</b> [${card.dmg.type}]${typeof dmgMultNote==='function'?dmgMultNote(card.dmg.mult):''}</div>`;
+  if (card.heal) html += `<div class="dice-dmg" style="color:#8ff0a0">✚ Cura <b>${card.heal}</b> HP</div>`;
+  return html;
+}
+// gira e assenta TODOS os dados da rolagem (d20 + dados de dano), cada um com sua forma
+function playDiceRoll(card){
+  const ov = $('#diceOverlay'), tray = $('#diceTray'); if (!ov || !tray || !card) return;
+  const dice = diceListFromCard(card);
+  if (!dice.length){ return; }
+  if (ov._t){ clearTimeout(ov._t); ov._t = null; }
+  if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
+  $('#diceTitle').textContent = card.label || '';
+  $('#diceTarget').textContent = card.dc != null ? `Alvo: CD ${card.dc}` : (card.dmg ? `Dano [${card.dmg.type}]` : (card.heal ? 'Cura' : ''));
+  $('#diceResult').innerHTML = '';
+  ov.classList.remove('hide','settled'); ov.classList.add('rolling');
+  tray.innerHTML = dice.map(d => dieSvg(d.sides, '?', `rolling ${d.kind!=='d20'?d.kind:''}`)).join('');
+  const els = [...tray.querySelectorAll('.die')], valEls = els.map(e => e.querySelector('.die-val'));
+  DICE_SPINNING = true;
+  DICE_TIMER = setInterval(()=>{ valEls.forEach((v,i)=>{ v.textContent = 1 + Math.floor(Math.random()*dice[i].sides); }); }, 70);
+  const order = dice.map((d,i)=>i).sort((a,b)=> (dice[a].kind==='d20'?0:1) - (dice[b].kind==='d20'?0:1));   // d20 assenta primeiro
+  setTimeout(()=>{
+    if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
+    order.forEach((idx,k)=> setTimeout(()=>{
+      const el = els[idx], d = dice[idx];
+      el.classList.remove('rolling'); el.classList.add('settle');
+      valEls[idx].textContent = d.value;
+      if (d.kind==='d20'){ if (!d.chosen) el.classList.add('faded'); else if (card.crit) el.classList.add('crit'); else if (card.fumble) el.classList.add('fumble'); }
+    }, k*240));
+    setTimeout(()=>{ DICE_SPINNING = false; ov.classList.remove('rolling'); ov.classList.add('settled'); $('#diceResult').innerHTML = diceSummaryHtml(card); }, order.length*240 + 220);
+  }, 720);
+  const total = 720 + order.length*240 + 220 + 2400;   // mantém na tela ~2,4s após assentar
+  ov._t = setTimeout(()=>{ ov.classList.add('hide'); }, total);
+  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); } };
+}
+// quem clica em "Rolar": gira um d20 placeholder até o resultado chegar
 function startDiceAnim(pr){
-  const ov = $('#diceOverlay'); if (!ov) return;
+  const ov = $('#diceOverlay'), tray = $('#diceTray'); if (!ov || !tray) return;
   if (ov._t){ clearTimeout(ov._t); ov._t = null; }
   ov.classList.remove('hide','settled'); ov.classList.add('rolling');
   $('#diceTitle').textContent = `${pr.name||''}${pr.tipo?` · ${pr.tipo}`:''}`;
   $('#diceTarget').textContent = pr.cd ? `Alvo: CD ${pr.cd}` : '';
   $('#diceResult').innerHTML = '';
-  const num = $('#diceNum'); num.className = 'dice-num';
+  tray.innerHTML = dieSvg(20, '?', 'rolling');
+  const v = tray.querySelector('.die-val');
   DICE_SPINNING = true;
   if (DICE_TIMER) clearInterval(DICE_TIMER);
-  DICE_TIMER = setInterval(()=>{ num.textContent = 1 + Math.floor(Math.random()*20); }, 60);
-  const d = ensureDice3D();
-  if (d){
-    d.mat.color.set(0xd69e4a); d.mat.emissive && d.mat.emissive.set(0x000000);
-    d.vel = { x: 0.20 + Math.random()*0.16, y: 0.24 + Math.random()*0.18, z: 0.10 + Math.random()*0.10 };
-    d.settling = false; d.spinning = true;
-    if (!d.raf) diceLoop();
-  }
+  DICE_TIMER = setInterval(()=>{ if (v) v.textContent = 1 + Math.floor(Math.random()*20); }, 70);
 }
-function settleDiceAnim(card){
-  const ov = $('#diceOverlay'); if (!ov || !card) return;
-  if (!DICE_SPINNING) startDiceAnim({ name: card.label||'', tipo:'', cd: card.dc });   // não-rolador: gira rápido e assenta
-  const d = DICE3D; if (d) d.settling = true;                                           // o dado 3D desacelera
-  setTimeout(()=>{
-    if (DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER = null; }
-    DICE_SPINNING = false;
-    ov.classList.remove('rolling'); ov.classList.add('settled');
-    const num = $('#diceNum');
-    num.textContent = card.autoFail ? '✗' : card.nat;
-    num.className = 'dice-num ' + (card.crit ? 'crit' : card.fumble ? 'fumble' : '');
-    if (d){ d.mat.color.set(card.crit ? 0x6ee07f : card.fumble ? 0xc4485a : 0xd69e4a); }
-    const ok = card.dc != null ? (!card.autoFail && card.total >= card.dc) : null;
-    const mods = card.autoFail ? 'falha automática (condição)' : `🎲 ${card.nat} ${fmtMod(card.mod)} = <b>${card.total}</b>`;
-    const crit = card.crit ? ' · CRÍTICO!' : (card.fumble && !card.autoFail) ? ' · FALHA CRÍTICA' : '';
-    const verdict = card.dc != null ? `<div class="dice-verdict ${ok?'ok':'fail'}">${ok?'SUCESSO':'FALHA'} · CD ${card.dc}</div>` : '';
-    const dmg = card.dmg ? `<div class="dice-dmg">⚔ Dano ${card.dmg.total} [${card.dmg.type}]</div>` : '';
-    $('#diceResult').innerHTML = `<div class="dice-mods">${mods}${crit}</div>${verdict}${dmg}`;
-  }, 700);
-  ov._t = setTimeout(()=>{ ov.classList.add('hide'); stopDice3D(); }, 3900);
-  ov.onclick = ()=>{ if (!DICE_SPINNING){ ov.classList.add('hide'); stopDice3D(); } };
-}
+function settleDiceAnim(card){ if (card) playDiceRoll(card); }   // assenta com a forma certa (cobre PC e inimigos)
 
 // reveal cinematográfico quando o combate começa — arte + nome (SEM stats, pra não dar spoiler)
 function showCombatReveal(st){
@@ -3568,7 +3618,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ac';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ad';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
