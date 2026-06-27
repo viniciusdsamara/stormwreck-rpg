@@ -963,6 +963,11 @@ let LAST_RENDER_AT = 0;
 function tacRecoverStuck(force){
   try { const st = (typeof ROOM!=='undefined' && ROOM && ROOM.state) || null; if(!st) return;
     const idle = LAST_RENDER_AT ? (Date.now() - LAST_RENDER_AT) : 999999;
+    if (force){   // voltou pra aba/janela: limpa overlays que cobrem a tela e podem ter ficado presos
+      ['#diceOverlay','#combatReveal','#turnCard'].forEach(sel=>{ const ov=$(sel); if(ov && ov.classList) ov.classList.add('hide'); });
+      try { if(DICE_TIMER){ clearInterval(DICE_TIMER); DICE_TIMER=null; } } catch(e){}
+      DICE_SPINNING = false; if(typeof stopDice3D==='function') stopDice3D();
+    }
     if ((st.busy || engineBusy) && !ENEMY_LOOP_RUNNING && (force || idle > 6000)){   // turno do PC travado → destrava tudo
       st.busy = false; engineBusy = false; if(typeof saveState==='function') saveState(st);
     } else if ((st.busy || engineBusy) && ENEMY_LOOP_RUNNING && idle > 30000){        // último recurso: loop de inimigo congelado
@@ -3912,7 +3917,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627al';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627am';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
