@@ -58,7 +58,7 @@ let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematog
 //  Posições vivem em st.tactical (espelhado a todos). Só o admin (engine)
 //  muta; jogadores clicam numa célula → ação @@MOVE@@ que o admin aplica.
 // ============================================================
-const TAC_CELL = 42, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';
+const TAC_CELL = 48, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';   // px por casa: tamanho FIXO confortável (o mapa rola/arrasta; não encolhe pra caber)
 let TAC_PREV_POS = {};   // px {id:[cx,cy]} da renderização anterior → anima o deslocamento
 // condições que zeram o deslocamento e que impedem agir (Apêndice A do D&D 5e)
 const MOVE_BLOCK_CONDS = ['Agarrado','Impedido','Paralisado','Atordoado','Inconsciente','Petrificado'];
@@ -237,7 +237,9 @@ function renderTacticalMap(st,m){
   }
   // camadas: terreno (base/fallback) → textura IA → marcações de bloqueio → grade → névoa → movimento → tokens
   const bgImg = bg ? `<image href="${bg}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid slice"/>` : '';
-  return `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${bgImg}<g>${marks}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
+  // width/height EXPLÍCITOS (px) = tamanho natural da grade: casa fixa de TAC_CELL px.
+  // O mapa NÃO encolhe pra caber — ele rola dentro do card (auto-centraliza em quem joga).
+  return `<svg viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${bgImg}<g>${marks}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
 }
 function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
@@ -262,7 +264,8 @@ function renderTactical(st){
   } else { PENDING_ABILITY=null; ABILITY_MENU_OPEN=false; }
   // botão de destravar (saída + diagnóstico) — SÓ no modo teste (?teste=1); escondido no jogo real
   if (TEST_MODE && mpCombatActive(st)) bar += `<div class="tac-unlock-row"><button class="tac-unlock" id="tacUnlockBtn" title="Destravar / diagnóstico">🔓 Destravar</button></div>`;
-  card.classList.remove('hide'); card.innerHTML = renderTacticalMap(st,m) + bar;
+  // mapa num wrapper que ROLA (auto-centraliza em quem joga); a barra de ações fica FORA, sempre embaixo
+  card.classList.remove('hide'); card.innerHTML = `<div class="tac-mapwrap">${renderTacticalMap(st,m)}</div>` + bar;
   tacAnimateMoves(st);   // anima o deslocamento (passo a passo pela grade quando há caminho)
   fxPlay(st);          // toca as animações de combate novas (deduplicadas por id)
   $$('#tacticalCard .tac-move').forEach(el=>{ const [x,y]=el.dataset.xy.split(',').map(Number);
@@ -271,12 +274,30 @@ function renderTactical(st){
     el.onclick=()=>tacRequestAttack(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacRequestAttack(id); } }; });
   $$('#tacticalCard .tac-cast-target').forEach(el=>{ const id=el.dataset.cast;
     el.onclick=()=>tacCastOnTarget(id); el.onkeydown=e=>{ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); tacCastOnTarget(id); } }; });
+  tacCenterOnActive(st);   // rola o mapa pra centralizar em quem está agindo (grade grande → câmera segue o turno)
   const unlockBtn=$('#tacUnlockBtn'); if (unlockBtn) unlockBtn.onclick=()=>tacForceUnlock();
   const endBtn=$('#tacEndBtn'); if (endBtn) endBtn.onclick=()=>tacEndTurn();
   const abBtn=$('#tacAbBtn'); if (abBtn) abBtn.onclick=()=>{ ABILITY_MENU_OPEN=!ABILITY_MENU_OPEN; renderTactical(st); };
   const cancelBtn=$('#tacCancelAbBtn'); if (cancelBtn) cancelBtn.onclick=()=>tacCancelAbility();
   $$('#tacticalCard .tac-ab-item').forEach(el=>{ if (el.dataset.dis==='1') return;
     el.onclick=()=>{ ABILITY_MENU_OPEN=false; tacPickAbility(el.dataset.ab); }; });
+}
+// centraliza o scroll do mapa em quem está agindo — só quando MUDA o ator (não atrapalha
+// o pan manual durante o próprio turno). Numa grade grande, a "câmera" segue o turno.
+let TAC_LAST_CENTER = null;
+function tacCenterOnActive(st){
+  try {
+    const card=($('#tacticalCard')&&$('#tacticalCard').querySelector('.tac-mapwrap')); if(!card) return;
+    let id=tacActiveOwner(st);
+    if(!id && mpCombatActive(st)){ const cur=mpCurrentActor(st); if(cur&&cur.kind==='enemy') id=(st.combat.enemies[cur.idx]||{}).id; }
+    const pos = id && st.tactical && st.tactical.pos && st.tactical.pos[id];
+    if(!pos){ return; }
+    if(id===TAC_LAST_CENTER) return;   // mesmo ator → não re-centraliza (deixa o jogador arrastar à vontade)
+    TAC_LAST_CENTER = id;
+    const left=(pos[0]+0.5)*TAC_CELL - card.clientWidth/2, top=(pos[1]+0.5)*TAC_CELL - card.clientHeight/2;
+    if(card.scrollTo) card.scrollTo({ left:Math.max(0,left), top:Math.max(0,top), behavior:'smooth' });
+    else { card.scrollLeft=Math.max(0,left); card.scrollTop=Math.max(0,top); }
+  } catch(e){}
 }
 // anima o deslocamento: cada token que mudou de célula parte da posição
 // anterior e desliza até a nova (transform translate + transição CSS)
@@ -1055,7 +1076,7 @@ async function tacRequestAttack(enemyId){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st);
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
   if(pcActed(st,owner)){ toast('Você já usou sua ação neste turno — encerre a vez ou use Surto de Ação.'); return; }
-  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await playerAttack(owner,enemyId,st); pcSetActed(st,owner,true); await saveState(st); renderGame(); } finally { engineBusy=false; } }   // não passa a vez (manual)
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await playerAttack(owner,enemyId,st); pcSetActed(st,owner,true); await saveState(st); } finally { engineBusy=false; renderGame(); } }   // render no finally: a barra de ações volta NA HORA (não fica escondida durante engineBusy)
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(atk)', text: ATTACK_PREFIX+JSON.stringify({owner,enemyId}) }); }catch(e){} }
 }
 async function tacEndTurn(){
@@ -1389,8 +1410,8 @@ async function tacDoCast(owner, name, targetId, feat){
   if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{
       if(feat){ await castFeature(owner,name,targetId,st); }   // castFeature já marca a economia (ação/bônus/Surto). Nunca passa a vez (manual)
       else { await castAbility(owner,name,targetId,st); pcSetActed(st,owner,true); }   // magia gasta a ação
-      await saveState(st); renderGame();
-    } finally { engineBusy=false; } }
+      await saveState(st);
+    } finally { engineBusy=false; renderGame(); } }   // render no finally: a barra de ações volta NA HORA
   else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:feat?'(habilidade)':'(magia)', text: (feat?FEATURE_PREFIX:ABILITY_PREFIX)+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
 }
 
@@ -2734,7 +2755,7 @@ function maybeAnnouncePc(st){   // anuncia o turno do PC (uma vez por turno), de
 let COMBAT_LAYOUT = false;
 function applyCombatLayout(st){
   const layout = document.querySelector('.game-layout'); if (!layout) return;
-  const want = mpCombatActive(st) && window.innerWidth > 1100;
+  const want = mpCombatActive(st) && window.innerWidth > 820;   // limite menor: mais telas ganham o layout grande de combate (mapa maior)
   if (want === COMBAT_LAYOUT) return;
   COMBAT_LAYOUT = want;
   const main = document.querySelector('.main-col'), rp = $('#rollPanel');
@@ -4005,7 +4026,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627au';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627av';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();

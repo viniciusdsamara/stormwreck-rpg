@@ -5,7 +5,7 @@
 // Marcadores de spawn ('S' e letras de inimigo) são visuais; as listas
 // pcSpawn/enemySpawn é que valem. `fogR` = raio de visão (Chebyshev).
 // ============================================================
-const TACTICAL_MAPS = {
+const TACTICAL_MAPS_RAW = {
 
   // 1) PRAIA — praia_zumbis: enseada de areia preta, ressaca, o Próspero encalhado.
   'praia': {
@@ -151,4 +151,30 @@ const TACTICAL_MAPS = {
 
 };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { TACTICAL_MAPS };
+// ============================================================
+// ESCALA DOS MAPAS — grade MAIOR pra dar espaço tático (ex.: um mago precisa
+// de distância pra atacar à distância antes do inimigo fechar o corpo-a-corpo).
+// Cada casa do mapa-fonte vira um bloco k×k: preserva o desenho, as paredes e a
+// proporção da arte; só multiplica o número de casas. As VELOCIDADES (em casas)
+// NÃO mudam — então a mesma distância agora leva mais turnos pra ser cruzada,
+// que é justo o que abre espaço pro mago. O FOV (fogR) acompanha a escala + um
+// extra, pra continuar enxergando o campo maior.
+const TAC_SCALE = 2;
+function scaleTacMap(m, k){
+  if(!k || k===1) return m;
+  const cells=[];
+  for(const row of m.cells){ const wide=[...row].map(ch=>ch.repeat(k)).join(''); for(let i=0;i<k;i++) cells.push(wide); }
+  const scalePts = arr => (arr||[]).map(([x,y])=>[x*k, y*k]);
+  const scaleMap = obj => { const o={}; for(const id in (obj||{})){ const [x,y]=obj[id]; o[id]=[x*k, y*k]; } return o; };
+  return Object.assign({}, m, {
+    w: m.w*k, h: m.h*k,
+    fogR: (m.fogR||5)*k + 2,                 // acompanha a escala + um extra de visão (FOV)
+    cells,
+    pcSpawn: scalePts(m.pcSpawn),
+    enemySpawn: scaleMap(m.enemySpawn),
+  });
+}
+const TACTICAL_MAPS = {};
+for(const id in TACTICAL_MAPS_RAW) TACTICAL_MAPS[id] = scaleTacMap(TACTICAL_MAPS_RAW[id], TAC_SCALE);
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { TACTICAL_MAPS, TACTICAL_MAPS_RAW, scaleTacMap };
