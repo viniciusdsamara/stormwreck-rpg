@@ -318,7 +318,59 @@ function aiDragonBreath(st,m,e,prof,ev){
     t.pc.hp=Math.max(0,t.pc.hp-dmg); names.push(t.pc.name); if(t.pc.hp<=0) tacKill(st,t.owner); });
   ev.push({kind:'breath',srcName:e.name,tgtName:names.join(', ')||'ninguém'});
 }
+// ---- DURAÇÃO DAS CONDIÇÕES: no início do turno o combatente tenta se livrar ----
+// (save-ends ou escapar do agarrão; Agarrado também acaba se o agarrador sumir/morrer)
+const COND_RECOVERY = {
+  'Agarrado':   { contest:true, dc:12 },     // escapar (FOR/DES vs 12) ou some sem agarrador adjacente
+  'Impedido':   { save:'FOR', dc:12 },
+  'Paralisado': { save:'CON', dc:10 },       // ghoul: save CON ao fim do turno (DC 10)
+  'Atordoado':  { save:'CON', dc:12 },
+  'Amedrontado':{ save:'SAB', dc:11 },
+  'Envenenado': { save:'CON', dc:11 },
+};
+function tacTickConditions(st, c){
+  if(!c || !(c.conditions||[]).length) return;
+  const m=tacMap(st), pos=(st.tactical&&st.tactical.pos)||{};
+  const keep=[];
+  for(const cond of c.conditions){
+    const rec=COND_RECOVERY[cond];
+    if(!rec){ keep.push(cond); continue; }   // condição sem recuperação automática permanece
+    if(cond==='Agarrado'){   // acaba sozinho se nenhum inimigo vivo está adjacente
+      const me=pos[c.owner];
+      const grappler=(st.combat&&st.combat.enemies||[]).some(e=>e.curHp>0 && pos[e.id] && me && tacDist(me,pos[e.id])<=1);
+      if(!grappler){ st.history.push({role:'scene',text:`✦ ${c.name} se solta — não há quem o segure.`}); continue; }
+    }
+    const mod = rec.contest
+      ? Math.max(abilityMod(c.abilities.FOR), abilityMod(c.abilities.DES))
+      : abilityMod(c.abilities[rec.save]||10) + ((c.saves||[]).includes(rec.save)?(c.prof||0):0);
+    const sv=mpD20(c, mod), ok=sv.total>=rec.dc;
+    st.history.push({ role:'roll', tipo:'save', dc:rec.dc, total:sv.total, mod, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, nat:sv.nat,
+      label:`${c.name} · ${rec.contest?'escapar do agarrão':'save '+rec.save+' ('+cond+')'}` });
+    if(ok) st.history.push({role:'scene',text:`✦ ${c.name} livrou-se: ${cond.toLowerCase()} acaba.`});
+    else keep.push(cond);
+  }
+  c.conditions=keep;
+}
+function tacTickEnemyConditions(st, e){   // versão leve p/ inimigos (save plano por e.mod)
+  if(!(e.conditions||[]).length) return;
+  const keep=[];
+  for(const cond of e.conditions){ const rec=COND_RECOVERY[cond];
+    if(!rec){ keep.push(cond); continue; }
+    const sv=mpD20(null, e.mod||0), ok=sv.total>=rec.dc;
+    st.history.push({ role:'roll', tipo:'save', dc:rec.dc, total:sv.total, mod:e.mod||0, dice:sv.dice, crit:sv.crit, fumble:sv.fumble, nat:sv.nat,
+      label:`${e.name} · ${rec.contest?'escapar':'save ('+cond+')'}` });
+    if(!ok) keep.push(cond);
+  }
+  e.conditions=keep;
+}
+// tica as condições de quem tem o turno agora, se for um PC vivo
+function tacTickCurrentPc(st){
+  if(!mpCombatActive(st)) return;
+  const cur=mpCurrentActor(st);
+  if(cur&&cur.kind==='pc'){ const c=st.characters[cur.idx]; if(c&&c.hp>0) tacTickConditions(st,c); }
+}
 function aiRunEnemyTurn(st,e,ev){
+  tacTickEnemyConditions(st,e);   // tenta encerrar condições temporárias no início do turno
   const econds=e.conditions||[];
   if(econds.some(n=>NO_ACT_CONDS.includes(n))){ ev.push({kind:'idle',srcName:e.name}); return; }   // incapacitado: não age
   const prof=aiProfile(e), m=tacMap(st), self=st.tactical&&st.tactical.pos[e.id];
@@ -387,6 +439,8 @@ async function mpRunEnemyTurnsAuto(st){
     await deliverEnemyNarration(st,ev); await saveState(st); renderGame();
     if(mpAllPcsDead(st)){ mpEndCombat(st,false); break; }
   }
+  tacTickCurrentPc(st);   // controle volta a um PC → tica as condições dele no começo do turno
+  if(mpCombatActive(st)){ await saveState(st); renderGame(); }
 }
 // ---- ataque do jogador no tabuleiro ----
 function pcAttackRange(c){ const w=String(c.weapon||(c.weapons&&c.weapons[0])||'').toLowerCase(); return /arco|besta|funda|dardo|azagaia|estilingue/.test(w)?8:1; }
@@ -407,8 +461,11 @@ async function playerAttack(owner,enemyId,st){
 // avança a partir do turno do PC (após atacar ou encerrar) e dispara os inimigos
 async function tacAdvanceFromPc(st){
   if(!mpCombatActive(st)){ await saveState(st); renderGame(); return; }
-  advanceTurn(st); await saveState(st); renderGame();
-  await tacKickEnemiesIfNeeded(st);
+  advanceTurn(st);
+  const cur=mpCurrentActor(st);
+  if(cur&&cur.kind==='pc') tacTickCurrentPc(st);   // próximo é PC → tica as condições dele agora
+  await saveState(st); renderGame();
+  await tacKickEnemiesIfNeeded(st);   // se for inimigo, ele age (e o tick do PC vem no fim do bloco)
 }
 // se a vez atual é de inimigo, conduz os inimigos por código até cair num PC vivo
 async function tacKickEnemiesIfNeeded(st){
@@ -2713,7 +2770,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627q';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627r';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
