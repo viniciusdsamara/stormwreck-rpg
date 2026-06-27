@@ -392,11 +392,35 @@ function shrinkPortrait(file, cb){
     img.onerror = () => toast('Imagem inválida.'); img.src = e.target.result; };
   reader.readAsDataURL(file);
 }
-// monta o prompt do retrato a partir da ficha (aparência + raça/classe)
+// traduções visuais p/ o modelo (que entende inglês) — fidelidade às raças/classes
+const RACE_EN = {
+  'Anão':      'dwarf, short and stocky with a long thick braided beard, rugged broad face',
+  'Elfo':      'elf with long pointed ears, slender and graceful, angular ethereal beautiful features',
+  'Halfling':  'halfling, small and short with a youthful round face and curly hair, hobbit-like',
+  'Humano':    'human',
+  'Draconato': 'dragonborn, a draconic humanoid with a scaled reptilian dragon-like face and snout, no hair, lizard eyes',
+  'Gnomo':     'gnome, very small and short with a large nose, big curious eyes, whimsical',
+  'Meio-Elfo': 'half-elf, handsome human-like face with subtly pointed ears',
+  'Meio-Orc':  'half-orc, greenish-grey skin with protruding lower tusks, heavy muscular build, fierce',
+  'Tiefling':  'tiefling, with large curved horns on the head and unusual red or purple skin, infernal demonic heritage, sometimes a tail',
+};
+const CLASS_EN = {
+  'Bárbaro':'barbarian in furs and leather, wild and muscular', 'Bardo':'bard in fine colorful clothes holding a lute, charismatic',
+  'Bruxo':'warlock in dark mysterious robes with eldritch energy', 'Clérigo':'cleric in armor bearing a holy religious symbol',
+  'Druida':'druid in natural leathers with leaves and antlers', 'Feiticeiro':'sorcerer crackling with innate arcane magic',
+  'Guerreiro':'fighter in plate armor with a sword and shield', 'Ladino':'rogue in a hood and dark leather with daggers',
+  'Mago':'wizard in robes holding a staff, scholarly', 'Monge':'monk in simple martial-arts robes, disciplined',
+  'Paladino':'paladin in shining holy plate armor, righteous', 'Patrulheiro':'ranger in a hooded cloak with a bow, wilderness scout',
+};
+// monta o prompt do retrato a partir da ficha (raça PRIMEIRO, depois classe e aparência)
 function portraitPrompt(){
-  const d = DRAFT, p = d.profile || {}; const bits = [];
+  const d = DRAFT, p = d.profile || {};
+  let race = RACE_EN[d.race] || (d.race || 'human');
+  if (d.race === 'Elfo' && d.subrace && /drow/i.test(d.subrace))
+    race = 'drow dark elf with dark obsidian grey skin, long white hair, long pointed ears and glowing red eyes';
+  const cls = CLASS_EN[d.cls] || (d.cls || 'adventurer');
+  const bits = [`portrait of a ${race}, a ${cls}`];
   if (p.appearance && p.appearance.trim()) bits.push(p.appearance.trim());
-  bits.push(`${d.race||'human'}${d.subrace?' '+d.subrace:''} ${d.cls||'adventurer'}`);
   bits.push('fantasy character portrait, head and shoulders, dungeons and dragons, painterly digital art, dramatic lighting, detailed face, dark fantasy');
   return bits.join(', ');
 }
