@@ -194,6 +194,21 @@
   /* arte no Roteiro do Mestre */
   .g-enc-arts{ display:flex; gap:8px; margin-bottom:9px; flex-wrap:wrap; }
   .g-enc-arts img{ width:74px; height:96px; object-fit:cover; border-radius:7px; border:1px solid var(--basalt-600); }
+  /* Painel de teste (?teste=1) */
+  #testPanel{ position:fixed; top:64px; right:10px; z-index:90; width:232px; background:rgba(14,18,28,0.96);
+          border:1px solid var(--ember); border-radius:10px; font-family:Georgia, serif; color:var(--parch);
+          font-size:0.8rem; box-shadow:0 8px 30px rgba(0,0,0,0.6); }
+  #testPanel .tp-head{ background:var(--ember); color:#1a130c; font-weight:bold; padding:7px 10px;
+          border-radius:9px 9px 0 0; display:flex; justify-content:space-between; align-items:center; }
+  #testPanel .tp-head button{ background:none; border:none; cursor:pointer; font-weight:bold; font-size:1rem; color:#1a130c; }
+  #testPanel .tp-body{ padding:10px; max-height:72vh; overflow-y:auto; }
+  #testPanel .tp-sec{ margin-bottom:11px; } #testPanel .tp-sec>b{ display:block; margin-bottom:5px; color:var(--ember); font-size:0.72rem; }
+  #testPanel .tp-row{ display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  #testPanel button:not(.tp-head button){ background:#241c2a; border:1px solid #3a3040; color:var(--parch);
+          border-radius:6px; padding:5px 8px; font-size:0.74rem; cursor:pointer; font-family:inherit; }
+  #testPanel button:not(.tp-head button):hover{ border-color:var(--ember); }
+  #testPanel button.wide{ width:100%; margin-top:5px; }
+  #testPanel select{ background:#241c2a; border:1px solid #3a3040; color:var(--parch); border-radius:6px; padding:4px; width:130px; }
   /* Roteiro da Campanha (Tela do Mestre) */
   .guide-card{ max-width:680px; width:94%; max-height:88vh; display:flex; flex-direction:column; }
   .guide-card .g-body{ overflow-y:auto; padding-right:4px; }
@@ -856,10 +871,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="rules.js?v=20260627"></script>
-<script src="campaign.js?v=20260627"></script>
-<script src="creation-mp.js?v=20260627"></script>
-<script src="sfx.js?v=20260627"></script>
-<script src="mp.js?v=20260627"></script>
+<script src="rules.js?v=20260627b"></script>
+<script src="campaign.js?v=20260627b"></script>
+<script src="creation-mp.js?v=20260627b"></script>
+<script src="sfx.js?v=20260627b"></script>
+<script src="mp.js?v=20260627b"></script>
 </body>
 </html>

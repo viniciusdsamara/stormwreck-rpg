@@ -2103,4 +2103,76 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden || !ROOM) return;
   if (CONN !== 'live') reconnectNow(); else refreshRoom();
 });
-initAuth();
+// ====================================================================
+//  MODO DE TESTE (?teste=1) — partida local fake, sem login/Supabase/IA.
+//  Painel de botões para disparar reveal de combate, artes, dado 3D e Roteiro.
+// ====================================================================
+function makeStubSupa(){
+  const chain = () => { const p = Promise.resolve({ data:null, error:null });
+    ['eq','neq','in','order','select','update','insert','delete','single','limit'].forEach(m => { p[m] = chain; });
+    return p; };
+  return {
+    from: () => chain(),
+    rpc: () => Promise.resolve({ data:false, error:null }),
+    channel: () => ({ on(){ return this; }, subscribe(cb){ if (cb) try { cb('SUBSCRIBED'); } catch(e){} return this; },
+                      track(){ return Promise.resolve(); }, untrack(){ return Promise.resolve(); }, presenceState(){ return {}; } }),
+    removeChannel: () => {},
+    auth: { getSession: () => Promise.resolve({ data:{ session:null } }), signOut: () => Promise.resolve() }
+  };
+}
+function initTestMode(){
+  supa = makeStubSupa();
+  ME = { id:'test-admin', email:'mestre@teste' };
+  MEMBERS = [{ user_id:'test-admin', role:'admin', display_name:'Mestre', ready:true, online:true }];
+  const hero = { name:'Herói de Teste', player:'Mestre', slot:0, race:'Humano', subrace:'', cls:'Guerreiro',
+    fightingStyle:'Defesa', archetype:'', level:3, xp:0, prof:2,
+    abilities:{ FOR:16, DES:14, CON:14, INT:10, SAB:12, CAR:10 },
+    maxHp:28, hp:28, ca:16, speed:9, darkvision:0, saves:['FOR','CON'], traits:[], features:[],
+    spellSlots:{}, spellsKnown:[], conditions:[], inventory:[], owner:'test-admin', ownerName:'Mestre' };
+  ROOM = { id:'test', code:'TESTE', host_id:'test-admin', admin_plays:true, model:'claude-haiku-4-5',
+    gm_mode:false, status:'playing', scene_id:'praia', turn_owner:'test-admin',
+    state:{ characters:[hero], sceneId:'praia', turnIndex:0, visited:['praia'], revealed:[], combat:null,
+            history:[{ role:'scene', text:'🧪 MODO DE TESTE' },
+                     { role:'dm', text:'Use o painel 🧪 no canto para disparar o reveal de combate, as artes dos monstros, o dado 3D e o Roteiro. Aqui não há IA nem login — é só pra ver o visual.' }],
+            suggestions:[], version:1 } };
+  enterGame();
+  injectTestPanel();
+}
+function tpTestRoll(outcome){
+  startDiceAnim({ name:'Herói de Teste', tipo:'Atletismo', cd:13 });
+  const nat = outcome==='crit' ? 20 : outcome==='fumble' ? 1 : outcome==='fail' ? 5 : 14;
+  const card = { role:'roll', nat, mod:5, dice:[nat], total:nat+5, dc:13, crit:nat===20, fumble:nat===1, autoFail:false,
+                 dmg: outcome==='crit' ? { total:12, type:'cortante', detail:'2d6(5,3)+4' } : null };
+  setTimeout(()=> settleDiceAnim(card), 1500);
+}
+function injectTestPanel(){
+  if (document.getElementById('testPanel')) return;
+  const encs = Object.keys((typeof CAMPAIGN!=='undefined' && CAMPAIGN.encounters) || {});
+  const scenes = Object.keys((typeof CAMPAIGN!=='undefined' && CAMPAIGN.scenes) || {});
+  const el = document.createElement('div'); el.id = 'testPanel';
+  el.innerHTML = `
+    <div class="tp-head">🧪 Painel de Teste <button id="tpToggle" title="Mostrar/esconder">▾</button></div>
+    <div class="tp-body" id="tpBody">
+      <div class="tp-sec"><b>⚔ Combate (reveal + arte)</b><div class="tp-row">
+        ${encs.map(e=>`<button data-enc="${e}">${escapeHtml(CAMPAIGN.encounters[e].name||e)}</button>`).join('')}
+      </div><button data-endc="1" class="wide">encerrar combate</button></div>
+      <div class="tp-sec"><b>🎲 Dado 3D</b><div class="tp-row">
+        <button data-roll="success">sucesso</button><button data-roll="fail">falha</button>
+        <button data-roll="crit">crítico</button><button data-roll="fumble">falha crít.</button></div></div>
+      <div class="tp-sec"><b>📖 Telas</b><div class="tp-row">
+        <button id="tpGuide">Roteiro</button><button id="tpMap">Mapa</button></div></div>
+      <div class="tp-sec"><b>🎬 Ir para cena</b><div class="tp-row">
+        <select id="tpScene">${scenes.map(s=>`<option value="${s}">${s}</option>`).join('')}</select><button id="tpGo">ir</button></div></div>
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelectorAll('[data-enc]').forEach(b => b.onclick = () => { const st = ROOM.state; st.combat = null; LAST_COMBAT = false; mpStartCombat(st, b.dataset.enc); renderGame(); });
+  const endc = el.querySelector('[data-endc]'); if (endc) endc.onclick = () => { if (ROOM.state.combat){ mpEndCombat(ROOM.state, true); renderGame(); } };
+  el.querySelectorAll('[data-roll]').forEach(b => b.onclick = () => tpTestRoll(b.dataset.roll));
+  el.querySelector('#tpGuide').onclick = () => openGuide();
+  el.querySelector('#tpMap').onclick = () => openMapMp();
+  el.querySelector('#tpGo').onclick = () => { const s = el.querySelector('#tpScene').value; const st = ROOM.state; st.sceneId = s; st.combat = null; LAST_COMBAT = false; mpMarkSceneVisited(st); renderGame(); };
+  el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
+}
+
+if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
+else initAuth();
