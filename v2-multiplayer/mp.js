@@ -421,13 +421,13 @@ function dmgNorm(type){
 // physType: tipo do golpe corpo-a-corpo. resist/vuln/immune: tipos de dano. condImmune: condições.
 // (Vulnerabilidade a radiante NÃO é dada aos mortos-vivos: fora do SRD e desbalancearia o Cap.1.)
 const MONSTER_FX = {
-  'Zumbi Afogado': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+  'Zumbi Afogado': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado'], mind:-2,
     traits:{ undeadFortitude:{ saveBonus:3, baseDC:5, exceptDtypes:['radiante'], failOnCrit:true } } },
-  'Zumbi': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+  'Zumbi': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado'], mind:-2,
     traits:{ undeadFortitude:{ saveBonus:3, baseDC:5, exceptDtypes:['radiante'], failOnCrit:true } } },
-  'Ghoul': { type:'morto-vivo', physType:'cortante', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'],
+  'Ghoul': { type:'morto-vivo', physType:'cortante', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado'], mind:0,
     traits:{ paralyzingClaws:{ dc:10, elfImmune:true } } },
-  'Polvo de Fungo': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado','Amedrontado'] },
+  'Polvo de Fungo': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado'], mind:-2 },
   'Fume Drake': { type:'dragão', physType:'fogo', immune:['fogo'], vuln:['frio'] },
   'Dragão Jovem': { type:'dragão', physType:'perfurante', element:'fogo', immune:['fogo'], condImmune:['Amedrontado'] },
 };
@@ -439,7 +439,9 @@ function enemyType(e){ return fxProfile(e).type; }
 function targetIsEnemy(t){ return t && t.curHp !== undefined && !t.racialEffects; }
 function pcResist(c){
   const raw = (c.racialEffects && c.racialEffects.resist) || [];
-  return raw.map(r => r==='ancestral' ? null : dmgNorm(r)).filter(Boolean);   // 'ancestral' não resolvido → sem resist (P0)
+  const out = raw.map(r => r==='ancestral' ? null : dmgNorm(r)).filter(Boolean);   // 'ancestral' não resolvido → sem resist (P0)
+  if (c.raging){ out.push('cortante','perfurante','concussão'); }                   // Fúria: resistência a dano físico
+  return out;
 }
 function targetDmgLists(t){
   if (targetIsEnemy(t)){ const fx = fxProfile(t);
@@ -672,7 +674,8 @@ function aiRunEnemyTurn(st,e,ev){
   const prof=aiProfile(e), m=tacMap(st), self=st.tactical&&st.tactical.pos[e.id];
   const eSpeed=econds.some(n=>MOVE_BLOCK_CONDS.includes(n))?0:prof.speed;   // agarrado/impedido: não anda (mas ataca quem alcança)
   const mProf=eSpeed===prof.speed?prof:Object.assign({},prof,{speed:eSpeed});
-  if(prof.flee>0 && (e.curHp/e.hp)<prof.flee){   // moral: recua se muito ferido
+  const afraid=(e.conditions||[]).includes('Amedrontado');   // Expulso (Expulsar Mortos-Vivos): recua aterrorizado
+  if(afraid || (prof.flee>0 && (e.curHp/e.hp)<prof.flee)){   // moral: recua se muito ferido ou amedrontado
     if(m&&self&&eSpeed>0){ const reach=aiReach(st,m,self,eSpeed,prof.fly), t=aiPickTarget(st,e), tp=t&&t.pos; let best=self,bd=-1;
       if(tp){ for(const k of reach.keys()){ const [x,y]=k.split(',').map(Number), d=tacDist([x,y],tp); if(d>bd){bd=d;best=[x,y];} } }
       if(best[0]!==self[0]||best[1]!==self[1]){ resolveOpportunity(st,e.id,self,best); if(st.tactical.pos[e.id]) st.tactical.pos[e.id]=best; tacReveal(st); } }
@@ -750,6 +753,11 @@ async function playerAttack(owner,enemyId,st){
   const tam = (typeof targetAttackMods==='function') ? targetAttackMods(e, melee) : {adv:false,dis:false,autoCrit:false};
   const card=doMpRoll(c, ['','ataque',atr,'0',e.name], { adv:tam.adv, dis:tam.dis, autoCrit:tam.autoCrit }); card.dc=e.ca;
   const hit=card.crit||(!card.fumble&&!card.autoFail&&card.total>=e.ca); card.outcome=hit?'ACERTO':'ERRO';
+  if(hit&&card.dmg){
+    if(c.raging && melee) card.dmg.total += 2;   // Fúria: +2 de dano corpo-a-corpo
+    // Ataque Furtivo (Ladino): com vantagem OU aliado adjacente ao alvo
+    if(c.cls==='Ladino' && (tam.adv || pcAllyAdjacentToEnemy(st,owner,e))){ const sd=Math.ceil((c.level||1)/2); const sneak=mpRollDmgExpr(sd+'d6').total; card.dmg.total+=sneak; card.dmg.detail=(card.dmg.detail||'')+` + furtivo ${sd}d6(${sneak})`; }
+  }
   st.history.push(card);
   if(hit&&card.dmg){ const res=applyDamage(e, card.dmg.total, card.dmg.type, st, {crit:card.crit}); card.dmg.applied=res.applied; card.dmg.mult=res.mult;
     fxEmit(st, { kind:melee?'melee':'ranged', dtype:card.dmg.type, src:owner, tgt:e.id, result:fxResult(true,card.crit), mult:res.mult }); }
@@ -760,6 +768,8 @@ async function playerAttack(owner,enemyId,st){
 // avança a partir do turno do PC (após atacar ou encerrar) e dispara os inimigos
 async function tacAdvanceFromPc(st){
   if(!mpCombatActive(st)){ await saveState(st); renderGame(); return; }
+  const cur0=mpCurrentActor(st), curOwner=(cur0&&cur0.kind==='pc')?(st.characters[cur0.idx]||{}).owner:null;
+  if(st.combat._surge && st.combat._surge===curOwner){ delete st.combat._surge; await saveState(st); renderGame(); return; }   // Surto de Ação: ação extra, não passa a vez
   advanceTurn(st);
   const cur=mpCurrentActor(st);
   if(cur&&cur.kind==='pc') tacTickCurrentPc(st);   // próximo é PC → tica as condições dele agora
@@ -789,7 +799,7 @@ async function tacEndTurn(){
 //  HABILIDADES / MAGIAS NO TABULEIRO — o código resolve os dados (atk vs CA,
 //  save vs CD, dano, cura), igual aos ataques. Conjuração consome slot.
 // ============================================================
-const ABILITY_PREFIX = '@@ABIL@@';
+const ABILITY_PREFIX = '@@ABIL@@', FEATURE_PREFIX = '@@FEAT@@';
 // mecânica das magias/habilidades de combate (subconjunto usado na campanha);
 // as não listadas viram 'utility' (narra o uso e gasta slot, sem dados).
 const SPELL_FX = {
@@ -812,14 +822,34 @@ function spellCastMod(c){ return abilityMod((c.abilities||{})[c.spellAbility||'I
 function spellAtkBonus(c){ return (c.prof||2)+spellCastMod(c); }
 function spellSaveDC(c){ return c.spellDC || (8+(c.prof||2)+spellCastMod(c)); }
 function abilityFx(name){ return SPELL_FX[name] || { lvl:(name?1:0), kind:'utility' }; }
-function abilityNeedsTarget(fx){ return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
-function abilityTargetSide(fx){ return fx.kind==='heal' ? 'ally' : 'enemy'; }
+// habilidades de classe (não-magia) usáveis no tabuleiro. side: self|ally|enemy|aoe|null
+function ragesByLevel(L){ return (L||1)>=3 ? 3 : 2; }
+const FEATURE_FX = {
+  'Retomar Fôlego':        { cls:'Guerreiro', trigger:'bonus', side:'self', kind:'selfHeal', cost:{res:'secondwind',max:()=>1}, heal:'1d10', addLevel:true, desc:'Ação bônus: recupera 1d10 + nível de HP (1×/descanso).' },
+  'Surto de Ação':         { cls:'Guerreiro', minLevel:2, trigger:'extra', side:null, kind:'extraAction', cost:{res:'actionsurge',max:()=>1}, desc:'Ganha uma ação extra neste turno (1×/descanso).' },
+  'Fúria':                 { cls:'Bárbaro', trigger:'bonus', side:null, kind:'rageOn', cost:{res:'rage',max:(c)=>ragesByLevel(c.level)}, desc:'Ação bônus: +2 de dano corpo-a-corpo e resistência a dano físico (cortante/perfurante/concussão).' },
+  'Imposição das Mãos':    { cls:'Paladino', trigger:'action', side:'ally', kind:'healPool', cost:{res:'layon',max:(c)=>(c.level||1)*5}, pool:true, healAmount:5, desc:'Ação (toque): cura 5 HP de uma reserva de nível×5.' },
+  'Inspiração de Bardo':   { cls:'Bardo', trigger:'bonus', side:'ally', kind:'inspire', cost:{res:'bardic',max:(c)=>Math.max(1,abilityMod((c.abilities||{}).CAR))}, die:'1d6', desc:'Ação bônus: dá um dado de Inspiração (1d6) à próxima rolagem de um aliado.' },
+  'Expulsar Mortos-Vivos': { cls:'Clérigo', minLevel:2, trigger:'action', side:'aoe', kind:'turnUndead', cost:{res:'channel',max:()=>1}, save:'SAB', radius:6, desc:'Canalizar Divindade: mortos-vivos a 9m fazem save de SAB ou ficam Amedrontados e recuam (1×/descanso).' },
+};
+function featureFx(name, cls){ const f=FEATURE_FX[name]; return (f && (!f.cls || f.cls===cls)) ? f : null; }
+function featureUsesLeft(c, fx){ if(!fx||!fx.cost) return Infinity; if(fx.cost.slot) return c.spellSlots?(c.spellSlots.max-(c.spellSlots.used||0)):0; const max=typeof fx.cost.max==='function'?fx.cost.max(c):(fx.cost.max||1); return max-((c.resUsed||{})[fx.cost.res]||0); }
+function castableFeatures(c){
+  if(!c) return [];
+  return Object.keys(FEATURE_FX).filter(name=>{ const fx=FEATURE_FX[name]; return fx.cls===c.cls && (fx.minLevel||1)<=(c.level||1) && (fx.trigger==='bonus'||fx.trigger==='action'||fx.trigger==='extra'); })
+    .map(name=>{ const fx=FEATURE_FX[name]; const left=featureUsesLeft(c,fx); const need=fx.pool?fx.healAmount:1; return { name, lvl:'H', fx, feat:true, disabled:left<need, uses:left }; });
+}
+function pcAllyAdjacentToEnemy(st, owner, e){ const pos=(st.tactical&&st.tactical.pos)||{}, ep=pos[e.id]; if(!ep) return false;
+  return (st.characters||[]).some(a=>a.owner!==owner && (a.hp||0)>0 && pos[a.owner] && tacDist(pos[a.owner],ep)<=1); }
+function abilityNeedsTarget(fx){ if(fx.side) return fx.side==='ally'||fx.side==='enemy'; return fx.kind==='attack'||fx.kind==='save'||fx.kind==='auto'||fx.kind==='heal'; }
+function abilityTargetSide(fx){ if(fx.side) return fx.side; return fx.kind==='heal' ? 'ally' : 'enemy'; }
 // lista de magias/habilidades conjuráveis do PC (truques sempre; nv1 se há slot)
 function castableAbilities(c){
   if(!c) return [];
   const out=[]; const slotsLeft = c.spellSlots ? (c.spellSlots.max-(c.spellSlots.used||0)) : 0;
   (c.cantripsChosen||[]).forEach(n=>{ const fx=abilityFx(n); out.push({ name:n, lvl:0, fx, disabled:false }); });
   (c.spellsChosen||[]).forEach(n=>{ const fx=abilityFx(n); const lvl=fx.lvl||1; out.push({ name:n, lvl, fx, disabled: lvl>=1 && slotsLeft<=0 }); });
+  out.push(...castableFeatures(c));   // habilidades de classe (Surto, Fúria, Imposição, Expulsar…)
   return out;
 }
 function pcHasAbilities(c){ return castableAbilities(c).length>0; }
@@ -870,14 +900,45 @@ async function castAbility(owner, name, targetId, st){
   if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
   await saveState(st); renderGame();
 }
+// resolve uma HABILIDADE DE CLASSE pelo código (separado de castAbility)
+async function castFeature(owner, name, targetId, st){
+  if(!mpCombatActive(st)) return;
+  const c=(st.characters||[]).find(x=>x.owner===owner); if(!c) return;
+  if((c.conditions||[]).some(n=>NO_ACT_CONDS.includes(n))) return;
+  const fx=featureFx(name, c.cls); if(!fx) return;
+  const left=featureUsesLeft(c,fx), need=fx.pool?fx.healAmount:1; if(left<need) return;
+  if(fx.cost){ if(fx.cost.slot){ if(c.spellSlots) c.spellSlots.used=(c.spellSlots.used||0)+1; }
+    else { c.resUsed=c.resUsed||{}; c.resUsed[fx.cost.res]=(c.resUsed[fx.cost.res]||0)+(fx.pool?fx.healAmount:1); } }
+  if(fx.kind==='selfHeal'){ const h=mpRollDmgExpr(fx.heal).total+(fx.addLevel?(c.level||1):0); c.hp=Math.min(c.maxHp,c.hp+h);
+    st.history.push({role:'roll',noRoll:true,tipo:'cura',label:`${c.name} · ${name}`,total:h,outcome:`+${h} HP`,heal:h}); fxEmit(st,{kind:'heal',tgt:owner}); }
+  else if(fx.kind==='healPool'){ const ally=(st.characters||[]).find(x=>x.owner===targetId)||c; ally.hp=Math.min(ally.maxHp,ally.hp+fx.healAmount);
+    st.history.push({role:'roll',noRoll:true,tipo:'cura',label:`${c.name} · ${name} → ${ally.name}`,total:fx.healAmount,outcome:`+${fx.healAmount} HP`,heal:fx.healAmount}); fxEmit(st,{kind:'heal',tgt:(ally.owner!=null?ally.owner:owner)}); }
+  else if(fx.kind==='inspire'){ const ally=(st.characters||[]).find(x=>x.owner===targetId); if(ally){ ally.inspiration={die:fx.die||'1d6'};
+    st.history.push({role:'scene',text:`✦ ${c.name} inspira ${ally.name} — próxima rolagem soma ${fx.die||'1d6'}.`}); fxEmit(st,{kind:'heal',tgt:ally.owner}); } }
+  else if(fx.kind==='rageOn'){ c.raging=true; st.history.push({role:'scene',text:`✦ ${c.name} entra em FÚRIA! +2 de dano corpo-a-corpo e resistência a dano físico.`}); }
+  else if(fx.kind==='extraAction'){ if(st.combat) st.combat._surge=owner; st.history.push({role:'scene',text:`✦ ${c.name} usa Surto de Ação — ação extra neste turno!`}); }
+  else if(fx.kind==='turnUndead'){
+    const pos=(st.tactical&&st.tactical.pos)||{}, me=pos[owner], dc=spellSaveDC(c); let n=0;
+    (st.combat.enemies||[]).forEach(e=>{ if(e.curHp<=0||enemyType(e)!=='morto-vivo') return; const ep=pos[e.id]; if(me&&ep&&tacDist(me,ep)>(fx.radius||6)) return;
+      if(enemyCondImmune(e,'Amedrontado')) return;
+      const smod=(fxProfile(e).mind!==undefined)?fxProfile(e).mind:(e.mod||0);
+      const sv=mpD20(null,smod), ok=sv.total>=dc;
+      st.history.push({role:'roll',tipo:'save',label:`${e.name} · save SAB (Expulsar)`,total:sv.total,mod:smod,dice:sv.dice,crit:sv.crit,fumble:sv.fumble,dc,nat:sv.nat,outcome:ok?'RESISTIU':'EXPULSO'});
+      if(!ok){ e.conditions=e.conditions||[]; if(!e.conditions.includes('Amedrontado')){ e.conditions.push('Amedrontado'); n++; } fxEmit(st,{kind:'stun',tgt:e.id}); } });
+    st.history.push({role:'scene',text:`✦ ${c.name} ergue o símbolo sagrado — ${n} morto(s)-vivo(s) recua(m) em pavor!`});
+  }
+  if(mpAllEnemiesDead(st)) mpEndCombat(st,true);
+  await saveState(st); renderGame();
+}
 // estado de mira de habilidade (local do cliente que está agindo)
 let PENDING_ABILITY = null, ABILITY_MENU_OPEN = false;
 function tacAbilityMenuHtml(c){
   const list=castableAbilities(c); if(!list.length) return '';
   const items=list.map(a=>{
-    const cost = a.lvl>=1 ? `<span class="tac-ab-cost">nv${a.lvl}</span>` : `<span class="tac-ab-cost cantrip">truque</span>`;
-    const desc = (((typeof RULES!=='undefined'&&RULES.spells[a.name])||{}).desc)||'';
-    return `<div class="tac-ab-item ${a.disabled?'dis':''}" data-ab="${escapeHtml(a.name)}" data-dis="${a.disabled?1:0}" tabindex="0" role="button"><div class="tac-ab-h"><b>${escapeHtml(a.name)}</b>${cost}</div><div class="tac-ab-d">${escapeHtml(desc)}</div></div>`;
+    let cost, desc;
+    if(a.feat){ const u=a.fx.pool?Math.floor((a.uses||0)/(a.fx.healAmount||1)):a.uses; cost=`<span class="tac-ab-cost feat">${u===Infinity?'habilidade':u+'×'}</span>`; desc=a.fx.desc||''; }
+    else { cost = a.lvl>=1 ? `<span class="tac-ab-cost">nv${a.lvl}</span>` : `<span class="tac-ab-cost cantrip">truque</span>`; desc=(((typeof RULES!=='undefined'&&RULES.spells[a.name])||{}).desc)||''; }
+    return `<div class="tac-ab-item ${a.disabled?'dis':''}" data-ab="${escapeHtml(a.name)}" data-feat="${a.feat?1:0}" data-dis="${a.disabled?1:0}" tabindex="0" role="button"><div class="tac-ab-h"><b>${escapeHtml(a.name)}</b>${cost}</div><div class="tac-ab-d">${escapeHtml(desc)}</div></div>`;
   }).join('');
   const slots = c.spellSlots ? `<div class="tac-ab-slots">Slots nv1: ${c.spellSlots.max-(c.spellSlots.used||0)}/${c.spellSlots.max} · sem alvo? toque novamente</div>` : '';
   return `<div class="tac-ability-menu">${slots||'<div class="tac-ab-slots">truques ilimitados</div>'}${items}</div>`;
@@ -887,19 +948,19 @@ function tacPickAbility(name){
   if(!owner||owner!==ME.id||!tacMyTurn(st)) return;
   const c=(st.characters||[]).find(x=>x.owner===owner); const meta=castableAbilities(c).find(a=>a.name===name);
   if(!meta||meta.disabled) return;
-  if(abilityNeedsTarget(meta.fx)){ PENDING_ABILITY={ name, fx:meta.fx }; renderTactical(st); }   // entra em modo de mira
-  else { tacCancelAbility(); tacDoCast(owner, name, owner); }   // sem alvo (auto-aplica em si/utility)
+  if(abilityNeedsTarget(meta.fx)){ PENDING_ABILITY={ name, fx:meta.fx, feat:!!meta.feat }; renderTactical(st); }   // entra em modo de mira
+  else { tacCancelAbility(); tacDoCast(owner, name, owner, !!meta.feat); }   // sem alvo (auto-aplica em si/área)
 }
 function tacCancelAbility(){ PENDING_ABILITY=null; const st=ROOM.state||{}; renderTactical(st); }
 function tacCastOnTarget(targetId){
   const st=ROOM.state||{}; const owner=tacActiveOwner(st); const ab=PENDING_ABILITY;
   if(!ab||!owner||owner!==ME.id||!tacMyTurn(st)) return;
-  PENDING_ABILITY=null; tacDoCast(owner, ab.name, targetId);
+  PENDING_ABILITY=null; tacDoCast(owner, ab.name, targetId, ab.feat);
 }
-async function tacDoCast(owner, name, targetId){
+async function tacDoCast(owner, name, targetId, feat){
   const st=ROOM.state||{};
-  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
-  else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:'(magia)', text: ABILITY_PREFIX+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
+  if(amIAdmin()){ if(engineBusy) return; engineBusy=true; try{ if(feat) await castFeature(owner,name,targetId,st); else await castAbility(owner,name,targetId,st); await tacAdvanceFromPc(st); } finally { engineBusy=false; } }
+  else { try{ await supa.from('room_actions').insert({ room_id:ROOM.id, user_id:ME.id, display_name:feat?'(habilidade)':'(magia)', text: (feat?FEATURE_PREFIX:ABILITY_PREFIX)+JSON.stringify({owner,name,targetId}) }); }catch(e){} }
 }
 
 function mpMapKnown(st, id){ return (st.visited||[]).includes(id) || (st.revealed||[]).includes(id); }
@@ -1878,6 +1939,7 @@ function mpRollDmgExpr(expr, crit){
 // resolve uma [ROLL] para o personagem 'c'; devolve o card (espelhado no estado)
 function doMpRoll(c, rollM, opts){
   opts = opts || {};
+  if (c && c.inspiration && c.inspiration.die){ opts.extraAtkDie = opts.extraAtkDie || c.inspiration.die; c.inspiration = null; }   // Inspiração de Bardo: soma 1d6 e gasta
   const [, tipo, atr, cd, tag] = rollM;
   const abr = mpNormAbility(atr);
   const rm = rollModifiers(c, tipo, abr, tag);
@@ -2490,6 +2552,7 @@ function mpAdvanceCombat(st){
   }
 }
 function mpEndCombat(st, victory){
+  (st.characters||[]).forEach(c=>{ c.raging=false; c.inspiration=null; c.resUsed={}; });   // descanso curto: recarrega Surto/Fôlego/Fúria/Canalizar/Inspiração
   st.combat = null; st.tactical = null;
   st.history = st.history || [];
   st.history.push({ role:'scene', text: victory ? '— inimigos derrotados! fim do combate —' : '— fim do combate —' });
@@ -2640,6 +2703,17 @@ async function onPlayerAction(action){
     const st = ROOM.state || {};
     try { const d = JSON.parse(action.text.slice(ABILITY_PREFIX.length));
       if (d && d.owner === tacActiveOwner(st)){ await castAbility(d.owner, d.name, d.targetId, st); await tacAdvanceFromPc(st); } }
+    catch(e){}
+    finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
+    return;
+  }
+  // habilidade de classe no tabuleiro
+  if (typeof action.text === 'string' && action.text.startsWith(FEATURE_PREFIX)){
+    if (engineBusy){ setTimeout(()=>onPlayerAction(action), 300); return; }
+    engineBusy = true; PROCESSED_IDS.add(action.id);
+    const st = ROOM.state || {};
+    try { const d = JSON.parse(action.text.slice(FEATURE_PREFIX.length));
+      if (d && d.owner === tacActiveOwner(st)){ await castFeature(d.owner, d.name, d.targetId, st); await tacAdvanceFromPc(st); } }
     catch(e){}
     finally { engineBusy = false; try { await supa.from('room_actions').update({ processed:true }).eq('id', action.id); } catch(e){} renderGame(); }
     return;
@@ -3248,7 +3322,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627w';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627x';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
