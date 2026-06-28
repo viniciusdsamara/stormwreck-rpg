@@ -906,8 +906,9 @@ function summarizeRoundForAI(ev){
 }
 async function deliverEnemyNarration(st,ev){
   if(!ev.length) return; let text='';
-  if(!TEST_MODE){ try { const reply=await callDm(st, summarizeRoundForAI(ev)); text=(reply||'').replace(/\[[^\]]*\]/g,'').trim(); } catch(e){} }
-  if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero (e padrão no modo teste)
+  // modo econômico (e teste): usa o texto-modelo GRÁTIS — não chama a IA pra narrar o turno dos inimigos
+  if(!TEST_MODE && !mpEconomy()){ try { const reply=await callDm(st, summarizeRoundForAI(ev)); text=(reply||'').replace(/\[[^\]]*\]/g,'').trim(); } catch(e){} }
+  if(!text) text=narrateRoundTemplate(ev);   // fallback custo-zero
   if(text) st.history.push({ role:'dm', text });
 }
 function tacHideTurnCard(){ const tc=$('#turnCard'); if(tc&&tc.classList) tc.classList.add('hide'); }
@@ -2133,6 +2134,7 @@ function enterGame(){
     $('#gmCloseBtn').onclick = closeGmModal;
     $('#gmModalBack').onclick = e => { if (e.target === $('#gmModalBack')) closeGmModal(); };
     $('#gmModel').onchange = () => updateRoom({ model: $('#gmModel').value });
+    { const ec=$('#gmEconomy'); if(ec) ec.onchange = () => mpSetEconomy(ec.checked); }
     $$('#gmLangOpts [data-lang]').forEach(b => b.onclick = () => gmSetLang(b.dataset.lang));
     $('#gmSkipBtn').onclick = gmSkipTurn;
     $('#gmEndBtn').onclick = gmEndMatch;
@@ -2854,6 +2856,7 @@ function closeGmModal(){ $('#gmModalBack').classList.remove('open'); }
 function renderGmModal(){
   const st = ROOM.state || {};
   $('#gmModel').value = ROOM.model || 'claude-haiku-4-5';
+  { const ec=$('#gmEconomy'); if(ec) ec.checked = mpEconomy(); }   // reflete o estado do modo econômico
   const curLang = st.gameLang || 'pt';
   $$('#gmLangOpts [data-lang]').forEach(b => b.classList.toggle('sel', b.dataset.lang === curLang));
   const chars = st.characters || [];
@@ -3736,14 +3739,20 @@ async function resolveEnemyCommand(){
   if (mpAllPcsDead(st)){ st.history.push({ role:'scene', text:'⚰ O grupo tombou em combate…' }); mpEndCombat(st, false); }
   await mpSleep(500);
   DM_DRAFT.fromEnemy = true;                                    // marca: dano já aplicado pelo código (não reaplicar)
+  if(mpEconomy()){ stageDraft(results.join(' ')); return; }   // modo econômico: usa o resultado direto, sem chamar a IA
   DM_DRAFT.seed = `[TURNO DOS INIMIGOS — RESULTADO] ${results.join(' ')} ${gameLang()==='en'?'Narrate their actions NOW in 1-3 sentences IN ENGLISH, consistent with the scene.':'Narre as ações deles AGORA em 1-3 frases, coerente com a cena.'} NÃO peça rolagem nem fale como sistema.`;
   try { const reply = await callDm(st, DM_DRAFT.seed); stageDraft(reply); }
   catch(e){ toast('Erro ao narrar inimigos: ' + e.message); await finalizeDraft(st); }
 }
 const mpSleep = ms => new Promise(r => setTimeout(r, ms));
+// MODO ECONÔMICO (gasta o mínimo de IA): ligado por padrão. Guardado no state (sem migração).
+// 1) narração do turno dos inimigos usa o texto-modelo GRÁTIS (não chama a IA);
+// 2) manda menos histórico (8 msgs vs 12); 3) pede saída curta + max_tokens menor.
+function mpEconomy(){ return !ROOM || !ROOM.state || ROOM.state.economy !== false; }
+async function mpSetEconomy(on){ const st=(ROOM&&ROOM.state)||{}; st.economy=!!on; if(typeof saveState==='function') await saveState(st); if(typeof renderGame==='function') renderGame(); }
 function buildMpHistory(st){
   const msgs = [];
-  (st.history||[]).slice(-12).forEach(m => {
+  (st.history||[]).slice(mpEconomy()?-8:-12).forEach(m => {
     if (m.role==='dm') msgs.push({ role:'assistant', content: m.text });
     else if (m.role==='player') msgs.push({ role:'user', content:`[${m.who}]: ${m.text}` });
   });
@@ -3757,7 +3766,7 @@ async function callDm(st, extraUser){
     if (msgs.length && msgs[msgs.length-1].role === 'user') msgs[msgs.length-1].content += '\n\n' + extraUser;
     else msgs.push({ role:'user', content: extraUser });
   }
-  try { return await callClaudeMp(msgs, buildMpSystemPrompt(st), 512); }
+  try { return await callClaudeMp(msgs, buildMpSystemPrompt(st), mpEconomy()?256:512); }   // saída mais curta no modo econômico (output do Haiku custa 5× a entrada)
   catch (e){ return `*(O Mestre tropeçou: ${e.message})*`; }
 }
 // Bloco ESTÁTICO do system prompt (idêntico a sessão toda) → habilita prompt caching.
@@ -3837,7 +3846,7 @@ ${combatBlock}
 ## MAPA (ids para [REVELAR_LOCAL])
 ${mapList}
 
-Responda à ação. Se houver incerteza, peça [ROLL:...] e pare; senão narre e termine com [SUGESTOES:...].`;
+Responda à ação. Se houver incerteza, peça [ROLL:...] e pare; senão narre e termine com [SUGESTOES:...].${mpEconomy()?'\n\n⚡ MODO ECONÔMICO: seja MUITO conciso — no máximo 1-2 frases curtas por resposta (ignore o "2-3 parágrafos"). Mantenha os marcadores normalmente.':''}`;
 }
 // system como blocos: estático (cacheado) + dinâmico → corta ~90% do input repetido
 function buildMpSystemPrompt(st){
@@ -4026,7 +4035,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627av';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627aw';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
