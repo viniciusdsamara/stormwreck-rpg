@@ -396,11 +396,14 @@
           border:1px solid var(--basalt-600); border-radius:12px; background:#0e0b12;
           display:flex; flex-direction:column; }
   .tac-card.hide{ display:none; }
-  /* área do mapa que ROLA (a barra de ações fica fora, embaixo). Centraliza quando o mapa cabe. */
-  .tac-mapwrap{ min-width:0; overflow:auto; -webkit-overflow-scrolling:touch; max-height:66vh;
+  /* área do mapa: o SVG escala pra CABER (fit-to-screen). Só rola se a tela for menor que o piso de casa. */
+  .tac-mapwrap{ min-width:0; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; max-height:66vh;
           display:flex; align-items:safe center; justify-content:safe center; }
-  /* casa de tamanho FIXO (width/height vêm do SVG em px): rola dentro do wrapper, não encolhe pra caber */
-  .tac-svg{ display:block; flex:0 0 auto; margin:auto; max-width:none; }
+  /* FIT-TO-SCREEN: o viewBox cuida da proporção; aspect-ratio + max:100% encolhem pra caber em L e A.
+     min-width/min-height (vars vindas do JS) impõem o piso de casa → abaixo disso o wrapper rola. */
+  .tac-svg{ display:block; margin:auto; height:auto; width:auto;
+          aspect-ratio:var(--tac-ar, 4/3); max-width:100%; max-height:100%;
+          min-width:var(--tac-minw,0); min-height:var(--tac-minh,0); }
   .tac-grid line{ stroke:#000; stroke-width:0.5; opacity:0.32; }
   .tac-fog{ fill:#07060a; }
   .tac-fog.remembered{ fill:rgba(7,6,10,0.62); }
@@ -650,12 +653,14 @@
   .rp-close:hover{ color:var(--ember); }
   /* ---- layout de COMBATE: mapa grande no centro, chat na lateral ---- */
   .game-layout.combat-mode{ grid-template-columns:230px minmax(0,1fr) 320px; }   /* painéis estreitos → mapa mais largo; minmax(0,…) evita o mapa estourar a coluna */
-  /* mapa GRANDE: o SVG preenche 100% do card (escala via viewBox — confiável
-     entre navegadores, ao contrário de width:auto que varia no Chrome) */
+  /* mapa GRANDE: o SVG escala pra CABER na coluna central (largura E altura) via aspect-ratio + max:100% */
   .game-layout.combat-mode .tac-card{ max-width:none; margin:0; flex:1; min-height:0; border:0; background:transparent; padding:10px 14px;
           display:flex; flex-direction:column; overflow:hidden; }
-  .game-layout.combat-mode .tac-mapwrap{ flex:1; min-height:0; max-height:none; }   /* preenche a coluna; rola se o mapa for maior */
-  .game-layout.combat-mode .tac-svg{ flex:0 0 auto; margin:auto; max-width:none; max-height:none; display:block; border:1px solid var(--basalt-600); border-radius:12px; background:#0e0b12; }
+  .game-layout.combat-mode .tac-mapwrap{ flex:1; min-height:0; max-height:none; }   /* preenche a coluna; rola só se o piso de casa não couber */
+  .game-layout.combat-mode .tac-svg{ margin:auto; display:block; width:auto; height:auto;
+          aspect-ratio:var(--tac-ar, 4/3); max-width:100%; max-height:100%;
+          min-width:var(--tac-minw,0); min-height:var(--tac-minh,0);
+          border:1px solid var(--basalt-600); border-radius:12px; background:#0e0b12; }
   .game-layout.combat-mode .rollpanel{ display:flex; flex-direction:column; padding:0; min-height:0; overflow:hidden; }
   .game-layout.combat-mode .rollpanel-head{ padding:12px 14px 8px; margin:0; border-bottom:1px solid var(--basalt-600); }
   .game-layout.combat-mode .rollpanel-head .rp-close{ display:none; }   /* o chat vive aqui — não dá pra esconder */

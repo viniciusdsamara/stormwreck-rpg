@@ -58,7 +58,8 @@ let LAST_COMBAT = false;   // detecta início de combate para o reveal cinematog
 //  Posições vivem em st.tactical (espelhado a todos). Só o admin (engine)
 //  muta; jogadores clicam numa célula → ação @@MOVE@@ que o admin aplica.
 // ============================================================
-const TAC_CELL = 48, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';   // px por casa: tamanho FIXO confortável (o mapa rola/arrasta; não encolhe pra caber)
+const TAC_CELL = 48, TAC_MOVE = 6, MOVE_PREFIX = '@@MOVE@@';   // px por casa na MATEMÁTICA do SVG (viewBox); o render escala pra caber na tela
+const TAC_MIN_CELL = 26;   // piso (px) do tamanho de casa NO RENDER: abaixo disso o mapa rola (só em telas muito pequenas)
 let TAC_PREV_POS = {};   // px {id:[cx,cy]} da renderização anterior → anima o deslocamento
 // condições que zeram o deslocamento e que impedem agir (Apêndice A do D&D 5e)
 const MOVE_BLOCK_CONDS = ['Agarrado','Impedido','Paralisado','Atordoado','Inconsciente','Petrificado'];
@@ -237,9 +238,11 @@ function renderTacticalMap(st,m){
   }
   // camadas: terreno (base/fallback) → textura IA → marcações de bloqueio → grade → névoa → movimento → tokens
   const bgImg = bg ? `<image href="${bg}" x="0" y="0" width="${vw}" height="${vh}" preserveAspectRatio="xMidYMid slice"/>` : '';
-  // width/height EXPLÍCITOS (px) = tamanho natural da grade: casa fixa de TAC_CELL px.
-  // O mapa NÃO encolhe pra caber — ele rola dentro do card (auto-centraliza em quem joga).
-  return `<svg viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${bgImg}<g>${marks}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
+  // FIT-TO-SCREEN: sem width/height px → o CSS escala o SVG pra caber no container (largura E altura)
+  // mostrando o mapa todo. preserveAspectRatio mantém a proporção. min-width/min-height impõem um
+  // PISO de tamanho de casa (TAC_MIN_CELL px): só em tela muito pequena o mapa rola.
+  const minW=W*TAC_MIN_CELL, minH=H*TAC_MIN_CELL;
+  return `<svg viewBox="0 0 ${vw} ${vh}" preserveAspectRatio="xMidYMid meet" style="--tac-minw:${minW}px;--tac-minh:${minH}px;--tac-ar:${vw}/${vh}" xmlns="http://www.w3.org/2000/svg" class="tac-svg"><defs>${defs}</defs><g>${terrain}</g>${bgImg}<g>${marks}</g>${grid}<g>${fog}</g><g>${moves}</g><g>${tokens}</g></svg>`;
 }
 function renderTactical(st){
   const card=$('#tacticalCard'); if (!card) return;
