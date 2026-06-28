@@ -3795,6 +3795,7 @@ REGRAS DE IMERSÃO (siga à risca):
 - Quando a ação tem resultado CERTO/automático (ex.: beber um veneno que ele tem, abrir uma porta destrancada, conversar), NARRE direto. Mas quando o resultado é INCERTO (pode dar certo OU errado), você NÃO decide — peça uma rolagem (veja abaixo). Nunca anuncie sucesso ou fracasso de uma ação arriscada sem antes pedir o dado.
 - Só faça perguntas se forem DENTRO da ficção e genuinamente necessárias. Nunca pergunte sobre mecânica.
 - COERÊNCIA: o personagem só pode usar o que está NA FICHA dele (inventário/magias) e o que a CENA oferece. Se descrever usar algo que NÃO possui, corrija DENTRO da ficção. Nunca dê itens que não existem.
+- PERSONALIDADE: cada personagem tem defeitos e motivações na ficha (no bloco GRUPO). Use-os para dar vida à cena e aos NPCs QUANDO fizer sentido na ficção — ex.: um medo ou defeito ganha peso quando o gatilho aparece; uma motivação puxa o personagem para a ação. Faça com naturalidade, sem listar nem forçar.
 - ★ REGRA MAIS IMPORTANTE: você NÃO rola dados nem inventa números. Sempre que a ação puder falhar (escalar, esgueirar-se, persuadir/intimidar/enganar, investigar, atacar, resistir, arrombar etc.), sua resposta DEVE conter [ROLL:tipo:ATRIBUTO:CD] e PARAR ali. O sistema rola o d20 justo e devolve o número; só ENTÃO você narra o desfecho. Narrar o resultado sem pedir o dado está ERRADO.
   • tipo = perícia (Atletismo, Furtividade, Percepção, Persuasão, Intimidação, Enganação, Investigação...), 'save' ou 'ataque'. ATRIBUTO = FOR/DES/CON/INT/SAB/CAR. CD: 10 fácil, 13 médio, 15 difícil, 18+ muito difícil; 'ataque' usa CD 0.
   • Formato exato, sem espaços: [ROLL:Atletismo:FOR:12] · [ROLL:save:DES:14] · [ROLL:ataque:DES:0]. Uma rolagem por vez.
@@ -3821,7 +3822,14 @@ function mpDynamicPrompt(st){
     ((c.cantripsChosen&&c.cantripsChosen.length)?` Truques: ${c.cantripsChosen.map(s=>term(s)).join(', ')}.`:'') +
     ((c.spellsChosen&&c.spellsChosen.length)?` Magias nv1: ${c.spellsChosen.map(s=>term(s)).join(', ')}.`:'') +
     ` Inventário: ${(c.inventory&&c.inventory.length)?c.inventory.join('; '):'(vazio)'}.` +
-    ((c.conditions&&c.conditions.length)?` Condições: ${c.conditions.map(s=>term(s)).join(', ')}.`:'')
+    ((c.conditions&&c.conditions.length)?` Condições: ${c.conditions.map(s=>term(s)).join(', ')}.`:'') +
+    // PERFIL/PERSONALIDADE: o Mestre recebe defeitos e motivações (e, no modo rico, história e aparência)
+    // pra tecer na narrativa — ex.: "medo de aranha" no defeito ganha vida quando uma aranha aparece.
+    (()=>{ const p=c.profile||{}; const bits=[];
+      if(p.flaw) bits.push(`Defeitos: ${p.flaw}`);
+      if(p.motivation) bits.push(`Motivações: ${p.motivation}`);
+      if(!mpEconomy()){ if(p.context) bits.push(`História: ${p.context}`); if(p.appearance) bits.push(`Aparência: ${p.appearance}`); }
+      return bits.length ? `\n  · ${bits.join(' · ')}` : ''; })()
   ).join('\n');
   const npcs = sc.npcs ? Object.entries(sc.npcs).map(([n,d])=>`- ${n}: ${d}`).join('\n') : 'Nenhum NPC fixo.';
   const enc = sc.combat && CAMPAIGN.encounters[sc.combat];
