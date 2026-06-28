@@ -33,7 +33,7 @@ const CAMPAIGN = {
       location: "Mar das Espadas, a bordo do Próspero",
       level: 1,
       summary: "Os heróis chegam de barco à ilha. Uma tempestade súbita e antinatural ameaça o navio perto da costa.",
-      readAloud: `O barco mercante *Próspero* corta as ondas cinzentas rumo a Stormwreck Isle. Vocês foram contratados — ou pediram carona — para entregar suprimentos ao claustro de Dragon's Rest. O capitão, um meio-orc taciturno chamado Sabpast, aponta para os penhascos de basalto negro à frente. "Lá está. Ilha esquisita. Dizem que é feita de osso de dragão." Então o céu escurece rápido demais. Um vento que não devia existir uiva entre as velas. Nuvens cor de brasa se enrolam sobre o mastro.`,
+      readAloud: `O barco mercante *Próspero* corta as ondas cinzentas rumo a Stormwreck Isle. Vocês foram contratados — ou pediram carona — para entregar suprimentos ao claustro de Dragon's Rest. O capitão, um meio-orc taciturno chamado Sabast, aponta para os penhascos de basalto negro à frente. "Lá está. Ilha esquisita. Dizem que é feita de osso de dragão." Então o céu escurece rápido demais. Um vento que não devia existir uiva entre as velas. Nuvens cor de brasa se enrolam sobre o mastro.`,
       objectives: ["Sobreviver à tempestade mágica", "Chegar à praia de Dragon's Rest"],
       npcs: {
         'Sabast': "Capitão meio-orc do Próspero. Prático, supersticioso, quer largar a carga e ir embora."
@@ -66,12 +66,15 @@ const CAMPAIGN = {
       npcs: {
         'Runara': "Dragão de bronze milenar em forma humana. Líder do claustro. Sábia, calma, busca a paz entre dragões. Cabelos de bronze, olhos dourados.",
         'Irmão Clavel': "Acólito humano nervoso, cuida da biblioteca e das ervas.",
-        'Tibor': "Velho marinheiro tagarela que sobreviveu a um naufrágio; conhece fofocas da ilha."
+        'Tibor': "Velho marinheiro tagarela que sobreviveu a um naufrágio; conhece fofocas da ilha.",
+        'Tarak': "Jovem kobold tímido, ex-morador das Cavernas Seagrow — viveu entre os myconids até o silêncio cair. Aflito, implora aos heróis que descubram se seus amigos-cogumelo estão vivos. Dá o gancho das cavernas.",
+        'Varnoth': "Pescador rabugento e desconfiado. Viu o navio negro encalhar sozinho na costa norte, 'como se a maré o cuspisse'. Tem pavor de voltar lá. Dá o gancho do naufrágio.",
+        'Rix': "Acólita ansiosa e insone. Jura ter visto uma jovem dragão de escamas faiscantes rodear o velho observatório à noite, entre relâmpagos. Ninguém acreditou nela. Dá o gancho do observatório."
       },
       hooks: [
-        "Os myconids (povo-cogumelo) das Cavernas Seagrow ficaram em silêncio — paravam de comerciar ervas com o claustro. Algo os atacou.",
-        "Um naufrágio amaldiçoado apareceu na costa norte, exalando uma aura de morte.",
-        "Há um wyrmling (filhote de dragão) perdido na ilha."
+        "Os myconids (povo-cogumelo) das Cavernas Seagrow ficaram em silêncio — pararam de comerciar ervas com o claustro. Algo os atacou. (Tarak está desesperado por notícias deles.)",
+        "Um naufrágio amaldiçoado apareceu na costa norte, exalando uma aura de morte. (Varnoth o viu encalhar.)",
+        "Uma jovem dragão das tempestades — Sparkrender — foi avistada sobre o observatório em ruínas. (O relato de Rix.)"
       ],
       possibleRolls: ["CHA (Persuasão) com Runara", "INT (História/Religião) sobre dragões", "WIS (Intuição) para ler Runara"],
       transitions: { 'cavernas': "Quando decidem ir às Cavernas Seagrow" },
@@ -84,13 +87,14 @@ const CAMPAIGN = {
       location: "Entrada das Cavernas Seagrow",
       level: 1,
       summary: "Caverna dos myconids. Um polvo-fungo morto-vivo guarda a entrada. A tumba da dragão Sharruth vaza magia do Plano do Fogo.",
-      readAloud: `Do lado sudoeste da ilha, fumaça tóxica sobe de fendas no chão — vapores que dizem vir da tumba vulcânica da dragão vermelha Sharruth. As Cavernas Seagrow se abrem na encosta, úmidas e fosforescentes. Lá dentro vivia uma colônia de myconids, gente-cogumelo pacífica que troca ervas raras com o claustro. Mas faz semanas que se calaram. Na entrada da caverna, algo se move na poça escura — tentáculos pálidos, cobertos de fungo apodrecido.`,
+      readAloud: `Do lado sudoeste da ilha, fumaça tóxica sobe de fendas no chão — vapores que dizem vir da tumba vulcânica da dragão vermelha Sharruth. As Cavernas Seagrow se abrem na encosta, úmidas e fosforescentes. Lá dentro vivia uma colônia de myconids, gente-cogumelo pacífica que troca ervas raras com o claustro. Mas faz semanas que se calaram. Lá no teto, stirges — parasitas alados sedentos de sangue — guincham e batem asas, inquietos. E na entrada da caverna, algo maior se move na poça escura: tentáculos pálidos, cobertos de fungo apodrecido.`,
       objectives: ["Entrar nas cavernas", "Descobrir o que silenciou os myconids", "Encontrar Sinensa, líder dos myconids"],
       combat: 'polvo_fungo',
       npcs: {
-        'Sinensa': "Líder myconid. Comunica-se por esporos (telepatia limitada). Pacífica, assustada. Sabe da tumba de Sharruth.",
+        'Sinensa': "Líder myconid. Comunica-se por esporos (telepatia limitada). Pacífica, assustada. Sabe da tumba de Sharruth. Reconhece o nome de Tarak com carinho — ele foi da colônia.",
       },
-      possibleRolls: ["INT (Natureza) sobre os fungos", "DEX (Furtividade) na caverna", "CON (save) contra esporos tóxicos"],
+      lore: "Se os heróis mencionarem Tarak (o kobold do claustro), Sinensa se acalma: ele era um dos seus. Os stirges no teto podem ser um perigo ambiental — descreva-os atacando se o grupo fizer barulho ou demorar, mas o combate principal é o polvo-fungo.",
+      possibleRolls: ["INT (Natureza) sobre os fungos", "DEX (Furtividade) para não despertar os stirges", "CON (save) contra esporos tóxicos"],
       transitions: { 'sharruth': "Ao investigar a fonte de magia de fogo", 'claustro_volta': "Se voltarem ao claustro" },
       next: 'sharruth'
     },
@@ -129,12 +133,14 @@ const CAMPAIGN = {
       location: "Casco do navio naufragado, costa norte",
       level: 2,
       summary: "Navio fantasma encalhado. Zumbis e ghouls. Um efígie de Orcus, Príncipe Demônio dos Mortos-Vivos.",
-      readAloud: `A costa norte é um cemitério de navios — mas um deles se destaca, encalhado nas rochas, o casco coberto de cracas e algo pior: uma película negra que suga a luz. O ar cheira a sal e podridão. Pegadas molhadas levam ao convés rachado. Lá dentro, na escuridão do porão, formas se arrastam. E numa parede, alguém esculpiu um símbolo: a cabeça de um carneiro com uma maça — o emblema de Orcus.`,
-      objectives: ["Explorar o navio amaldiçoado", "Enfrentar os mortos-vivos", "Descobrir a origem da maldição (culto a Orcus)"],
+      readAloud: `A costa norte é um cemitério de navios — mas um deles se destaca, encalhado nas rochas, o nome ainda legível na proa apodrecida: *Compass Rose*. O casco está coberto de cracas e de algo pior: uma película negra que suga a luz. O ar cheira a sal e podridão. Pegadas molhadas levam ao convés rachado. Lá dentro, na escuridão do porão, formas se arrastam. E numa parede, traçado em ferrugem e maré, um símbolo: a cabeça de um carneiro com uma maça — o emblema de Orcus.`,
+      objectives: ["Explorar o Compass Rose amaldiçoado", "Enfrentar os mortos-vivos", "Descobrir a origem da maldição (Aletha e o pacto com Orcus)"],
       combat: 'naufragio_undead',
-      npcs: {},
-      lore: "Em testes de Religião, deixe os jogadores aprenderem sobre Orcus e seu reino terrível de Thanatos. A maldição vem de um efígie deixada por um cultista.",
-      possibleRolls: ["INT (Religião) sobre Orcus", "WIS (save) contra medo", "DEX (Furtividade) no porão"],
+      npcs: {
+        'Aletha (espectro)': "Passageira do Compass Rose. Morrendo no naufrágio, rezou a Orcus para reencontrar o marido perdido no mar — e o Príncipe Demônio respondeu. A prece virou maldição: todos que morrem afogados na ilha se erguem como mortos-vivos. Seu espírito triste ainda perambura o porão; pode ser acalmado (não só destruído) se os heróis entenderem sua dor."
+      },
+      lore: "A origem da maldição é Aletha: em testes de Religião/Intuição, revele aos poucos que uma passageira moribunda barganhou com Orcus por amor e condenou a costa. Pôr fim ao símbolo de Orcus (ou dar paz a Aletha) quebra o ciclo. Sobre Orcus: Príncipe Demônio dos Mortos-Vivos, do reino podre de Thanatos.",
+      possibleRolls: ["INT (Religião) sobre Orcus", "WIS (Intuição) para entender Aletha", "WIS (save) contra medo", "DEX (Furtividade) no porão"],
       transitions: { 'observatorio': "Após limpar o navio, sobem para nível 3 e seguem ao Observatório" },
       next: 'observatorio'
     },
@@ -144,13 +150,13 @@ const CAMPAIGN = {
       chapter: "Capítulo 4 — Observatório do Penhasco",
       location: "Observatório no alto do penhasco",
       level: 3,
-      summary: "Clímax. A dragão cromática jovem que arma as ameaças da ilha está aqui. Possível paz ou batalha final.",
+      summary: "Clímax. Sparkrender, a jovem dragão das tempestades, quer um ritual para despertar os espíritos dos dragões mortos da ilha e se tornar uma deusa. Possível paz ou batalha final.",
       levelUp: 3,
-      readAloud: `No ponto mais alto de Stormwreck Isle ergue-se um antigo observatório de pedra, cúpula rachada aberta para o céu. Daqui se vê a ilha inteira — as cavernas fumegantes, o naufrágio negro, o claustro distante. E aqui está a fonte de tudo: uma jovem dragão cromática, escamas reluzentes, que tem usado a ilha como tabuleiro. Ela vira a cabeça serpentina na sua direção. "Então os ratos do claustro mandaram campeões. Que adorável."`,
-      objectives: ["Confrontar a dragão jovem", "Escolher: negociar a paz entre dragões OU batalha final", "Resolver o destino da ilha"],
+      readAloud: `No ponto mais alto de Stormwreck Isle ergue-se um antigo observatório de pedra, cúpula rachada aberta para o céu tempestuoso. Daqui se vê a ilha inteira — as cavernas fumegantes, o naufrágio negro, o claustro distante. E aqui está a fonte de tudo: Sparkrender, uma jovem dragão das tempestades, escamas azul-elétricas faiscando, enroscada sobre um círculo ritual de runas que pulsa com raios presos. Foi ela quem mexeu nas velhas feridas da ilha — para alimentar este feitiço. Ela ergue a cabeça serpentina na sua direção, relâmpagos lambendo as presas. "Então os ratos do claustro mandaram campeões. Que adorável. Cheguem mais perto — vão ver dragões de verdade ressuscitarem, e a mim me tornar deusa."`,
+      objectives: ["Confrontar Sparkrender e interromper o ritual", "Escolher: negociar a paz entre dragões OU batalha final", "Resolver o destino da ilha"],
       combat: 'final_dragon',
       climax: true,
-      lore: "Este é o clímax. A dragão pode ser combatida OU os jogadores podem buscar a paz entre as famílias de dragões (com Runara). Honre a escolha deles. Se negociarem bem (testes de CHA difíceis), a paz é possível e Runara intervém como aliada.",
+      lore: "Este é o clímax. Sparkrender é jovem, arrogante e insegura por baixo da bravata — quer despertar os espíritos dos dragões mortos de Stormwreck para roubar o poder deles e virar deusa; foi ela quem soltou as ameaças menores (a tumba de Sharruth, a maldição) ao remexer na ilha. Ela pode ser COMBATIDA ou DEMOVIDA: se os heróis a confrontarem com a verdade (ela está sozinha, com medo, e o ritual a destruiria também) e Runara intervier, a paz é possível (testes de CHA difíceis). Interromper o círculo ritual (INT Arcana) a enfraquece.",
       possibleRolls: ["CHA (Persuasão) DC alta para paz", "todos os tipos em combate"],
       transitions: { 'epilogo': "Quando a dragão é derrotada ou a paz é selada" },
       next: 'epilogo'
@@ -209,11 +215,11 @@ const CAMPAIGN = {
       xpTotal: 300
     },
     'final_dragon': {
-      name: "Dragão Cromático Jovem",
+      name: "Sparkrender, a Tempestade Jovem",
       enemies: [
-        { id:'dragon', name:'Dragão Jovem', hp:75, ca:17, mod:6, dmg:'2d6+4', xp:1800, traits:'Sopro elemental (recarrega): área, DEX save DC 14 metade do dano. Multiataque: mordida + 2 garras. Pode VOAR.' }
+        { id:'dragon', name:'Sparkrender', hp:75, ca:17, mod:6, dmg:'2d6+4', xp:1800, traits:'Sopro de raio (recarrega): linha, DEX save DC 14, metade do dano. Multiataque: mordida + 2 garras. Pode VOAR. Imune a dano elétrico.' }
       ],
-      tactics: "Clímax. Usa o sopro cedo, depois mordida+garras. Voa para reposicionar. PODE ser convencida a parar se os heróis negociarem a paz (CHA DC 16) — nesse caso vira aliada relutante com ajuda de Runara.",
+      tactics: "Clímax. Sparkrender abre com o sopro de raio, depois mordida+garras; voa para reposicionar e fugir do corpo-a-corpo. Arrogante mas insegura. PODE ser demovida se os heróis negociarem a paz (CHA DC 16) ou mostrarem que o ritual a mataria também — nesse caso recua e, com a ajuda de Runara, vira aliada relutante.",
       xpTotal: 1800,
       negotiable: true
     }
@@ -245,7 +251,7 @@ const CAMPAIGN = {
         keyPoints:[
           "A tempestade é eco da magia de Sharruth. O capitão Sabast (meio-orc) quer largar a carga e fugir.",
           "Na praia, marinheiros afogados de OUTRO naufrágio se erguem como zumbis (1º combate — assustador mas vencível).",
-          "No claustro: Runara, Irmão Clavel e Tibor. Runara abre 3 ganchos: o silêncio dos myconids (Seagrow), o naufrágio amaldiçoado ao norte, e um wyrmling perdido.",
+          "No claustro: Runara, Irmão Clavel, Tibor — e três moradores que dão os ganchos: Tarak (kobold, ex-myconid, gancho das cavernas), Varnoth (pescador, viu o navio negro encalhar, gancho do naufrágio) e Rix (acólita, viu Sparkrender sobre o observatório, gancho do clímax).",
           "O claustro é porto seguro: descanso longo automático ao chegar."
         ],
         secrets:[
@@ -273,30 +279,33 @@ const CAMPAIGN = {
       {
         n:3, chapter:"Capítulo 3", title:"Naufrágio Amaldiçoado",
         scenes:['naufragio'],
-        summary:"O navio fantasma encalhado na costa norte: uma película negra que suga a luz, zumbis e um ghoul paralisante. A origem da maldição é um culto a Orcus.",
+        summary:"O Compass Rose, navio fantasma encalhado na costa norte: uma película negra que suga a luz, zumbis e um ghoul paralisante. A origem da maldição é Aletha e seu pacto com Orcus.",
         keyPoints:[
-          "Pegadas molhadas levam ao porão escuro; o ar cheira a sal e podridão.",
+          "Pegadas molhadas levam ao porão escuro; o ar cheira a sal e podridão. O nome na proa: Compass Rose.",
           "Combate: 1 Ghoul (garras paralisam — CON save DC 10) + 2 zumbis. O escuro favorece emboscada.",
           "Na parede, um símbolo: cabeça de carneiro com maça — o emblema de Orcus.",
+          "O espectro de Aletha pode ser acalmado (não só destruído) se entenderem sua dor — isso quebra a maldição.",
           "Limpar o navio sobe o grupo para o nível 3."
         ],
         secrets:[
-          "A maldição vem de um efígie deixada por um cultista de Orcus, Príncipe Demônio dos Mortos-Vivos (reino de Thanatos)."
+          "A maldição nasceu de Aletha, passageira moribunda do Compass Rose que rezou a Orcus para reencontrar o marido perdido no mar; o Príncipe Demônio dos Mortos-Vivos (reino de Thanatos) respondeu e a costa passou a erguer afogados como mortos-vivos."
         ],
         items:['lamina_mare','talisma_morte']
       },
       {
         n:4, chapter:"Capítulo 4 + Epílogo", title:"Observatório do Penhasco",
         scenes:['observatorio','epilogo'],
-        summary:"Clímax no observatório do penhasco: a jovem dragã cromática que move as ameaças da ilha. Pode haver batalha final OU paz negociada (com Runara). Depois, o epílogo em Dragon's Rest.",
+        summary:"Clímax no observatório do penhasco: Sparkrender, a jovem dragã das tempestades, conduz um ritual para despertar os espíritos dos dragões mortos da ilha e virar deusa. Pode haver batalha final OU paz negociada (com Runara). Depois, o epílogo em Dragon's Rest.",
         keyPoints:[
-          "A dragã jovem é o clímax (HP 75 · CA 17 · sopro elemental DEX save DC 14 · voa · multiataque).",
-          "ELA É NEGOCIÁVEL: Persuasão DC 16 + ajuda de Runara pode selar a paz entre as famílias de dragões — honre a escolha do grupo.",
+          "Sparkrender é o clímax (HP 75 · CA 17 · sopro de RAIO DEX save DC 14 · voa · multiataque · imune a elétrico).",
+          "Ela é a MENTE por trás das ameaças menores: remexeu a ilha (tumba de Sharruth, maldição) para alimentar o ritual.",
+          "Interromper o círculo ritual (INT Arcana) a enfraquece no combate.",
+          "ELA É NEGOCIÁVEL: Persuasão DC 16 + ajuda de Runara, ou mostrar que o ritual a mataria também, pode selar a paz — honre a escolha do grupo.",
           "Subir a este ato já leva o grupo ao nível 3.",
           "Epílogo: Runara assume a verdadeira forma por um instante; gancho para a Costa da Espada."
         ],
         secrets:[
-          "A paz é um final tão válido quanto o combate. Se negociarem bem, a dragã vira aliada relutante com a intervenção de Runara."
+          "Sparkrender é jovem, sozinha e assustada por baixo da arrogância — o ritual roubaria o poder dos dragões mortos, mas também a consumiria. A paz é um final tão válido quanto o combate; se negociarem bem, ela vira aliada relutante com a intervenção de Runara."
         ],
         items:['pocao_cura_maior','lagrima_sharruth','covil_dragao']
       }

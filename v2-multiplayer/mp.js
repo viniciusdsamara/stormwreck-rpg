@@ -46,6 +46,7 @@ const MONSTER_ART = {
   'Polvo de Fungo':'assets/monsters/polvo_fungo.png',
   'Ghoul':         'assets/monsters/ghoul.png',
   'Dragão Jovem':  'assets/monsters/dragao_jovem.png',
+  'Sparkrender':   'assets/monsters/dragao_jovem.png',   // dragão das tempestades (chefe final) — reusa a arte do dragão jovem
 };
 function monsterArt(name){ if(!name) return null; if(MONSTER_ART[name]) return MONSTER_ART[name];
   const parts=String(name).split(' ');   // spawn renomeado ("Zumbi Thordek") → tenta o nome-base
@@ -512,6 +513,7 @@ const MONSTER_AI = {
   'Fume Drake':    { speed:5, reach:3, fly:true,  multiattack:1, flee:0.5, kite:true, atkName:'Mordida flamejante' },
   'Ghoul':         { speed:5, reach:1, fly:false, multiattack:2, flee:0, trait:'paralyze', saveDC:10, atkName:'Garras' },
   'Dragão Jovem':  { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'fogo' }, atkName:'Mordida e garras' },
+  'Sparkrender':   { speed:6, reach:1, fly:true,  multiattack:2, flee:0, breath:{ dc:14, radius:1, dmg:'4d6', dtype:'elétrico' }, atkName:'Mordida e garras' },   // dragão das tempestades: sopro de raio
 };
 const MONSTER_AI_DEFAULT = { speed:5, reach:1, fly:false, multiattack:1, flee:0, atkName:'ataque' };
 function aiProfile(e){ return Object.assign({}, MONSTER_AI_DEFAULT, MONSTER_AI[(e&&(e.baseName||e.name))]||{}); }
@@ -544,6 +546,7 @@ const MONSTER_FX = {
   'Polvo de Fungo': { type:'morto-vivo', physType:'concussão', immune:['veneno'], resist:['necrótico'], condImmune:['Envenenado','Enfeitiçado'], mind:-2 },
   'Fume Drake': { type:'dragão', physType:'fogo', immune:['fogo'], vuln:['frio'] },
   'Dragão Jovem': { type:'dragão', physType:'perfurante', element:'fogo', immune:['fogo'], condImmune:['Amedrontado'] },
+  'Sparkrender': { type:'dragão', physType:'perfurante', element:'elétrico', immune:['elétrico'], condImmune:['Amedrontado'] },
 };
 const MONSTER_FX_DEFAULT = { type:'humanoide', physType:'concussão', resist:[], immune:[], vuln:[], condImmune:[], traits:{} };
 function fxProfile(e){ return Object.assign({}, MONSTER_FX_DEFAULT, MONSTER_FX[(e&&(e.baseName||e.name))]||{}); }
@@ -4046,7 +4049,7 @@ function injectTestPanel(){
   el.querySelector('#tpToggle').onclick = () => { const b = document.getElementById('tpBody'); b.style.display = b.style.display==='none' ? '' : 'none'; };
 }
 
-const BUILD = '20260627ax';   // carimbo de versão — confira no console (F12) se está no código novo
+const BUILD = '20260627ay';   // carimbo de versão — confira no console (F12) se está no código novo
 try { console.log('%cStormwreck build ' + BUILD, 'color:#e8843c;font-weight:bold'); } catch(e){}
 if (new URLSearchParams(location.search).get('teste') === '1') initTestMode();
 else initAuth();
